@@ -121,6 +121,15 @@ Felipe guarda los documentos y la base del negocio en su Drive (fmontecinos@carc
 - Avisos locales (app abierta o en segundo plano): lead nuevo y lead sin respuesta a los 5 min, sondeo cada 60 s.
 - Base: migraciones `core_v5_app_fase3` (app_dashboard2, app_leads, app_bandeja, app_revisar_lead, app_registrar_lead, app_cerrar, app_embudo, app_ficha, app_agenda, app_vehiculos, app_cotizaciones) y `core_v5_app_fase3_soporte` (trigger `postventa_auto` que crea seguimientos de 48 h, 5 días, 30 días y 6 meses al ganar en Carclass y Carwash.hf, y de 48 h y 30 días en NOM; app_sugerencias, app_procesos, app_equipo).
 
+**v2.1.0 (5-nov, tarde) · líneas de negocio diferenciadas:**
+- Decisión de Felipe: Core gestiona **completo** Carclass, NOM y Carwash.hf (comercial, cartera, ventas, finanzas, administración, postventa). **BlackGPS solo como setter**: pre-revisión → prospección → reunión → botón «Pasar a Asisma». Desde ahí cotización, venta, pedidos y soporte viven en Asisma; Core guarda copia de cartera/ventas/MRR para cierres de mes. No hay cotizador BlackGPS en Core.
+- Selector de línea en la barra superior (`cc_linea`, `data-linea` en `<html>` tiñe la app con el color de la unidad) y filtro en Bandeja, Embudo, Agenda, Tareas, Cotizaciones y Conversaciones. Orden: Carclass, NOM, Carwash.hf, BlackGPS.
+- Dashboard Holding con una tarjeta por línea (meta de diciembre, 4 indicadores, alertas). Dashboard por línea: Carclass (venta vs $6 MM, margen, mezcla de servicios, cotizaciones sin seguimiento 48 h), NOM (ventas vs 2/mes, stock con días e inspección IPC, embudos consignantes y compradores), Carwash.hf (ocupación vs 4 autos/día, recompra), BlackGPS (llamadas vs 30, reuniones vs 3, concentración de cartera, clientes en riesgo).
+- Cotizador Carclass y Carwash.hf (`crm.catalogo`, precios abril 2026 del Cerebro), banda de precio (`descuento_max_pct`, hoy 0%), PDF por impresión, link público `#/c/<token>` (`public.cotizacion_publica`, anon) que marca «vista» y avisa. Al enviar, la oportunidad pasa a «Cotizado» con seguimiento a 48 h.
+- Formulario de lead con campos por unidad (auto y servicio en Carclass; auto, km, precio y documentos en NOM consignante; presupuesto y pago en comprador; vehículo y fecha en Carwash.hf; empresa y flota en BlackGPS).
+- Metas en `core.metas` (editables por el dueño). Migraciones `core_v6_metas_catalogo_cotizador` y `core_v6_resumen_lineas` (`app_lineas`).
+- Probado de punta a punta en una transacción revertida: lead → cotización enviada → vista por link → ganada → 4 tareas de postventa.
+
 **Pendiente:**
 - Publicar la v2 en Netlify (desde la nube de Claude, la red bloqueó `netlify-mcp.netlify.app`).
 - Push con la app cerrada: claves VAPID, tabla de suscripciones y envío desde core-api.

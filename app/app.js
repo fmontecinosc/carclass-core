@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.0.0";
+const VERSION = "2.1.0";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -45,6 +45,19 @@ let ME = null;
 let AVISOS = [];
 let installPrompt = null;
 
+/* ---------- líneas de negocio ---------- */
+// Core gestiona completo Carclass, NOM y Carwash.hf. BlackGPS: solo setter hasta la reunión; desde ahí manda Asisma.
+const LINEAS = [
+  ["", "Holding", "Tres unidades. Un mismo respaldo."],
+  ["carclass", "Carclass", "Tu auto, en manos correctas."],
+  ["nom", "NOM", "Más confianza. Mejor decisión."],
+  ["carwash", "Carwash.hf", "Lavado y cuidado en Huertos Familiares."],
+  ["blackgps", "BlackGPS", "Setter hasta la reunión · luego manda Asisma."],
+];
+let UNI = "";
+const enLinea = (u) => !UNI || u === UNI || (UNI === "blackgps" && u === "somosb2b");
+function setLinea(u) { UNI = u || ""; lsSet("cc_linea", UNI); document.documentElement.dataset.linea = UNI || "grupo"; const s = $("#linea-sel"); if (s) s.value = UNI; }
+
 /* ---------- utilidades ---------- */
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -73,7 +86,8 @@ const unidadPill = (u) => `<span class="pill u" style="--c:${UNIDADES[u]?.c || "
 const initials = (s) => (s || "?").split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((x) => x[0].toUpperCase()).join("");
 const fmtRut = (r) => { if (!r) return ""; const b = r.slice(0, -1), dv = r.slice(-1); return b.replace(/\B(?=(\d{3})+(?!\d))/g, ".") + "-" + dv; };
 const waLink = (tel, txt = "") => { const d = String(tel || "").replace(/\D/g, ""); if (d.length < 8) return null; const n = d.length === 9 ? "56" + d : d.length === 8 ? "569" + d : d; return `https://wa.me/${n}${txt ? "?text=" + encodeURIComponent(txt) : ""}`; };
-const unidadesMias = () => (ME?.unidades || []).filter((x) => x !== "grupo" && UNIDADES[x]);
+const ORDEN_U = ["carclass", "nom", "carwash", "blackgps", "somosb2b"];
+const unidadesMias = () => (ME?.unidades || []).filter((x) => x !== "grupo" && UNIDADES[x]).sort((a, b) => ORDEN_U.indexOf(a) - ORDEN_U.indexOf(b));
 
 const I = {
   dash: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
@@ -234,6 +248,7 @@ function shell() {
       <header class="top">
         <button class="btn ghost icon menu-btn" id="menu" aria-label="Abrir menú">${ico("menu")}</button>
         <div class="crumbs" id="crumbs"></div>
+        <label class="linea-pick" title="Línea de negocio"><span class="ldot"></span><select id="linea-sel" aria-label="Línea de negocio">${LINEAS.filter(([k]) => !k || unidadesMias().includes(k)).map(([k, n]) => `<option value="${k}">${n}</option>`).join("")}</select></label>
         <form class="search" id="f-search" role="search">${ico("search", 16)}<input class="input" id="q" type="search" placeholder="Buscar cliente, RUT o teléfono" aria-label="Buscar cliente"></form>
         <button class="btn primary nl" id="nuevo">${ico("plus", 16)}<span>Nuevo lead</span></button>
         <button class="btn ghost icon" id="tema" aria-label="Cambiar tema claro u oscuro">${ico(tema() === "dark" ? "sun" : "moon")}</button>
@@ -248,6 +263,7 @@ function shell() {
   $("#f-search").onsubmit = (e) => { e.preventDefault(); location.hash = "#/clientes?q=" + encodeURIComponent($("#q").value.trim()); };
   $("#nuevo").onclick = () => modalLead();
   $("#tema").onclick = () => setTema(tema() === "dark" ? "light" : "dark");
+  $("#linea-sel").onchange = (e) => { setLinea(e.target.value); render(); };
   $("#notify").onclick = activarAvisos;
   $("#install").onclick = async () => { if (!installPrompt) return; installPrompt.prompt(); await installPrompt.userChoice; installPrompt = null; $("#install").hidden = true; };
   if (installPrompt) $("#install").hidden = false;
@@ -256,7 +272,7 @@ function shell() {
 function setActive(r, titulo) {
   $$(".nav a").forEach((a) => a.classList.toggle("on", a.dataset.r === r));
   const [g, t] = TITULOS[r] || ["", ""];
-  $("#crumbs").innerHTML = `<span class="org">Carclass Group</span><span class="sep">/</span><span class="org">${esc(g)}</span><span class="sep">/</span><b>${esc(titulo || t)}</b>`;
+  $("#crumbs").innerHTML = `<span class="org">${UNI ? esc(uName(UNI)) : "Carclass Group"}</span><span class="sep">/</span><span class="org">${esc(g)}</span><span class="sep">/</span><b>${esc(titulo || t)}</b>`;
   document.title = `${titulo || t} · Carclass Core`;
   $("#side").classList.remove("open");
 }
@@ -295,7 +311,7 @@ async function mostrarAviso(a) {
 async function cargarAvisos() {
   if (!ME) return;
   try {
-    const [bandeja, tareas] = await Promise.all([rpc("app_bandeja", { p_tipo: "todas" }), rpc("app_tareas", { p_estado: "pendiente,en_curso" })]);
+    const [bandeja, tareas, cots] = await Promise.all([rpc("app_bandeja", { p_tipo: "todas" }), rpc("app_tareas", { p_estado: "pendiente,en_curso" }), rpc("app_cotizaciones").catch(() => [])]);
     const hoy = hoyISO(); const L = [];
     for (const b of bandeja) {
       const nombre = b.contacto || b.empresa;
@@ -306,6 +322,7 @@ async function cargarAvisos() {
       }
     }
     for (const t of tareas.filter((t) => t.vence && t.vence <= hoy)) L.push({ id: `tarea:${t.id}:${hoy}`, level: t.vence < hoy ? "bad" : "warn", icon: "tasks", title: `${t.vence < hoy ? "Tarea vencida" : "Tarea para hoy"} · ${t.titulo}`, body: [uName(t.unidad), t.empresa].filter(Boolean).join(" · "), href: "#/tareas", at: t.vence + "T08:00:00" });
+    for (const q of cots.filter((q) => q.vista_en && Date.now() - parseD(q.vista_en) < 14 * 864e5)) L.push({ id: "vista:" + q.id, level: "info", icon: "eye", title: `Cotización vista · ${q.cliente || q.numero}`, body: `${q.numero} · ${clp(q.total)}${q.vistas > 1 ? ` · abierta ${q.vistas} veces` : ""}`, href: "#/cot/" + q.id, at: q.vista_en });
     L.sort((a, b) => (b.at || "").localeCompare(a.at || ""));
     AVISOS = L;
     const rd = leidos(); const unread = L.filter((a) => !rd.has(a.id)).length;
@@ -316,7 +333,7 @@ async function cargarAvisos() {
     // avisos del sistema: lead nuevo y lead sin respuesta a los 5 minutos
     if ("Notification" in window && Notification.permission === "granted") {
       const nt = notificados(); const primera = !lsGet("cc_notif_init");
-      for (const a of L.filter((a) => /^(lead|sla):/.test(a.id) && !nt.has(a.id))) { if (!primera) mostrarAviso(a); nt.add(a.id); }
+      for (const a of L.filter((a) => /^(lead|sla|vista):/.test(a.id) && !nt.has(a.id))) { if (!primera) mostrarAviso(a); nt.add(a.id); }
       guardarSet("cc_notificados", nt); lsSet("cc_notif_init", "1");
     }
   } catch {}
@@ -329,74 +346,208 @@ function rangoPreset(k) {
   return { hoy: [hoyISO(), hoyISO()], "7d": [masDias(-6), hoyISO()], "30d": [masDias(-29), hoyISO()], mes: [iso(new Date(y, m, 1)), hoyISO()], "90d": [masDias(-89), hoyISO()], anio: [iso(new Date(y, 0, 1)), hoyISO()] }[k] || [masDias(-29), hoyISO()];
 }
 async function viewDashboard(params) {
-  setActive("dashboard");
+  const u = UNI;
+  setActive("dashboard", u ? `Dashboard · ${uName(u)}` : "Dashboard");
   const pre = params.get("r") || (params.get("desde") ? "" : "30d");
   const [d0, d1] = pre ? rangoPreset(pre) : [params.get("desde"), params.get("hasta") || hoyISO()];
-  const u = params.get("u") || "";
-  const link = (o) => { const p = new URLSearchParams({ r: pre, desde: pre ? "" : d0, hasta: pre ? "" : d1, u, ...o }); [...p.keys()].forEach((k) => !p.get(k) && p.delete(k)); return "#/dashboard?" + p; };
+  const link = (o) => { const p = new URLSearchParams({ r: pre, desde: pre ? "" : d0, hasta: pre ? "" : d1, ...o }); [...p.keys()].forEach((k) => !p.get(k) && p.delete(k)); return "#/dashboard?" + p; };
   const P = $("#page");
   const nombre = (ME.nombre || "").split(" ")[0];
-  const saludo = new Date().getHours() < 12 ? "Buenos días" : new Date().getHours() < 20 ? "Buenas tardes" : "Buenas noches";
+  const h = new Date().getHours();
+  const saludo = h < 12 ? "Buenos días" : h < 20 ? "Buenas tardes" : "Buenas noches";
+  const lin = LINEAS.find(([k]) => k === u);
   P.innerHTML = `
-    <div class="page-head"><div><h1>${saludo}, ${esc(nombre)}</h1><p>${new Date().toLocaleDateString("es-CL", { weekday: "long", day: "numeric", month: "long" })} · resumen comercial del holding.</p></div>
+    <div class="page-head"><div><h1>${u ? esc(uName(u)) : `${saludo}, ${esc(nombre)}`}</h1><p>${u ? esc(lin?.[2] || "") : `${new Date().toLocaleDateString("es-CL", { weekday: "long", day: "numeric", month: "long" })} · las cuatro líneas del holding de un vistazo.`}</p></div>
       <div class="actions"><button class="btn" id="csv">${ico("dl", 16)} Exportar CSV</button></div></div>
+    <div class="ltabs">${LINEAS.filter(([k]) => !k || unidadesMias().includes(k)).map(([k, n]) => `<button class="${k === u ? "on" : ""}" data-go-linea="${k}" style="--c:${k ? UNIDADES[k].c : "var(--brand)"}"><span class="ldot"></span>${n}</button>`).join("")}</div>
     <div class="filters">
       <div class="chips">${PRESETS.map(([k, t]) => `<a class="chip ${pre === k ? "on" : ""}" href="${link({ r: k, desde: "", hasta: "" })}">${t}</a>`).join("")}</div>
       <form class="daterange" id="f-rango">${ico("cal", 15)}<input type="date" id="r-d" value="${d0}" aria-label="Desde"><span class="faint">→</span><input type="date" id="r-h" value="${d1}" aria-label="Hasta"></form>
-      <select class="input" id="r-u" style="width:auto;height:38px" aria-label="Unidad"><option value="">Todas las unidades</option>${unidadesMias().map((x) => `<option value="${x}" ${u === x ? "selected" : ""}>${uName(x)}</option>`).join("")}</select>
     </div>
     <div id="dash">${loading(8)}</div>`;
   const go = () => { location.hash = link({ r: "", desde: $("#r-d").value, hasta: $("#r-h").value }); };
   $("#r-d").onchange = go; $("#r-h").onchange = go;
-  $("#r-u").onchange = () => (location.hash = link({ u: $("#r-u").value }));
+  bindLineas(P);
   $("#csv").onclick = async () => {
-    try { const rows = await rpc("app_leads", { p_desde: d0, p_hasta: d1, p_unidad: u || null }); downloadCSV(`leads_${d0}_${d1}${u ? "_" + u : ""}.csv`, rows); }
+    try { const rows = (await rpc("app_leads", { p_desde: d0, p_hasta: d1, p_unidad: null })).filter((r) => enLinea(r.unidad)); downloadCSV(`leads_${d0}_${d1}${u ? "_" + u : ""}.csv`, rows); }
     catch (e) { toast(e.message, true); }
   };
   try {
-    const d = await rpc("app_dashboard2", { p_desde: d0, p_hasta: d1, p_unidad: u || null });
-    const conv = d.leads ? (d.ganadas / d.leads) * 100 : 0;
-    const slaPct = d.con_respuesta ? Math.round((d.sla_5min / d.con_respuesta) * 100) : null;
-    const etapas = d.por_etapa || [];
-    const maxE = Math.max(1, ...etapas.map((x) => x.n));
-    const canales = d.por_canal || []; const maxC = Math.max(1, ...canales.map((x) => x.n));
-    const alertas = [];
-    if (d.cola?.vencidas) alertas.push(`<b>${int(d.cola.vencidas)}</b> oportunidades con la próxima acción vencida.`);
-    if (d.bandeja) alertas.push(`<b>${int(d.bandeja)}</b> leads en la bandeja esperando gestión.`);
-    $("#dash").innerHTML = `
-    ${alertas.length ? `<div class="alert">${ico("alert", 18)}<div>${alertas.join(" ")} <a href="#/bandeja">Abrir bandeja</a></div></div>` : ""}
+    const [d, L] = await Promise.all([rpc("app_dashboard2", { p_desde: d0, p_hasta: d1, p_unidad: u || null }), rpc("app_lineas", { p_desde: d0, p_hasta: d1 })]);
+    $("#dash").innerHTML = (u ? unidadDash(u, L) : holdingDash(L)) + comercialDash(d, u);
+    bindLineas($("#dash"));
+    $$("#dash [data-cotnueva]").forEach((b) => b.onclick = () => modalNuevaCotizacion());
+  } catch (e) { $("#dash").innerHTML = fail(e); }
+}
+function bindLineas(root) {
+  $$("[data-go-linea]", root).forEach((b) => b.onclick = (e) => { e.preventDefault(); setLinea(b.dataset.goLinea); location.hash = "#/dashboard"; render(); });
+}
+const metaV = (L, k) => Number(L.metas?.[k]?.meta || 0);
+function metaBar(v, meta, fmt = int, label = "") {
+  const pct = meta ? Math.max(0, Math.min(100, (Number(v || 0) / meta) * 100)) : 0;
+  return `<div class="meta">${label ? `<div class="meta-k">${label}</div>` : ""}<div class="meta-l"><span><b>${fmt(v || 0)}</b> <span class="faint">de ${fmt(meta)}</span></span><span class="${pct >= 100 ? "ok-t" : pct < 40 ? "bad-t" : ""}">${Math.round(pct)}%</span></div><div class="meta-t"><i style="width:${pct}%"></i></div></div>`;
+}
+const mini = (l, v, s = "") => `<div class="mini"><span class="l">${l}</span><b>${v}</b>${s ? `<span class="s">${s}</span>` : ""}</div>`;
+function lineCard(u, body, alertas) {
+  const lin = LINEAS.find(([k]) => k === u);
+  return `<a class="ucard" href="#/dashboard" data-go-linea="${u}" style="--c:${UNIDADES[u].c}">
+    <div class="uc-h"><span class="ldot"></span><div><b>${esc(uName(u))}</b><span class="faint">${esc(lin?.[2] || "")}</span></div><span class="go">${ico("right", 16)}</span></div>
+    ${body}${alertas.length ? `<div class="uc-al">${alertas.map((a) => `<div>${ico("alert", 14)}<span>${a}</span></div>`).join("")}</div>` : `<div class="uc-al ok">${ico("check", 14)}<span>Sin alertas</span></div>`}</a>`;
+}
+const diasDesde = (f) => f ? Math.floor((Date.now() - parseD(f)) / 864e5) : null;
+function holdingDash(L) {
+  const cards = [];
+  const C = L.comun || {};
+  if (L.blackgps) {
+    const b = L.blackgps, c = C.blackgps || {}, al = [];
+    if (b.top?.[0]?.pct > 20) al.push(`<b>${esc(b.top[0].empresa)}</b> concentra el ${String(b.top[0].pct).replace(".", ",")}% del MRR`);
+    const alto = (b.riesgo || []).filter((r) => r.riesgo === "alto").length; if (alto) al.push(`${alto} cliente${alto > 1 ? "s" : ""} con riesgo alto de fuga`);
+    if (c.vencidas) al.push(`${int(c.vencidas)} próximas acciones vencidas`);
+    cards.push(lineCard("blackgps", `${metaBar(b.equipos, metaV(L, "blackgps.equipos"), int, "Equipos facturando · meta diciembre")}
+      <div class="minis">${b.mrr != null ? mini("MRR", clpM(b.mrr)) : ""}${mini("Clientes", int(b.clientes))}${mini("Llamadas hoy", `${int(b.llamadas_hoy)}<span class="faint">/${metaV(L, "blackgps.llamadas_dia")}</span>`)}${mini("Reuniones 7 días", int(b.reuniones_7d))}</div>`, al));
+  }
+  if (L.carclass) {
+    const k = L.carclass, c = C.carclass || {}, al = [], dv = diasDesde(k.ultima_venta);
+    if (k.venta_mes != null && dv != null && dv > 30) al.push(`Última venta registrada hace ${dv} días (${fecha(k.ultima_venta)})`);
+    if (!c.abiertas) al.push("Sin oportunidades abiertas en Core");
+    if (k.sin_seguimiento) al.push(`${k.sin_seguimiento} cotizaciones sin seguimiento en 48 h`);
+    cards.push(lineCard("carclass", `${k.venta_mes != null ? metaBar(k.venta_mes, metaV(L, "carclass.venta_mes"), clpM, "Venta del mes · meta $6 MM") : ""}
+      <div class="minis">${mini("Cotizaciones abiertas", int(k.cot_pendientes), k.cot_vistas ? `${k.cot_vistas} vistas` : "")}${mini("Agendados", int(k.agendados))}${mini("En taller", int(k.en_taller))}${k.ticket_12m != null ? mini("Ticket 12 meses", clpM(k.ticket_12m)) : ""}</div>`, al));
+  }
+  if (L.nom) {
+    const n = L.nom, c = C.nom || {}, al = [], tope = metaV(L, "nom.rotacion_dias") || 45;
+    const viejos = (n.stock || []).filter((s) => s.dias > tope).length; if (viejos) al.push(`${viejos} auto${viejos > 1 ? "s" : ""} sobre ${tope} días en stock`);
+    const sinInsp = (n.stock || []).filter((s) => !s.inspeccion).length; if (sinInsp) al.push(`${sinInsp} sin inspección registrada`);
+    if (!c.abiertas) al.push("Sin consignantes ni compradores en el embudo");
+    const prom = n.stock?.length ? Math.round(n.stock.reduce((a, s) => a + (s.dias || 0), 0) / n.stock.length) : null;
+    cards.push(lineCard("nom", `${metaBar(n.ventas_mes, metaV(L, "nom.ventas_mes"), int, "Ventas del mes · meta mínima")}
+      <div class="minis">${mini("Stock", int(n.stock?.length), prom != null ? `${prom} días promedio` : "")}${mini("Consignantes", int(n.consignantes))}${mini("Compradores", int(n.compradores))}${mini("Visitas agendadas", int(n.visitas))}</div>`, al));
+  }
+  if (L.carwash) {
+    const w = L.carwash, c = C.carwash || {}, al = [], cap = metaV(L, "carwash.capacidad_dia") || 4;
+    const ag = (w.agenda_7d || []).reduce((a, d) => a + d.n, 0);
+    if (!w.atendidos_30d) al.push("Sin servicios registrados en 30 días");
+    cards.push(lineCard("carwash", `${metaBar(ag, cap * 7, int, `Ocupación próximos 7 días · ${cap} autos por día`)}
+      <div class="minis">${mini("Atendidos 30 días", int(w.atendidos_30d))}${w.venta_mes != null ? mini("Venta del mes", clpM(w.venta_mes)) : ""}${mini("Por recomprar", int(w.recompra))}${mini("En bandeja", int(c.bandeja))}</div>`, al));
+  }
+  const ORD = ["carclass", "nom", "carwash", "blackgps"], k = (h) => ORD.indexOf(h.match(/data-go-linea="(\w+)"/)[1]);
+  return `<div class="ucards">${cards.sort((x, y) => k(x) - k(y)).join("")}</div>`;
+}
+const ETAPAS = {
+  blackgps: ["pre_revision", "por_contactar", "en_prospeccion", "reunion_por_agendar", "en_asisma", "onboarding"],
+  carclass: ["nuevo", "calificando", "pre_evaluado", "cotizado", "negociando", "agendado", "en_taller", "entregado"],
+  carwash: ["nuevo", "coordinando", "agendado", "atendido"],
+  consignante: ["nuevo", "calificando", "revision_agendada", "revisado", "propuesta", "contrato_firmado", "publicado", "negociando"],
+  comprador: ["nuevo", "calificando", "presentado", "visita_agendada", "negociando", "reservado", "entregado"],
+};
+function embudoCard(titulo, orden, rows, href) {
+  const by = {}; rows.forEach((r) => (by[r.etapa] = (by[r.etapa] || 0) + Number(r.n)));
+  const max = Math.max(1, ...orden.map((e) => by[e] || 0));
+  const total = orden.reduce((a, e) => a + (by[e] || 0), 0);
+  return `<section class="card"><div class="card-h"><h3>${titulo}</h3><span class="badge">${int(total)}</span><a class="r btn sm ghost" href="${href}">Abrir embudo</a></div>
+    <div class="card-b funnel">${orden.map((e, i) => `<div class="fstep"><span class="fi">${i + 1}</span><span class="lab">${esc(etapaTxt(e))}</span><span class="bar-track"><i style="width:${((by[e] || 0) / max) * 100}%"></i></span><span class="n">${int(by[e] || 0)}</span></div>`).join("")}</div></section>`;
+}
+function uBand(u, metaHtml) {
+  return `<section class="uband" style="--c:${UNIDADES[u].c}"><div class="ub-meta">${metaHtml}</div></section>`;
+}
+function chartVentaMes(rows, meta) {
+  if (!rows?.length) return empty("chart", "Sin datos");
+  const W = 640, H = 210, pl = 40, pb = 26, pt = 12;
+  const max = Math.max(meta || 0, ...rows.map((r) => r.venta)) * 1.1 || 1;
+  const bw = (W - pl - 6) / rows.length, y = (v) => H - pb - (v / max) * (H - pb - pt);
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Venta por mes contra la meta">`;
+  [0, 0.5, 1].forEach((f) => { const v = max / 1.1 * f; s += `<line class="grid" x1="${pl}" x2="${W - 4}" y1="${y(v)}" y2="${y(v)}"/><text x="${pl - 6}" y="${y(v) + 3.5}" font-size="10" text-anchor="end">${(v / 1e6).toLocaleString("es-CL", { maximumFractionDigits: 1 })}M</text>`; });
+  rows.forEach((r, i) => { const x = pl + i * bw + bw * 0.2, w = bw * 0.6; s += `<rect x="${x}" y="${y(r.venta)}" width="${w}" height="${H - pb - y(r.venta)}" rx="3" fill="var(--c)"><title>${r.mes}: ${clp(r.venta)}</title></rect><text x="${x + w / 2}" y="${H - 8}" font-size="10.5" text-anchor="middle">${new Date(r.mes + "-15").toLocaleDateString("es-CL", { month: "short" }).replace(".", "")}</text>`; });
+  if (meta) s += `<line x1="${pl}" x2="${W - 4}" y1="${y(meta)}" y2="${y(meta)}" stroke="var(--gold)" stroke-width="1.5" stroke-dasharray="5 4"/><text x="${W - 6}" y="${y(meta) - 5}" font-size="10.5" text-anchor="end" style="fill:var(--gold)">meta ${clpM(meta)}</text>`;
+  return s + "</svg>";
+}
+function unidadDash(u, L) {
+  const C = (L.comun || {})[u] || {};
+  if (u === "blackgps" && L.blackgps) {
+    const b = L.blackgps;
+    return `${uBand(u, `${metaBar(b.equipos, metaV(L, "blackgps.equipos"), int, "Equipos instalados y facturando · meta diciembre 2026")}${metaBar(b.llamadas_hoy, metaV(L, "blackgps.llamadas_dia"), int, "Llamadas de hoy")}${metaBar(b.reuniones_hoy, metaV(L, "blackgps.reuniones_dia"), int, "Reuniones agendadas hoy")}`)}
+    <div class="kpis">${b.mrr != null ? `<div class="kpi"><span class="l">MRR</span><span class="v">${clpM(b.mrr)}</span><span class="s">${clp(b.equipos ? b.mrr / b.equipos : 0)} por equipo</span></div>` : ""}
+      <div class="kpi"><span class="l">Clientes activos</span><span class="v">${int(b.clientes)}</span><span class="s">${int(b.equipos)} equipos</span></div>
+      <div class="kpi"><span class="l">Actividad 7 días</span><span class="v">${int(b.llamadas_7d)}</span><span class="s">llamadas · ${int(b.reuniones_7d)} reuniones</span></div>
+      <a class="kpi" href="#/bandeja"><span class="l">Por revisar y entrantes</span><span class="v ${C.bandeja ? "warn" : ""}">${int(C.bandeja)}</span><span class="s">${int(C.vencidas)} acciones vencidas</span></a></div>
+    <div class="grid2">
+      ${embudoCard("Embudo BlackGPS · somosB2B", ETAPAS.blackgps, C.por_etapa || [], "#/embudo/blackgps")}
+      ${b.top ? `<section class="card"><div class="card-h"><h3>Concentración de la cartera</h3><span class="r faint" style="font-size:12px">sobre 20% es riesgo estructural</span></div><div class="card-b bars">${b.top.map((t) => `<a class="bar-row" href="#/cliente/${t.empresa_id}"><span class="lab">${esc(t.empresa)}</span><span class="bar-track"><i style="width:${Math.min(100, t.pct * 3)}%;background:${t.pct > 20 ? "var(--bad)" : "var(--c, var(--brand))"}"></i></span><span class="n">${String(t.pct).replace(".", ",")}%</span></a>`).join("")}</div></section>` : ""}
+    </div>
+    <div class="grid2">
+      <section class="card"><div class="card-h"><h3>Clientes en riesgo</h3><span class="badge ${b.riesgo?.length ? "bad" : ""}">${(b.riesgo || []).length}</span></div><div class="card-b" style="display:grid;gap:8px;font-size:13px">${(b.riesgo || []).length ? b.riesgo.map((r) => `<a class="row" href="#/cliente/${r.empresa_id}" style="justify-content:space-between"><span>${esc(r.empresa)} <span class="faint">· ${int(r.equipos)} equipos</span></span><span class="pill ${r.riesgo === "alto" ? "bad" : "warn"}">${esc(r.riesgo)}${r.valor != null ? " · " + clpM(r.valor) : ""}</span></a>`).join("") : '<span class="muted">Sin clientes marcados en riesgo.</span>'}</div></section>
+      <section class="card"><div class="card-h"><h3>Cuentas grandes en curso</h3><span class="r faint" style="font-size:12px">flota de 50 o más</span></div><div class="card-b" style="display:grid;gap:8px;font-size:13px">${(b.cuentas_clave || []).length ? b.cuentas_clave.map((c) => `<a class="row" href="#/cliente/${c.empresa_id}" style="justify-content:space-between"><span>${esc(c.empresa)} <span class="faint">· ${int(c.flota)} veh. · ${esc(etapaTxt(c.etapa))}</span></span><span class="pill ${c.proxima_fecha && c.proxima_fecha < hoyISO() ? "bad" : ""}">${fecha(c.proxima_fecha)}</span></a>`).join("") : '<span class="muted">Sin cuentas grandes en reunión, Asisma u onboarding.</span>'}</div></section>
+    </div>`;
+  }
+  if (u === "carclass" && L.carclass) {
+    const k = L.carclass, util = k.venta_mes != null ? k.venta_mes - (k.costo_mes || 0) : null;
+    const mz = k.mezcla || [], maxM = Math.max(1, ...mz.map((m) => m.venta));
+    return `${uBand(u, `${k.venta_mes != null ? metaBar(k.venta_mes, metaV(L, "carclass.venta_mes"), clpM, "Venta del mes · meta diciembre") + metaBar(util, metaV(L, "carclass.utilidad_mes"), clpM, "Margen del mes (venta − costo de partner)") : ""}`)}
+    <div class="kpis">
+      <a class="kpi" href="#/cotizaciones"><span class="l">Cotizaciones abiertas</span><span class="v">${int(k.cot_pendientes)}</span><span class="s">${int(k.cot_vistas)} vistas por el cliente</span></a>
+      <a class="kpi" href="#/embudo/carclass"><span class="l">Sin seguimiento 48 h</span><span class="v ${k.sin_seguimiento ? "bad" : ""}">${int(k.sin_seguimiento)}</span><span class="s">de ${int(k.cotizadas)} cotizadas o negociando</span></a>
+      <a class="kpi" href="#/embudo/carclass"><span class="l">Agenda y taller</span><span class="v">${int(k.agendados)}<span class="faint" style="font-size:18px"> · ${int(k.en_taller)}</span></span><span class="s">agendados · en Hiendcar</span></a>
+      ${k.ticket_12m != null ? `<div class="kpi"><span class="l">Ticket promedio 12 meses</span><span class="v">${clpM(k.ticket_12m)}</span><span class="s">última venta ${fecha(k.ultima_venta)}</span></div>` : ""}
+    </div>
+    ${k.meses ? `<div class="grid-main"><section class="card" style="--c:var(--u-carclass)"><div class="card-h"><h3>Venta por mes</h3><span class="r faint" style="font-size:12px">con IVA · registro en Core</span></div><div class="card-b">${chartVentaMes(k.meses, metaV(L, "carclass.venta_mes"))}</div></section>
+      <section class="card"><div class="card-h"><h3>Mezcla de servicios</h3><span class="r faint" style="font-size:12px">12 meses · margen %</span></div><div class="card-b bars">${mz.map((m) => `<div class="bar-row"><span class="lab">${esc(m.tipo)}</span><span class="bar-track"><i style="width:${(m.venta / maxM) * 100}%;background:var(--u-carclass)"></i></span><span class="n">${m.venta ? Math.round((m.margen / m.venta) * 100) : 0}%</span></div>`).join("")}
+        <p class="faint" style="font-size:12px;margin:6px 0 0">Lavado, detailing y cerámico dejan más margen que pintura y reparación: es la palanca para la meta.</p></div></section></div>` : ""}
+    <div class="grid2">${embudoCard("Embudo Carclass", ETAPAS.carclass, C.por_etapa || [], "#/embudo/carclass")}
+      <section class="card"><div class="card-h"><h3>Reglas que cuidan el margen</h3></div><div class="card-b" style="display:grid;gap:8px;font-size:13px">
+        <div>${ico("check", 14)} PPF nunca solo: va con cerámico, corrección y láminas.</div><div>${ico("check", 14)} XPEL Ultimate Plus por defecto; Gloss solo como ancla.</div><div>${ico("check", 14)} Pago 50/50: reserva y saldo a la entrega.</div><div>${ico("check", 14)} Seguimiento de cotización a las 48 h y a los 5 días.</div>
+        <button class="btn primary sm" data-cotnueva style="justify-self:start;margin-top:6px">${ico("doc", 14)} Nueva cotización</button></div></section></div>`;
+  }
+  if (u === "nom" && L.nom) {
+    const n = L.nom, tope = metaV(L, "nom.rotacion_dias") || 45, st = n.stock || [];
+    const valor = st.reduce((a, s) => a + Number(s.precio || 0), 0), prom = st.length ? Math.round(st.reduce((a, s) => a + (s.dias || 0), 0) / st.length) : 0;
+    const porF = (f) => (C.por_etapa || []).filter((r) => r.flujo === f);
+    return `${uBand(u, `${metaBar(n.ventas_mes, metaV(L, "nom.ventas_mes"), int, "Ventas cerradas este mes · meta mínima")}<div class="meta"><div class="meta-k">Días promedio en stock · tope de rotación ${tope} días</div><div class="meta-l"><span><b>${prom} días</b></span><span class="${prom > tope ? "bad-t" : "ok-t"}">${prom > tope ? `${prom - tope} días sobre el tope` : "dentro del tope"}</span></div><div class="meta-t"><i style="width:${Math.min(100, (prom / tope) * 100)}%;background:${prom > tope ? "var(--bad)" : "var(--ok)"}"></i></div></div>`)}
+    <div class="kpis">
+      <a class="kpi" href="#/vehiculos?f=stock"><span class="l">Stock disponible</span><span class="v">${int(st.length)}</span><span class="s">${valor ? clpM(valor) + " publicado" : "sin precio publicado cargado"}</span></a>
+      <a class="kpi" href="#/embudo/nom/consignante"><span class="l">Consignantes en curso</span><span class="v">${int(n.consignantes)}</span><span class="s">${int(n.revisiones)} revisiones agendadas</span></a>
+      <a class="kpi" href="#/embudo/nom/comprador"><span class="l">Compradores en curso</span><span class="v">${int(n.compradores)}</span><span class="s">${int(n.visitas)} visitas agendadas</span></a>
+      ${n.ingreso_mes != null ? `<div class="kpi"><span class="l">Ingreso del mes</span><span class="v">${clpM(n.ingreso_mes)}</span><span class="s">última venta ${fecha(n.ultima_venta)}</span></div>` : ""}
+    </div>
+    <section class="card"><div class="card-h"><h3>Stock y rotación</h3><span class="r faint" style="font-size:12px">tope ${tope} días</span></div>${st.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Vehículo</th><th>Patente</th><th>Modalidad</th><th class="num">Precio publicado</th><th class="num">Días</th><th>Inspección</th></tr></thead><tbody>
+      ${st.map((s) => `<tr><td class="name">${esc(s.auto)}</td><td>${esc(s.patente || "—")}</td><td>${s.modalidad === "compra_directa" ? "Propio" : "Consignado"}</td><td class="num">${s.precio ? clp(s.precio) : '<span class="pill warn">sin precio</span>'}</td><td class="num"><span class="pill ${s.dias > tope ? "bad" : s.dias > tope * 0.7 ? "warn" : "ok"}">${int(s.dias)}</span></td><td>${s.inspeccion ? `<span class="pill ${s.inspeccion.veredicto === "APTO" ? "ok" : "warn"}">${esc(s.inspeccion.veredicto || "")} · ${int(s.inspeccion.score)}%</span>` : '<span class="pill">sin inspección</span>'}</td></tr>`).join("")}
+      </tbody></table></div>` : empty("car", "Sin stock disponible", "La palanca es captar consignantes.")}</section>
+    <div class="grid2">${embudoCard("Consignantes", ETAPAS.consignante, porF("consignante"), "#/embudo/nom/consignante")}${embudoCard("Compradores", ETAPAS.comprador, porF("comprador"), "#/embudo/nom/comprador")}</div>`;
+  }
+  if (u === "carwash" && L.carwash) {
+    const w = L.carwash, cap = metaV(L, "carwash.capacidad_dia") || 4, ag = (w.agenda_7d || []).reduce((a, d) => a + d.n, 0);
+    return `${uBand(u, metaBar(ag, cap * 7, int, `Ocupación de los próximos 7 días · ${cap} autos por día`))}
+    <div class="kpis">
+      <div class="kpi"><span class="l">Atendidos 30 días</span><span class="v">${int(w.atendidos_30d)}</span><span class="s">servicios cerrados</span></div>
+      ${w.venta_mes != null ? `<div class="kpi"><span class="l">Venta del mes</span><span class="v">${clpM(w.venta_mes)}</span><span class="s">con IVA</span></div>` : ""}
+      <div class="kpi"><span class="l">Por recomprar</span><span class="v">${int(w.recompra)}</span><span class="s">clientes sin volver en 30 días</span></div>
+      <a class="kpi" href="#/bandeja"><span class="l">En bandeja</span><span class="v">${int(C.bandeja)}</span><span class="s">esperando coordinación</span></a>
+    </div>
+    <div class="grid2"><section class="card"><div class="card-h"><h3>Agenda de la semana</h3><span class="r faint" style="font-size:12px">máximo ${cap} por día</span></div><div class="card-b bars">${(w.agenda_7d || []).map((d) => `<div class="bar-row"><span class="lab" style="text-transform:capitalize">${parseD(d.fecha).toLocaleDateString("es-CL", { weekday: "short", day: "numeric" })}</span><span class="bar-track"><i style="width:${Math.min(100, (d.n / cap) * 100)}%;background:${d.n >= cap ? "var(--bad)" : "var(--u-carwash)"}"></i></span><span class="n">${d.n}/${cap}</span></div>`).join("")}</div></section>
+      ${embudoCard("Embudo Carwash.hf", ETAPAS.carwash, C.por_etapa || [], "#/embudo/carwash")}</div>`;
+  }
+  return "";
+}
+function comercialDash(d, u) {
+  const conv = d.leads ? (d.ganadas / d.leads) * 100 : 0;
+  const slaPct = d.con_respuesta ? Math.round((d.sla_5min / d.con_respuesta) * 100) : null;
+  const canales = d.por_canal || []; const maxC = Math.max(1, ...canales.map((x) => x.n));
+  return `
+    <h2 class="sec">Comercial${u ? "" : " del holding"} <span class="faint">· leads del rango</span></h2>
     <div class="kpis">
       <div class="kpi"><div class="top-row"><span class="l">Leads totales</span><span class="ki">${ico("inbox", 17)}</span></div><span class="v">${int(d.leads)}</span><span class="s">${int(d.abiertas)} abiertos · ${int(d.perdidas)} perdidos</span></div>
       <div class="kpi"><div class="top-row"><span class="l">Tasa de conversión</span><span class="ki">${ico("trophy", 17)}</span></div><span class="v">${conv.toLocaleString("es-CL", { maximumFractionDigits: 1 })}%</span><span class="s">${int(d.ganadas)} ganados de ${int(d.leads)}</span></div>
-      <div class="kpi"><div class="top-row"><span class="l">Respuesta promedio</span><span class="ki">${ico("clock", 17)}</span></div><span class="v ${d.respuesta_min > 5 ? "warn" : ""}">${d.respuesta_min == null ? "—" : minTxt(d.respuesta_min)}</span><span class="s">${slaPct == null ? "sin respuestas medidas en el rango" : `${slaPct}% respondidos en 5 min o menos`}</span></div>
+      <div class="kpi"><div class="top-row"><span class="l">Respuesta promedio</span><span class="ki">${ico("clock", 17)}</span></div><span class="v ${d.respuesta_min > 5 ? "warn" : ""}">${d.respuesta_min == null ? "—" : minTxt(d.respuesta_min)}</span><span class="s">${slaPct == null ? "sin respuestas medidas en el rango" : `${slaPct}% en 5 min o menos`}</span></div>
       ${ME.ve_finanzas ? `<a class="kpi" href="#/finanzas"><div class="top-row"><span class="l">Ventas pagadas</span><span class="ki gold">${ico("money", 17)}</span></div><span class="v">${clpM(d.ventas_pagadas)}</span><span class="s">${clpM(d.ventas_cerradas)} cerradas · ${int(d.n_ventas)} ventas</span></a>` : ""}
     </div>
-    <div class="grid2">
-      <section class="card"><div class="card-h"><h3>Leads por etapa del embudo</h3><span class="r faint" style="font-size:12px">abiertos hoy</span></div>
-        <div class="card-b bars">${etapas.length ? etapas.slice(0, 14).map((x) => `<a class="bar-row" href="#/embudo/${x.unidad}"><span class="lab">${esc(etapaTxt(x.etapa))}${u ? "" : ` <span class="faint">· ${esc(uName(x.unidad))}</span>`}</span><span class="bar-track"><i style="width:${(x.n / maxE) * 100}%;background:${UNIDADES[x.unidad]?.c || "var(--brand)"}"></i></span><span class="n">${int(x.n)}</span></a>`).join("") : empty("kanban", "Sin oportunidades abiertas")}</div></section>
-      <section class="card"><div class="card-h"><h3>Leads por origen y canal</h3><span class="r faint" style="font-size:12px">en el rango</span></div>
-        <div class="card-b bars">${canales.length ? canales.map((x) => `<div class="bar-row"><span class="lab">${esc(CANAL_TXT[x.canal] || x.canal)}</span><span class="bar-track"><i style="width:${(x.n / maxC) * 100}%"></i></span><span class="n">${int(x.n)}<span class="faint" style="font-weight:500"> · ${int(x.ganadas)}✓</span></span></div>`).join("") : empty("inbox", "Sin leads en el rango", "Prueba con un rango más amplio.")}
-        ${(d.por_campana || []).length ? `<div style="margin-top:14px"><div class="lbl" style="margin-bottom:8px">Campañas</div>${d.por_campana.map((x) => `<div class="row" style="justify-content:space-between;font-size:13px;padding:4px 0"><span>${esc(x.campana)}</span><span class="num"><b>${int(x.n)}</b> <span class="faint">· ${int(x.ganadas)} ganados</span></span></div>`).join("")}</div>` : ""}</div></section>
-    </div>
     <div class="grid-main">
-      <section class="card"><div class="card-h"><h3>Evolución mensual</h3><div class="r legend"><span style="--c:var(--brand-100)">Leads creados</span><span style="--c:var(--brand)">Ganados</span></div></div>
-        <div class="card-b">${chartEvolucion(d.evolucion || [])}</div></section>
-      <div class="stack">
-        <section class="card"><div class="card-h"><h3>SLA de primera respuesta</h3></div><div class="card-b sla">
-          ${d.con_respuesta ? `<div class="sla-bar"><i style="width:${slaPct}%;background:var(--ok)"></i><i style="width:${100 - slaPct}%;background:var(--warn)"></i></div>
-          <div class="row" style="justify-content:space-between;font-size:13px"><span><b>${int(d.sla_5min)}</b> en 5 min o menos</span><span><b>${int(d.con_respuesta - d.sla_5min)}</b> más tarde</span></div>` : `<div class="muted" style="font-size:13px">Todavía no hay respuestas medidas en este rango. Se mide desde que el lead entra hasta la primera gestión saliente.</div>`}
-          ${d.leads - d.con_respuesta > 0 ? `<div class="faint" style="font-size:12.5px">${int(d.leads - d.con_respuesta)} leads del rango sin respuesta registrada.</div>` : ""}</div></section>
-        <section class="card"><div class="card-h"><h3>Para hoy</h3></div><div class="card-b" style="display:grid;gap:10px;font-size:13.5px">
-          <a class="row" href="#/agenda?v=dia" style="justify-content:space-between"><span>Próximas acciones vencidas</span><span class="pill ${d.cola?.vencidas ? "bad" : ""}">${int(d.cola?.vencidas)}</span></a>
-          <a class="row" href="#/agenda?v=dia" style="justify-content:space-between"><span>Próximas acciones de hoy</span><span class="pill">${int(d.cola?.hoy)}</span></a>
-          <a class="row" href="#/tareas" style="justify-content:space-between"><span>Tareas pendientes</span><span class="pill ${d.tareas?.vencidas ? "warn" : ""}">${int(d.tareas?.pendientes)}${d.tareas?.vencidas ? ` · ${int(d.tareas.vencidas)} vencidas` : ""}</span></a>
-          <a class="row" href="#/embudo/blackgps" style="justify-content:space-between"><span>Prospectos sin fecha</span><span class="pill">${int(d.cola?.sin_fecha)}</span></a>
-        </div></section>
-      </div>
+      <section class="card"><div class="card-h"><h3>Evolución mensual</h3><div class="r legend"><span style="--c:var(--brand-100)">Leads creados</span><span style="--c:var(--brand)">Ganados</span></div></div><div class="card-b">${chartEvolucion(d.evolucion || [])}</div></section>
+      <section class="card"><div class="card-h"><h3>Origen y canal</h3></div><div class="card-b bars">${canales.length ? canales.map((x) => `<div class="bar-row"><span class="lab">${esc(CANAL_TXT[x.canal] || x.canal)}</span><span class="bar-track"><i style="width:${(x.n / maxC) * 100}%"></i></span><span class="n">${int(x.n)}<span class="faint" style="font-weight:500"> · ${int(x.ganadas)}✓</span></span></div>`).join("") : empty("inbox", "Sin leads en el rango")}
+        ${(d.por_campana || []).length ? `<div style="margin-top:14px"><div class="lbl" style="margin-bottom:8px">Campañas</div>${d.por_campana.map((x) => `<div class="row" style="justify-content:space-between;font-size:13px;padding:4px 0"><span>${esc(x.campana)}</span><span class="num"><b>${int(x.n)}</b> <span class="faint">· ${int(x.ganadas)} ganados</span></span></div>`).join("")}</div>` : ""}
+        <div class="lbl" style="margin:14px 0 6px">SLA de primera respuesta</div>${d.con_respuesta ? `<div class="sla-bar"><i style="width:${slaPct}%;background:var(--ok)"></i><i style="width:${100 - slaPct}%;background:var(--warn)"></i></div>` : `<div class="muted" style="font-size:12.5px">Sin respuestas medidas en este rango.</div>`}</div></section>
     </div>
-    <p class="faint" style="font-size:12px;margin:0">Leads = oportunidades creadas en el rango. No incluye los 575 prospectos importados de la base BlackGPS, que se trabajan desde el embudo.</p>`;
-  } catch (e) { $("#dash").innerHTML = fail(e); }
+    <p class="faint" style="font-size:12px;margin:0">Leads = oportunidades creadas en el rango. No incluye los 575 prospectos importados de la base BlackGPS.</p>`;
 }
+
 function chartEvolucion(rows) {
   if (!rows.length) return empty("chart", "Sin datos");
   const W = 640, H = 220, pl = 30, pb = 26, pt = 10;
@@ -423,7 +574,7 @@ async function viewNotificaciones() {
     <div class="actions"><button class="btn" id="n-all">${ico("check", 16)} Marcar todo como leído</button></div></div><div id="nl">${loading(5)}</div>`;
   await cargarAvisos();
   const rd = leidos();
-  const tipos = [["Lead nuevo", "activo"], ["Lead sin respuesta a los 5 minutos", "activo"], ["Cliente pide hablar con una persona", "se activa con WhatsApp"], ["Cotización vista", "se activa con el link público de cotizaciones"], ["Reunión en 1 hora", "se activa con Google Calendar"]];
+  const tipos = [["Lead nuevo", "activo"], ["Lead sin respuesta a los 5 minutos", "activo"], ["Cliente pide hablar con una persona", "se activa con WhatsApp"], ["Cotización vista", "activo"], ["Reunión en 1 hora", "se activa con Google Calendar"]];
   $("#nl").innerHTML = `<div class="grid-main"><section class="card">${AVISOS.length ? AVISOS.map((a) => `<a class="notif ${rd.has(a.id) ? "" : "unread"}" href="${a.href}" data-id="${esc(a.id)}"><span class="ic ${a.level === "bad" ? "bad" : a.level === "warn" ? "warn" : ""}">${ico(a.icon, 17)}</span><div><div class="t">${esc(a.title)}</div><div class="muted" style="font-size:12.5px">${esc(a.body)}</div><div class="d">${hace(a.at)}</div></div></a>`).join("") : empty("bell", "Sin avisos", "Cuando entre un lead o venza una tarea, aparecerá aquí.")}</section>
     <section class="card"><div class="card-h"><h3>Avisos al dispositivo</h3></div><div class="card-b" style="display:grid;gap:10px;font-size:13px">
       ${tipos.map(([t, s]) => `<div class="row" style="justify-content:space-between;align-items:center"><span>${t}</span><span class="pill ${s === "activo" ? "ok" : ""}">${s}</span></div>`).join("")}
@@ -445,7 +596,7 @@ async function viewBandeja(params) {
     <div id="bl">${loading(6)}</div>`;
   $("#b-new").onclick = () => modalLead();
   try {
-    const all = await rpc("app_bandeja", { p_tipo: "todas" });
+    const all = (await rpc("app_bandeja", { p_tipo: "todas" })).filter((x) => enLinea(x.unidad));
     const ent = all.filter((x) => x.bandeja !== "pre_revision"), pre = all.filter((x) => x.bandeja === "pre_revision");
     $("#tb-e").textContent = ent.length || ""; $("#tb-p").textContent = pre.length || "";
     const rows = t === "pre_revision" ? pre : ent;
@@ -489,7 +640,7 @@ async function viewConversaciones() {
     <div class="alert info">${ico("info", 18)}<div><b>Se activa al conectar WhatsApp Cloud API.</b> Cuando el número quede conectado en modo coexistencia, cada mensaje llegará aquí y podrás usar «Tomar conversación» y «Devolver al asesor». Mientras tanto, abajo están los leads de WhatsApp con su último mensaje registrado.</div></div>
     <div id="cv">${loading(4)}</div>`;
   try {
-    const all = (await rpc("app_bandeja", { p_tipo: "entrantes" })).filter((b) => UNIDADES[b.unidad]?.b2c);
+    const all = (await rpc("app_bandeja", { p_tipo: "entrantes" })).filter((b) => UNIDADES[b.unidad]?.b2c && enLinea(b.unidad));
     $("#cv").innerHTML = `<section class="card"><div class="card-h"><h3>Leads B2C abiertos</h3><span class="badge">${all.length}</span><div class="r"><button class="btn sm" disabled>Tomar conversación</button><button class="btn sm" disabled>Devolver al asesor</button></div></div>
       ${all.length ? all.map((b) => { const wa = waLink(b.telefono); return `<div class="lead"><span class="avatar" style="background:var(--brand)">${esc(initials(b.contacto || b.empresa))}</span>
         <div><div class="t"><a href="#/cliente/${b.empresa_id}">${esc(b.contacto || b.empresa)}</a></div><div class="meta">${unidadPill(b.unidad)}<span>${hace(b.creado)}</span><span class="pill">Atiende: Felipe</span></div>${b.ultimo_mensaje ? `<div class="msg">${esc(b.ultimo_mensaje)}</div>` : ""}</div>
@@ -565,7 +716,7 @@ async function viewAgenda(params) {
   $("#a-t").onclick = () => modalTarea(() => viewAgenda(params));
   const evHtml = (e) => `<a class="ev ${e.tipo} ${e.fecha < hoyISO() ? "past" : ""}" href="${e.empresa_id ? "#/cliente/" + e.empresa_id : "#/tareas"}" style="${e.tipo === "accion" ? `--c:${UNIDADES[e.unidad]?.c || "var(--brand)"}` : ""}" title="${esc(`${e.titulo} · ${e.cliente || ""}`)}">${esc(e.titulo)}${e.cliente ? ` · ${esc(e.cliente)}` : ""}</a>`;
   try {
-    const evs = await rpc("app_agenda", { p_desde: iso(d0), p_hasta: iso(d1) });
+    const evs = (await rpc("app_agenda", { p_desde: iso(d0), p_hasta: iso(d1) })).filter((e) => enLinea(e.unidad));
     const por = {}; evs.forEach((e) => (por[e.fecha] ||= []).push(e));
     if (v === "dia") {
       const l = por[iso(base)] || [];
@@ -577,14 +728,14 @@ async function viewAgenda(params) {
     }
   } catch (e) { $("#cal").innerHTML = fail(e); }
   try {
-    const ve = (await rpc("app_agenda", { p_desde: masDias(-365), p_hasta: masDias(-1) })).sort((a, b) => b.fecha.localeCompare(a.fecha));
+    const ve = (await rpc("app_agenda", { p_desde: masDias(-365), p_hasta: masDias(-1) })).filter((e) => enLinea(e.unidad)).sort((a, b) => b.fecha.localeCompare(a.fecha));
     if (ve.length) {
       $("#venc-c").hidden = false; $("#venc-n").textContent = ve.length;
       $("#venc").innerHTML = `<div class="card-b" style="display:grid;gap:6px">${ve.slice(0, 8).map((e) => `<div class="row" style="justify-content:space-between;align-items:center;flex-wrap:nowrap;gap:8px"><span style="min-width:0;flex:1">${evHtml(e)}</span><span class="pill bad">${fecha(e.fecha)}</span></div>`).join("")}${ve.length > 8 ? `<div class="faint" style="font-size:12px">y ${ve.length - 8} más. Registra una gestión en cada una para darle nueva fecha.</div>` : ""}</div>`;
     }
   } catch {}
   try {
-    const sg = await rpc("app_sugerencias");
+    const sg = (await rpc("app_sugerencias")).filter((x) => enLinea(x.unidad));
     $("#sg-n").textContent = sg.length || "";
     const icS = { tras_cotizar: "call", detenido: "clock", mensual: "users" };
     $("#sg").innerHTML = sg.length ? sg.map((s, i) => `<div class="sug"><span class="ic">${ico(icS[s.tipo] || "spark", 16)}</span><div><div style="font-weight:600;font-size:13px">${esc(s.titulo)}</div><div class="muted" style="font-size:12.5px"><a href="#/cliente/${s.empresa_id}">${esc(s.cliente)}</a> · ${esc(uName(s.unidad))} · ${esc(etapaTxt(s.etapa))} · ${s.desde ? "última gestión " + hace(s.desde) : "sin gestiones"}</div></div><button class="btn sm" data-sg="${i}">Agendar mañana</button></div>`).join("")
@@ -598,22 +749,161 @@ async function viewAgenda(params) {
 }
 
 /* ---------- cotizaciones ---------- */
+const COT_UNIDADES = ["carclass", "carwash"];
+const COT_EST = { borrador: "", enviada: "info", vista: "gold", aceptada: "ok", rechazada: "bad", vencida: "warn" };
+const DEF_NOTAS = {
+  carclass: "Valores con IVA incluido. Precio final sujeto a evaluación presencial del vehículo. Pago 50/50: mitad para reservar y mitad a la entrega. Recepción en Chicureo o retiro a domicilio. Incluye corrección de pintura en todo plan de cerámico, garantía XPEL y acta de entrega.",
+  carwash: "Valores con IVA incluido. Pago al momento de la entrega.",
+};
+const MARCA = {
+  carclass: ["Carclass", "Tu auto, en manos correctas.", "Instalador oficial XPEL · desde 2017"],
+  carwash: ["Carwash.hf", "Lavado y cuidado estético", "Huertos Familiares, Tiltil"],
+  nom: ["NOM · Nor-Oriente Motors", "Más confianza. Mejor decisión.", "Chicureo"],
+  blackgps: ["BlackGPS", "Tecnología que cuida tu flota.", "Distribuidor autorizado"],
+};
+const linkPublico = (token) => `${location.origin}${location.pathname}#/c/${token}`;
 async function viewCotizaciones() {
   setActive("cotizaciones");
   const P = $("#page");
-  P.innerHTML = `<div class="page-head"><div><h1>Cotizaciones</h1><p>Cotizaciones de Carclass y BlackGPS: banda de precio, PDF, link público y estado «vista».</p></div>
-    <div class="actions"><button class="btn primary" disabled title="Falta cargar la lista de precios vigente">${ico("plus", 16)} Nueva cotización</button></div></div>
-    <div class="alert info">${ico("info", 18)}<div><b>El cotizador necesita la lista de precios vigente</b> (cerámico, láminas y PPF por tamaño de auto). Con esa lista se activan la banda de precio, el PDF y el link público que avisa cuando el cliente abre la cotización.</div></div>
-    <div id="ql">${loading(4)}</div>`;
+  P.innerHTML = `<div class="page-head"><div><h1>Cotizaciones</h1><p>Del catálogo vigente, con banda de precio, PDF y link público. Cuando el cliente abre el link, la cotización pasa a «vista» y te avisamos.</p></div>
+    <div class="actions"><button class="btn primary" id="q-new">${ico("plus", 16)} Nueva cotización</button></div></div><div id="ql">${loading(4)}</div>`;
+  $("#q-new").onclick = () => modalNuevaCotizacion();
   try {
-    const q = await rpc("app_cotizaciones");
-    const est = { borrador: "", enviada: "info", vista: "gold", aceptada: "ok", rechazada: "bad", vencida: "warn" };
-    $("#ql").innerHTML = `<section class="card">${q.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>N°</th><th>Fecha</th><th>Cliente</th><th>Unidad</th><th class="num">Neto</th><th>Vigencia</th><th>Estado</th><th></th></tr></thead><tbody>
-      ${q.map((x) => `<tr class="click" data-emp="${x.empresa_id || ""}"><td class="name">${esc(x.numero || "—")}</td><td>${fecha(x.fecha)}</td><td>${esc(x.cliente || "—")}</td><td>${unidadPill(x.unidad)}</td><td class="num">${clp(x.neto)}</td><td>${fecha(x.vigencia)}</td><td><span class="pill ${est[x.estado] || ""}">${esc(x.estado)}</span></td><td>${x.pdf_url ? `<a class="btn sm" href="${esc(x.pdf_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">PDF</a>` : ""}</td></tr>`).join("")}
-      </tbody></table></div>` : empty("doc", "Sin cotizaciones")}</section>`;
-    $$("#ql tr[data-emp]").forEach((tr) => tr.dataset.emp && (tr.onclick = () => (location.hash = "#/cliente/" + tr.dataset.emp)));
+    const q = (await rpc("app_cotizaciones")).filter((x) => enLinea(x.unidad));
+    $("#ql").innerHTML = `<section class="card">${q.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>N°</th><th>Fecha</th><th>Cliente</th><th>Unidad</th><th class="num">Total</th><th>Válida hasta</th><th>Estado</th><th></th></tr></thead><tbody>
+      ${q.map((x) => `<tr class="click" data-id="${x.id}" data-emp="${x.empresa_id || ""}" data-v2="${x.oportunidad_id ? 1 : ""}"><td class="name">${esc(x.numero || "—")}</td><td>${fecha(x.fecha)}</td><td>${esc(x.cliente || "—")}</td><td>${unidadPill(x.unidad)}</td><td class="num">${clp(x.total)}</td><td>${fecha(x.vigencia)}</td>
+        <td><span class="pill ${COT_EST[x.estado] || ""}">${esc(x.estado)}</span>${x.vista_en ? `<div class="sub">vista ${hace(x.vista_en)}${x.vistas > 1 ? ` · ${x.vistas} veces` : ""}</div>` : ""}</td>
+        <td>${x.oportunidad_id && x.estado !== "borrador" ? `<button class="btn sm" data-link="${x.token}" onclick="event.stopPropagation()">${ico("link", 14)} Link</button>` : ""}</td></tr>`).join("")}
+      </tbody></table></div>` : empty("doc", "Sin cotizaciones", "Crea una desde aquí o desde la ficha del cliente.")}</section>`;
+    $$("#ql tr[data-id]").forEach((tr) => tr.onclick = () => (location.hash = tr.dataset.v2 ? "#/cot/" + tr.dataset.id : tr.dataset.emp ? "#/cliente/" + tr.dataset.emp : "#/cotizaciones"));
+    $$("#ql [data-link]").forEach((b) => b.onclick = async (e) => { e.stopPropagation(); copiar(linkPublico(b.dataset.link), "Link copiado"); });
   } catch (e) { $("#ql").innerHTML = fail(e); }
 }
+async function copiar(txt, ok = "Copiado") { try { await navigator.clipboard.writeText(txt); toast(ok); } catch { prompt("Copia el texto:", txt); } }
+function modalNuevaCotizacion() {
+  const root = modal("Nueva cotización", `<div class="field"><label for="nc-q">Cliente</label><input class="input" id="nc-q" placeholder="Nombre, teléfono o RUT" autocomplete="off"></div><div id="nc-r" class="muted" style="font-size:13px">Busca el cliente. Si no existe, créalo primero con «Nuevo lead».</div>`, null);
+  let t;
+  $("#nc-q", root).oninput = () => { clearTimeout(t); t = setTimeout(async () => {
+    const q = $("#nc-q", root).value.trim(); if (q.length < 2) return;
+    try {
+      const d = await rpc("app_empresas", { p_q: q, p_filtro: null, p_pagina: 0 });
+      $("#nc-r", root).innerHTML = d.filas.length ? d.filas.slice(0, 8).map((r) => `<button type="button" class="pick" data-id="${r.id}"><b>${esc(r.nombre)}</b><span class="faint">${esc([r.telefono, r.comuna].filter(Boolean).join(" · "))}</span></button>`).join("") : "Sin resultados.";
+      $$(".pick", root).forEach((b) => b.onclick = async () => {
+        const f = await rpc("app_ficha", { p_id: b.dataset.id });
+        const ops = f.oportunidades.filter((o) => o.estado === "abierta" && COT_UNIDADES.includes(o.unidad));
+        if (!ops.length) { $("#nc-r", root).innerHTML = `<div class="alert">${ico("alert", 16)}<div><b>${esc(f.empresa.nombre)}</b> no tiene oportunidades abiertas en Carclass ni Carwash.hf. Crea un lead primero.</div></div>`; return; }
+        if (ops.length === 1) { root.innerHTML = ""; return modalCotizador({ oportunidad_id: ops[0].id, unidad: ops[0].unidad, cliente: f.empresa.nombre }); }
+        $("#nc-r", root).innerHTML = ops.map((o) => `<button type="button" class="pick" data-op="${o.id}" data-u="${o.unidad}"><b>${esc(uName(o.unidad))} · ${esc(etapaTxt(o.etapa))}</b><span class="faint">${esc(o.titulo || o.proxima_accion || "")}</span></button>`).join("");
+        $$("[data-op]", root).forEach((x) => x.onclick = () => { root.innerHTML = ""; modalCotizador({ oportunidad_id: x.dataset.op, unidad: x.dataset.u, cliente: f.empresa.nombre }); });
+      });
+    } catch (e) { $("#nc-r", root).textContent = e.message; }
+  }, 280); };
+}
+async function modalCotizador({ oportunidad_id, unidad, cliente, cot = null, after }) {
+  let cat = [];
+  try { cat = await rpc("app_catalogo", { p_unidad: unidad }); } catch (e) { toast(e.message, true); return; }
+  let lineas = cot?.items?.lineas ? JSON.parse(JSON.stringify(cot.items.lineas)) : [];
+  const guardar = async (estado) => {
+    if (!lineas.length) throw new Error("Agrega al menos un ítem.");
+    const r = await rpc("app_guardar_cotizacion", { p: { id: cot?.id || null, oportunidad_id, lineas, auto: $("#q-auto").value.trim() || null, notas: $("#q-notas").value.trim() || null, vigencia_dias: Number($("#q-vig").value) || 7, estado } });
+    if (estado === "enviada") setTimeout(() => modalCompartir({ ...r, cliente, unidad, oportunidad_id }), 50);
+    else { toast(`Borrador ${r.numero} guardado`); }
+    after && after();
+  };
+  const root = modal(`${cot ? "Cotización " + cot.numero : "Nueva cotización"} · ${cliente}`, `
+    <div class="row"><div class="field"><label for="q-auto">Vehículo</label><input class="input" id="q-auto" placeholder="Marca, modelo, año y color" value="${esc(cot?.items?.auto || "")}"></div><div class="field" style="flex:0 1 130px"><label for="q-vig">Validez (días)</label><input class="input" id="q-vig" type="number" min="1" value="7"></div></div>
+    <div class="field"><span class="lbl">Agregar del catálogo · ${esc(uName(unidad))}</span><div class="chips" id="q-cat">${cat.map((c, i) => `<button type="button" class="chip" data-add="${i}" title="${esc(c.descripcion || "")}">${ico("plus", 13)} ${esc(c.nombre)} <span class="faint">${clpM(c.precio)}</span></button>`).join("")}<button type="button" class="chip" data-add="otro">${ico("plus", 13)} Otro ítem</button></div></div>
+    <div id="q-lin"></div><div id="q-rules"></div>
+    <div class="field"><label for="q-notas">Condiciones para el cliente</label><textarea class="input" id="q-notas" style="min-height:70px">${esc(cot?.notas || DEF_NOTAS[unidad] || "")}</textarea></div>`,
+    () => guardar("enviada"), "Guardar y enviar", true, { text: "Guardar borrador", fn: () => guardar("borrador") });
+  const pinta = () => {
+    const total = lineas.reduce((a, l) => a + l.precio * l.cantidad, 0);
+    const conM = lineas.filter((l) => cat.find((c) => c.codigo === l.codigo)?.margen_ref != null);
+    const margen = conM.reduce((a, l) => a + l.precio * l.cantidad * (cat.find((c) => c.codigo === l.codigo).margen_ref / 100), 0);
+    $("#q-lin", root).innerHTML = lineas.length ? `<div class="tbl-wrap"><table class="tbl qtbl"><thead><tr><th>Ítem</th><th class="num">Cant.</th><th class="num">Precio c/IVA</th><th class="num">Total</th><th></th></tr></thead><tbody>${lineas.map((l, i) => {
+      const c = cat.find((x) => x.codigo === l.codigo); const bajo = c && l.precio < c.precio * (1 - (c.descuento_max_pct || 0) / 100);
+      return `<tr><td><input class="input sm" data-f="nombre" data-i="${i}" value="${esc(l.nombre)}" aria-label="Ítem"><div class="sub">${c ? `Lista ${clp(c.precio)}` : "Ítem libre"}${bajo ? ' · <b style="color:var(--bad)">bajo la banda: requiere tu aprobación</b>' : ""}</div></td>
+        <td class="num"><input class="input sm" type="number" min="1" data-f="cantidad" data-i="${i}" value="${l.cantidad}" style="width:62px" aria-label="Cantidad"></td>
+        <td class="num"><input class="input sm" type="number" min="0" step="5000" data-f="precio" data-i="${i}" value="${l.precio}" style="width:118px" aria-label="Precio"></td>
+        <td class="num"><b>${clp(l.precio * l.cantidad)}</b></td><td><button type="button" class="btn ghost sm icon" data-del="${i}" aria-label="Quitar">${ico("x", 14)}</button></td></tr>`; }).join("")}</tbody>
+      <tfoot><tr><td colspan="3" class="num">Neto ${clp(Math.round(total / 1.19))} · IVA ${clp(total - Math.round(total / 1.19))} · <b>Total</b></td><td class="num"><b style="font-size:15px">${clp(total)}</b></td><td></td></tr>
+      ${ME.ve_finanzas && conM.length ? `<tr><td colspan="3" class="num faint">Margen estimado (interno, según catálogo)</td><td class="num faint">${clp(margen)} · ${total ? Math.round((margen / total) * 100) : 0}%</td><td></td></tr>` : ""}</tfoot></table></div>`
+      : '<div class="muted" style="font-size:13px">Agrega servicios del catálogo. Recomienda una solución y, como máximo, una alternativa.</div>';
+    const cods = lineas.map((l) => l.codigo); const reglas = [];
+    if (unidad === "carclass") {
+      if (cods.includes("ppf_frontal") && !cods.some((c) => ["ceramico_1", "ceramico_4", "protect_plus", "shield"].includes(c))) reglas.push("El PPF nunca se cotiza solo: agrega cerámico, corrección y láminas de seguridad.");
+      if (lineas.length > 4) reglas.push("Muchas opciones enfrían al cliente: deja una recomendada y una alternativa.");
+    }
+    $("#q-rules", root).innerHTML = reglas.map((r) => `<div class="alert">${ico("alert", 16)}<div>${r}</div></div>`).join("");
+  };
+  $("#q-cat", root).onclick = (e) => { const b = e.target.closest("[data-add]"); if (!b) return; const c = cat[b.dataset.add]; lineas.push(c ? { codigo: c.codigo, nombre: c.nombre, descripcion: c.descripcion, cantidad: 1, precio: Number(c.precio) } : { codigo: null, nombre: "Ítem", cantidad: 1, precio: 0 }); pinta(); };
+  $("#q-lin", root).onchange = (e) => { const x = e.target; if (x.dataset.f == null) return; const l = lineas[x.dataset.i]; l[x.dataset.f] = x.dataset.f === "nombre" ? x.value : Math.max(0, Number(x.value) || 0); pinta(); };
+  $("#q-lin", root).onclick = (e) => { const b = e.target.closest("[data-del]"); if (b) { lineas.splice(Number(b.dataset.del), 1); pinta(); } };
+  pinta();
+}
+function modalCompartir(r) {
+  const url = linkPublico(r.token);
+  modal(`Cotización ${r.numero} lista`, `<p style="margin:0">Total <b>${clp(r.total)}</b>${r.requiere_aprobacion ? ' · <span class="pill warn">tiene precios bajo la banda</span>' : ""}. Comparte el link: cuando el cliente lo abra, pasará a «vista» y te llegará un aviso.</p>
+    <div class="field"><label for="cs-url">Link público</label><input class="input" id="cs-url" value="${esc(url)}" readonly></div>
+    <div class="row"><button type="button" class="btn" id="cs-copy">${ico("link", 15)} Copiar link</button><button type="button" class="btn primary" id="cs-wa">${ico("chat", 15)} Enviar por WhatsApp</button><a class="btn" href="#/cot/${r.id}" id="cs-pdf">${ico("doc", 15)} Ver y descargar PDF</a></div>`, null);
+  $("#cs-copy").onclick = () => copiar(url, "Link copiado");
+  $("#cs-pdf").onclick = () => ($("#modal-root").innerHTML = "");
+  $("#cs-wa").onclick = async () => {
+    let tel = null; try { const q = await rpc("app_cotizacion", { p_id: r.id }); tel = q.telefono; r.cliente = q.contacto || q.cliente; } catch {}
+    const txt = `Hola${r.cliente ? " " + String(r.cliente).split(" ")[0] : ""}, te comparto la cotización ${r.numero} de ${MARCA[r.unidad]?.[0] || "Carclass"}: ${url}`;
+    window.open(waLink(tel, txt) || `https://wa.me/?text=${encodeURIComponent(txt)}`, "_blank", "noopener");
+  };
+}
+function cotDoc(q, interno = false) {
+  const [marca, tag, pie] = MARCA[q.unidad] || MARCA.carclass;
+  const lineas = q.lineas || q.items?.lineas || [];
+  const total = Number(q.total || 0), neto = Number(q.neto || Math.round(total / 1.19));
+  return `<article class="qdoc" style="--c:${UNIDADES[q.unidad]?.c || "var(--brand)"}">
+    <header class="qd-h"><div class="qd-brand">${["carclass", "carwash"].includes(q.unidad) ? logoDisc() : ""}<div><b>${esc(marca)}</b><small>${esc(tag)}</small></div></div>
+      <div class="qd-meta"><b>Cotización ${esc(q.numero || "")}</b><span>Emitida ${fecha(q.fecha)}</span><span>Válida hasta ${fecha(q.vigencia)}</span></div></header>
+    <section class="qd-cli"><div><span class="lbl">Cliente</span><b>${esc(q.cliente || "—")}</b></div>${(q.auto || q.items?.auto) ? `<div><span class="lbl">Vehículo</span><b>${esc(q.auto || q.items?.auto)}</b></div>` : ""}</section>
+    <table class="qd-items"><thead><tr><th>Servicio</th><th class="num">Cant.</th><th class="num">Precio</th><th class="num">Total</th></tr></thead><tbody>
+      ${lineas.map((l) => `<tr><td><b>${esc(l.nombre)}</b>${l.descripcion ? `<div class="sub">${esc(l.descripcion)}</div>` : ""}</td><td class="num">${int(l.cantidad || 1)}</td><td class="num">${clp(l.precio)}</td><td class="num">${clp(Number(l.precio) * Number(l.cantidad || 1))}</td></tr>`).join("")}
+    </tbody></table>
+    <div class="qd-tot"><div><span>Neto</span><span>${clp(neto)}</span></div><div><span>IVA 19%</span><span>${clp(total - neto)}</span></div><div class="big"><span>Total</span><span>${clp(total)}</span></div></div>
+    ${q.notas ? `<section class="qd-notas"><h4>Condiciones</h4><p>${esc(q.notas)}</p></section>` : ""}
+    <footer class="qd-f">${esc(marca)} · ${esc(pie)} · +56 9 8670 4745 · fmontecinos@carclass.cl</footer>
+    ${interno && q.costo_estimado != null ? `<div class="no-print faint" style="font-size:12px;margin-top:10px">Interno: costo estimado ${clp(q.costo_estimado)} · margen ${total ? Math.round(((total - q.costo_estimado) / total) * 100) : 0}%</div>` : ""}
+  </article>`;
+}
+async function viewCot(id) {
+  setActive("cotizaciones", "Cotización");
+  const P = $("#page"); P.innerHTML = loading(6);
+  try {
+    const q = await rpc("app_cotizacion", { p_id: id });
+    if (!q) { P.innerHTML = `<div class="card">${empty("doc", "Cotización no encontrada")}</div>`; return; }
+    setActive("cotizaciones", `Cotización ${q.numero}`);
+    const v2 = q.items?.v === 2;
+    P.innerHTML = `<div class="page-head no-print"><div><h1>Cotización ${esc(q.numero)}</h1><p><span class="pill ${COT_EST[q.estado] || ""}">${esc(q.estado)}</span> ${q.vista_en ? `· vista por el cliente ${hace(q.vista_en)}${q.vistas > 1 ? ` (${q.vistas} veces)` : ""}` : q.enviada_en ? "· enviada, aún no abierta" : "· borrador"}</p></div>
+      <div class="actions">${q.empresa_id ? `<a class="btn" href="#/cliente/${q.empresa_id}">${ico("users", 15)} Ficha</a>` : ""}${v2 ? `<button class="btn" id="cq-edit">Editar</button>` : ""}${q.estado !== "borrador" ? `<button class="btn" id="cq-link">${ico("link", 15)} Copiar link</button>` : ""}
+        ${["enviada", "vista"].includes(q.estado) ? `<button class="btn" id="cq-ok">${ico("check", 15)} Aceptada</button><button class="btn ghost danger" id="cq-no">Rechazada</button>` : ""}<button class="btn primary" id="cq-pdf">${ico("dl", 15)} Descargar PDF</button></div></div>
+      ${v2 ? cotDoc(q, true) : `<div class="card card-b"><p class="muted">Cotización importada del cotizador anterior (${esc(q.unidad)}). Total neto ${clp(q.neto)}.</p></div>`}`;
+    $("#cq-pdf").onclick = () => window.print();
+    if ($("#cq-link")) $("#cq-link").onclick = () => copiar(linkPublico(q.token), "Link copiado");
+    if ($("#cq-edit")) $("#cq-edit").onclick = () => modalCotizador({ oportunidad_id: q.oportunidad_id, unidad: q.unidad, cliente: q.cliente, cot: q, after: () => viewCot(id) });
+    const est = (e) => async () => { try { await rpc("app_cotizacion_estado", { p_id: id, p_estado: e }); toast(`Marcada como ${e}`); viewCot(id); } catch (err) { toast(err.message, true); } };
+    if ($("#cq-ok")) $("#cq-ok").onclick = est("aceptada");
+    if ($("#cq-no")) $("#cq-no").onclick = est("rechazada");
+  } catch (e) { P.innerHTML = fail(e); }
+}
+async function viewPublica(token) {
+  document.documentElement.dataset.theme = "light";
+  $("#app").innerHTML = `<div class="pub">${loading(6)}</div>`;
+  try {
+    const { data, error } = await sb.rpc("cotizacion_publica", { p_token: token });
+    if (error || !data) throw new Error("Esta cotización no existe o ya no está disponible.");
+    document.title = `Cotización ${data.numero} · ${MARCA[data.unidad]?.[0] || "Carclass"}`;
+    $("#app").innerHTML = `<div class="pub"><div class="pub-bar no-print"><span>Cotización ${esc(data.numero)}</span><button class="btn primary sm" id="pp">${ico("dl", 14)} Descargar PDF</button></div>${cotDoc(data)}
+      <div class="pub-cta no-print"><p>¿Te acomoda? Responde por WhatsApp y te proponemos dos fechas.</p><a class="btn primary" href="${waLink("+56986704745", `Hola, revisé la cotización ${data.numero} y quiero avanzar.`)}" target="_blank" rel="noopener">${ico("chat", 15)} Responder por WhatsApp</a></div></div>`;
+    $("#pp").onclick = () => window.print();
+  } catch (e) { $("#app").innerHTML = `<div class="pub"><div class="card">${empty("doc", "Cotización no disponible", esc(e.message))}</div></div>`; }
+}
+
 
 /* ---------- clientes ---------- */
 async function viewClientes(params) {
@@ -680,7 +970,7 @@ async function viewCliente(id) {
         <section class="card"><div class="card-h"><h3>Contacto</h3></div><div class="card-b">${d.contactos.length ? d.contactos.map((c) => `<dl class="kv" style="margin-bottom:12px"><dt>Nombre</dt><dd><b>${esc(c.nombre)}</b>${c.decisor ? ' <span class="pill gold">decide</span>' : ""}</dd>${c.cargo ? `<dt>Cargo</dt><dd>${esc(c.cargo)}</dd>` : ""}${c.telefono ? `<dt>Teléfono</dt><dd><a href="tel:${esc(c.telefono)}">${esc(c.telefono)}</a></dd>` : ""}${c.email ? `<dt>Correo</dt><dd>${esc(c.email)}</dd>` : ""}</dl>`).join("") : `<dl class="kv">${tel ? `<dt>Teléfono</dt><dd><a href="tel:${esc(tel)}">${esc(tel)}</a></dd>` : ""}${e.email ? `<dt>Correo</dt><dd>${esc(e.email)}</dd>` : ""}${!tel && !e.email ? '<dd class="muted">Sin datos de contacto.</dd>' : ""}</dl>`}</div></section>
         ${d.vehiculos?.length ? `<section class="card"><div class="card-h"><h3>Vehículos</h3><span class="badge">${d.vehiculos.length}</span></div><div class="card-b" style="display:grid;gap:10px">${d.vehiculos.map((v) => `<div><b>${esc([v.marca, v.modelo].filter(Boolean).join(" ") || "Vehículo")}</b> ${v.anio ? `<span class="muted">${v.anio}</span>` : ""}<div class="muted" style="font-size:12.5px">${[v.patente, v.km ? int(v.km) + " km" : "", v.modalidad, v.estado].filter(Boolean).map(esc).join(" · ")}</div></div>`).join("")}</div></section>` : ""}
         ${d.tareas?.length ? `<section class="card"><div class="card-h"><h3>Tareas pendientes</h3><span class="badge">${d.tareas.length}</span></div><div class="card-b" style="display:grid;gap:8px;font-size:13px">${d.tareas.map((t) => `<div class="row" style="justify-content:space-between"><span>${esc(t.titulo)}</span><span class="pill ${t.vence && t.vence < hoyISO() ? "bad" : ""}">${fecha(t.vence)}</span></div>`).join("")}</div></section>` : ""}
-        ${d.cotizaciones?.length ? `<section class="card"><div class="card-h"><h3>Cotizaciones</h3></div><div class="card-b" style="display:grid;gap:8px;font-size:13px">${d.cotizaciones.map((q) => `<div class="row" style="justify-content:space-between"><span>${esc(q.numero || "s/n")} · ${fecha(q.fecha)}</span><span>${clp(q.neto)} <span class="pill">${esc(q.estado)}</span></span></div>`).join("")}</div></section>` : ""}
+        ${d.cotizaciones?.length ? `<section class="card"><div class="card-h"><h3>Cotizaciones</h3></div><div class="card-b" style="display:grid;gap:8px;font-size:13px">${d.cotizaciones.map((q) => `<a class="row" href="#/cot/${q.id}" style="justify-content:space-between"><span>${esc(q.numero || "s/n")} · ${fecha(q.fecha)}</span><span>${clp(q.neto)} neto <span class="pill ${COT_EST[q.estado] || ""}">${esc(q.estado)}</span></span></a>`).join("")}</div></section>` : ""}
         ${d.contratos.length ? `<section class="card"><div class="card-h"><h3>Contrato BlackGPS</h3></div><div class="card-b">${d.contratos.map((g) => `<dl class="kv"><dt>Estado</dt><dd><span class="pill ${g.estado === "activo" ? "ok" : "warn"}">${esc(g.estado)}</span></dd><dt>Equipos</dt><dd>${int(g.equipos)}</dd>${g.valor_mensual ? `<dt>Mensual</dt><dd>${clp(g.valor_mensual)}</dd>` : ""}${g.plan ? `<dt>Plan</dt><dd>${esc(g.plan)}</dd>` : ""}${g.inicio ? `<dt>Desde</dt><dd>${fecha(g.inicio)}</dd>` : ""}</dl>`).join("")}</div></section>` : ""}
         ${d.ventas ? `<section class="card"><div class="card-h"><h3>Ventas</h3><span class="badge">${d.ventas.length}</span></div>${d.ventas.length ? `<div class="card-b" style="display:grid;gap:8px;font-size:13px">${d.ventas.map((v) => `<div class="row" style="justify-content:space-between"><span>${fecha(v.fecha)} · ${esc(v.descripcion || uName(v.unidad))}</span><span class="num"><b>${clp(v.monto)}</b> <span class="pill ${v.cobro === "cobrado" ? "ok" : "warn"}">${v.cobro === "cobrado" ? "cobrada" : esc(v.cobro)}</span></span></div>`).join("")}</div>` : '<div class="card-b muted">Sin ventas registradas.</div>'}</section>` : ""}
         ${d.analisis.length ? `<section class="card"><div class="card-h"><h3>Análisis</h3></div><div class="card-b" style="display:grid;gap:12px">${d.analisis.map((a) => `<div style="display:grid;gap:6px"><div class="row" style="gap:6px">${unidadPill(a.unidad)}${a.pilar ? `<span class="pill gold">${esc(a.pilar)}</span>` : ""}${a.score != null ? `<span class="pill">calce ${a.score}</span>` : ""}<span class="faint" style="font-size:12px">${fecha(a.fecha)}</span></div>${a.resumen ? `<div style="font-size:13px">${esc(a.resumen)}</div>` : ""}</div>`).join("")}</div></section>` : ""}
@@ -692,6 +982,8 @@ async function viewCliente(id) {
     $$("[data-ganar]").forEach((b) => b.onclick = () => modalCerrar(b.dataset.ganar, e.nombre, "ganada", again));
     $$("[data-perder]").forEach((b) => b.onclick = () => modalCerrar(b.dataset.perder, e.nombre, "perdida", again));
     $$("[data-asisma]").forEach((b) => b.onclick = () => modalAsisma(b.dataset.asisma));
+    $$("[data-cotizar]").forEach((b) => b.onclick = () => modalCotizador({ oportunidad_id: b.dataset.cotizar, unidad: b.dataset.u, cliente: e.nombre, after: again }));
+    $$("[data-traspaso]").forEach((b) => b.onclick = () => modalTraspaso(b.dataset.traspaso, again));
     $$("select[data-etapa]").forEach((s) => s.onchange = async () => {
       try { await rpc("app_mover_etapa", { p: { oportunidad_id: s.dataset.etapa, etapa: s.value, proxima_fecha: s.dataset.fecha || masDias(2) } }); toast("Etapa actualizada"); again(); }
       catch (err) { toast(err.message, true); }
@@ -719,7 +1011,7 @@ function oppCard(o) {
     ${abierta ? `<select class="input" style="width:auto;height:32px;font-size:12.5px" data-etapa="${o.id}" data-fecha="${o.proxima_fecha || ""}" aria-label="Etapa">${[...new Set([...et, o.etapa])].map((x) => `<option value="${esc(x)}" ${x === o.etapa ? "selected" : ""}>${esc(etapaTxt(x))}</option>`).join("")}</select>`
       : `<span class="pill ${o.estado === "ganada" ? "ok" : "bad"}">${esc(o.estado)}</span>`}
     ${o.asisma_id ? `<span class="pill gold">Asisma ${esc(o.asisma_id)}</span>` : ""}${o.canal ? `<span class="faint" style="font-size:12px">${esc(CANAL_TXT[o.canal] || o.canal)}${o.campana ? " · " + esc(o.campana) : ""}</span>` : ""}
-    <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">${abierta ? `<button class="btn sm" data-ganar="${o.id}">${ico("trophy", 14)} Ganada</button><button class="btn sm ghost danger" data-perder="${o.id}">Perdida</button>` : ""}${abierta && ["blackgps", "somosb2b"].includes(o.unidad) ? `<button class="btn sm" data-asisma="${o.id}">Ficha Asisma</button>` : ""}</span></div>
+    <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">${abierta && COT_UNIDADES.includes(o.unidad) ? `<button class="btn sm primary" data-cotizar="${o.id}" data-u="${o.unidad}">${ico("doc", 14)} Cotizar</button>` : ""}${abierta && o.unidad === "blackgps" && ["reunion_por_agendar", "en_prospeccion"].includes(o.etapa) ? `<button class="btn sm" data-traspaso="${o.id}">Pasar a Asisma</button>` : ""}${abierta ? `<button class="btn sm" data-ganar="${o.id}">${ico("trophy", 14)} Ganada</button><button class="btn sm ghost danger" data-perder="${o.id}">Perdida</button>` : ""}${abierta && ["blackgps", "somosb2b"].includes(o.unidad) ? `<button class="btn sm" data-asisma="${o.id}">Ficha Asisma</button>` : ""}</span></div>
     ${idx >= 0 ? `<div class="steps" style="--c:${UNIDADES[o.unidad]?.c}" title="${esc(et.map(etapaTxt).join(" → "))}">${et.map((_, i) => `<i class="${i <= idx && abierta ? "done" : o.estado === "ganada" ? "done" : ""}"></i>`).join("")}</div>` : ""}
     <div class="muted" style="font-size:13px">${abierta ? `${o.proxima_fecha ? `<b style="color:${o.proxima_fecha < hoyISO() ? "var(--bad)" : "var(--fg)"}">${fecha(o.proxima_fecha)}</b> · ` : ""}${esc(o.proxima_accion || "Sin próxima acción definida")}` : esc([mot, o.motivo].filter(Boolean).join(" · "))}${o.monto ? ` · ${clp(o.monto)}` : ""}</div></div>`;
 }
@@ -727,19 +1019,22 @@ function oppCard(o) {
 /* ---------- vehículos ---------- */
 async function viewVehiculos(params) {
   setActive("vehiculos");
-  const f = params.get("f") || "stock";
+  const f = params.get("f") || (UNI === "carclass" ? "clientes" : "stock");
   const P = $("#page");
-  P.innerHTML = `<div class="page-head"><div><h1>Vehículos</h1><p>Stock de NOM en consignación y compra directa, y autos de clientes de Carclass.</p></div></div>
+  P.innerHTML = `<div class="page-head"><div><h1>Vehículos</h1><p>Stock de NOM con su rotación e inspección, y autos de clientes de Carclass.</p></div></div>
     <div class="tabs">${[["stock", "Stock NOM"], ["clientes", "Autos de clientes"], ["todos", "Todos"]].map(([k, t]) => `<a href="#/vehiculos?f=${k}" class="${f === k ? "on" : ""}">${t}</a>`).join("")}</div><div id="vl">${loading(5)}</div>`;
   try {
     let v = await rpc("app_vehiculos");
     if (f === "stock") v = v.filter((x) => ["consignacion", "compra_directa"].includes(x.modalidad) && !["retirado", "vendido"].includes(x.estado));
     if (f === "clientes") v = v.filter((x) => x.modalidad === "cliente");
     const est = { disponible: "ok", publicado: "ok", evaluacion: "info", reservado: "gold", vendido: "", retirado: "" };
-    $("#vl").innerHTML = `<section class="card">${v.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Vehículo</th><th>Patente</th><th class="num">Año</th><th class="num">Km</th><th>Modalidad</th><th>Dueño</th><th class="num">Precio publicado</th><th>Ingreso</th><th>Estado</th></tr></thead><tbody>
-      ${v.map((x) => `<tr class="${x.dueno_id ? "click" : ""}" data-emp="${x.dueno_id || ""}"><td class="name">${esc([x.marca, x.modelo, x.version].filter(Boolean).join(" ") || "—")}</td><td>${esc(x.patente || "—")}</td><td class="num">${x.anio || "—"}</td><td class="num">${x.km ? int(x.km) : "—"}</td><td>${esc((x.modalidad || "").replace("_", " "))}</td><td>${esc(x.dueno || "—")}</td><td class="num">${clp(x.precio_publicado)}</td><td>${fecha(x.fecha_ingreso)}</td><td><span class="pill ${est[x.estado] ?? ""}">${esc(x.estado || "—")}</span></td></tr>`).join("")}
+    const stockMode = f !== "clientes";
+    $("#vl").innerHTML = `<section class="card">${v.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Vehículo</th><th>Patente</th><th class="num">Km</th><th>Modalidad</th><th>Dueño</th>${stockMode ? `<th class="num">Publicado</th>${ME.rol === "dueno" ? '<th class="num">Piso (interno)</th>' : ""}<th class="num">Días</th><th>Inspección</th>` : ""}<th>Estado</th></tr></thead><tbody>
+      ${v.map((x) => { const vivo = !["vendido", "retirado"].includes(x.estado); return `<tr class="${x.dueno_id ? "click" : ""}" data-emp="${x.dueno_id || ""}"><td class="name">${esc([x.marca, x.modelo, x.version].filter(Boolean).join(" ") || "—")}${x.anio ? ` <span class="faint">${x.anio}</span>` : ""}</td><td>${esc(x.patente || "—")}</td><td class="num">${x.km ? int(x.km) : "—"}</td><td>${x.modalidad === "compra_directa" ? "Propio" : x.modalidad === "consignacion" ? `Consignado${x.comision_pct ? " " + String(x.comision_pct).replace(".", ",") + "%" : ""}` : "Cliente"}</td><td>${esc(x.dueno || "—")}</td>
+        ${stockMode ? `<td class="num">${x.precio_publicado ? clp(x.precio_publicado) : '<span class="faint">—</span>'}</td>${ME.rol === "dueno" ? `<td class="num faint">${x.precio_minimo ? clp(x.precio_minimo) : "—"}</td>` : ""}<td class="num">${x.dias != null ? `<span class="pill ${vivo && x.dias > 45 ? "bad" : vivo && x.dias > 30 ? "warn" : ""}">${int(x.dias)}</span>` : "—"}</td><td>${x.inspeccion ? `<span class="pill ${x.inspeccion.veredicto === "APTO" ? "ok" : "warn"}" title="${esc(x.inspeccion.folio || "")}">${esc(x.inspeccion.veredicto || "")} · ${int(x.inspeccion.score)}%</span>` : x.modalidad !== "cliente" ? '<span class="pill">pendiente</span>' : ""}</td>` : ""}
+        <td><span class="pill ${est[x.estado] ?? ""}">${esc(x.estado || "—")}</span></td></tr>`; }).join("")}
       </tbody></table></div>` : empty("car", "Sin vehículos en esta vista")}</section>
-      <p class="faint" style="font-size:12px;margin:0">Inspección con fotos y reporte al consignante: próxima iteración del módulo.</p>`;
+      ${stockMode ? '<p class="faint" style="font-size:12px;margin:0">Rotación: tope de 45 días. El precio piso es interno y nunca se comparte con compradores. La inspección se lee de la herramienta IPC de NOM.</p>' : ""}`;
     $$("#vl tr[data-emp]").forEach((tr) => tr.dataset.emp && (tr.onclick = () => (location.hash = "#/cliente/" + tr.dataset.emp)));
   } catch (e) { $("#vl").innerHTML = fail(e); }
 }
@@ -754,7 +1049,7 @@ async function viewTareas(params) {
     <div class="tabs">${[["pendientes", "Pendientes"], ["postventa", "Postventa"], ["hechas", "Hechas"]].map(([k, t]) => `<a href="#/tareas?f=${k}" class="${f === k ? "on" : ""}">${t}</a>`).join("")}</div><div id="tl">${loading(5)}</div>`;
   $("#t-new").onclick = () => modalTarea(() => viewTareas(params));
   try {
-    let ts = await rpc("app_tareas", { p_estado: f === "hechas" ? "hecha" : "pendiente,en_curso" });
+    let ts = (await rpc("app_tareas", { p_estado: f === "hechas" ? "hecha" : "pendiente,en_curso" })).filter((t) => enLinea(t.unidad));
     if (f === "postventa") ts = ts.filter((t) => t.origen === "postventa_auto");
     if (f === "hechas") ts = ts.slice(0, 100);
     const hoy = hoyISO();
@@ -848,16 +1143,17 @@ async function viewAyuda(params) {
 }
 
 /* ---------- modales ---------- */
-function modal(title, body, onOk, okText = "Guardar", wide = false) {
+function modal(title, body, onOk, okText = "Guardar", wide = false, alt = null) {
   const root = $("#modal-root");
   root.innerHTML = `<div class="modal-bg"><div class="modal ${wide ? "wide" : ""}" role="dialog" aria-modal="true" aria-label="${esc(title)}">
     <div class="modal-h"><h3>${esc(title)}</h3><button type="button" class="btn ghost sm icon" data-x aria-label="Cerrar">${ico("x", 16)}</button></div>
     <form id="m-form" novalidate><div class="modal-b">${body}<div class="err" id="m-err"></div></div>
-    <div class="modal-f"><button type="button" class="btn ghost" data-x>${onOk ? "Cancelar" : "Cerrar"}</button>${onOk ? `<button class="btn primary" id="m-ok">${esc(okText)}</button>` : ""}</div></form></div></div>`;
+    <div class="modal-f"><button type="button" class="btn ghost" data-x>${onOk ? "Cancelar" : "Cerrar"}</button>${alt ? `<button type="button" class="btn" id="m-alt">${esc(alt.text)}</button>` : ""}${onOk ? `<button class="btn primary" id="m-ok">${esc(okText)}</button>` : ""}</div></form></div></div>`;
   const close = () => { root.innerHTML = ""; document.removeEventListener("keydown", k); };
   function k(e) { if (e.key === "Escape") close(); }
   document.addEventListener("keydown", k);
   $$("[data-x]", root).forEach((b) => b.onclick = close);
+  if (alt) $("#m-alt", root).onclick = async () => { const b = $("#m-alt", root); b.disabled = true; $("#m-err").textContent = ""; try { await alt.fn(); close(); } catch (err) { $("#m-err").textContent = err.message; b.disabled = false; } };
   $(".modal-bg", root).onmousedown = (e) => e.target.classList.contains("modal-bg") && close();
   $("#m-form").onsubmit = async (e) => {
     e.preventDefault(); if (!onOk) return close();
@@ -873,32 +1169,52 @@ function bindSeg(root, onChange) {
 }
 const segVal = (root, n) => $(`[data-seg="${n}"]`, root)?.dataset.val || "";
 
+const COMUNAS = ["Chicureo", "Lo Barnechea", "Las Condes", "Vitacura", "Colina", "Providencia", "Huechuraba", "Tiltil", "Lampa", "Ñuñoa"];
+const SERV_CARCLASS = ["Protección PPF", "Cerámico", "Láminas de seguridad", "Paquete Protect+", "Paquete Shield", "Detailing", "Llantas (Wheels)", "Pintura o desabolladura", "No sabe aún"];
 function modalLead(pre = {}) {
   const unis = unidadesMias();
-  const u0 = pre.unidad && unis.includes(pre.unidad) ? pre.unidad : unis.includes("carclass") ? "carclass" : unis[0];
+  const u0 = pre.unidad && unis.includes(pre.unidad) ? pre.unidad : UNI && unis.includes(UNI) ? UNI : unis.includes("carclass") ? "carclass" : unis[0];
+  const f = (id, label, attrs = "", style = "") => `<div class="field" ${style ? `style="${style}"` : ""}><label for="${id}">${label}</label><input class="input" id="${id}" ${attrs}></div>`;
+  const sel = (id, label, opts, style = "") => `<div class="field" ${style ? `style="${style}"` : ""}><label for="${id}">${label}</label><select class="input" id="${id}">${opts.map((o) => `<option>${esc(o)}</option>`).join("")}</select></div>`;
   const root = modal("Nuevo lead", `
-    <div class="field"><span class="lbl">Unidad</span>${seg("u", unis.map((x) => [x, uName(x)]), u0)}</div>
-    <div class="field" id="ld-flujo"><span class="lbl">Flujo NOM</span>${seg("flujo", [["consignante", "Consignante"], ["comprador", "Comprador"]], pre.flujo || "consignante")}</div>
-    <div class="row"><div class="field"><label for="ld-nom">Nombre</label><input class="input" id="ld-nom" value="${esc(pre.nombre || "")}" autocomplete="off"></div><div class="field"><label for="ld-tel">Teléfono</label><input class="input" id="ld-tel" type="tel" placeholder="+56 9 1234 5678" value="${esc(pre.telefono || "")}"></div></div>
-    <div class="row b2b"><div class="field"><label for="ld-emp">Empresa</label><input class="input" id="ld-emp" value="${esc(pre.empresa || "")}"></div><div class="field" style="flex:0 1 160px"><label for="ld-rut">RUT</label><input class="input" id="ld-rut" placeholder="76.123.456-7" value="${esc(pre.rut ? fmtRut(pre.rut) : "")}"></div><div class="field" style="flex:0 1 110px"><label for="ld-flota">Flota</label><input class="input" id="ld-flota" type="number" min="0"></div></div>
-    <div class="row"><div class="field"><label for="ld-mail">Correo</label><input class="input" id="ld-mail" type="email" value="${esc(pre.email || "")}"></div><div class="field" style="flex:0 1 170px"><label for="ld-com">Comuna</label><input class="input" id="ld-com"></div></div>
-    <div class="row"><div class="field"><label for="ld-canal">Canal</label><select class="input" id="ld-canal">${CANALES.map(([v, t]) => `<option value="${v}">${t}</option>`).join("")}</select></div><div class="field"><label for="ld-camp">Campaña</label><input class="input" id="ld-camp" placeholder="Opcional"></div></div>
-    <div class="field"><label for="ld-msg">Mensaje o interés</label><textarea class="input" id="ld-msg" placeholder="Qué necesita: servicio, auto, flota…"></textarea></div>
+    <div class="field"><span class="lbl">Línea de negocio</span>${seg("u", unis.map((x) => [x, uName(x)]), u0)}</div>
+    <div class="field" id="ld-flujo"><span class="lbl">¿Qué busca?</span>${seg("flujo", [["consignante", "Vender su auto"], ["comprador", "Comprar un auto"]], pre.flujo || "consignante")}</div>
+    <div class="row">${f("ld-nom", "Nombre", `value="${esc(pre.nombre || "")}" autocomplete="off"`)}${f("ld-tel", "Teléfono o WhatsApp", `type="tel" placeholder="+56 9 1234 5678" value="${esc(pre.telefono || "")}"`)}</div>
+    <div class="row">${f("ld-mail", "Correo", `type="email" value="${esc(pre.email || "")}"`)}${f("ld-com", "Comuna", 'list="dl-com" autocomplete="off"', "flex:0 1 190px")}<datalist id="dl-com">${COMUNAS.map((c) => `<option value="${c}">`).join("")}</datalist></div>
+    <div id="ld-extra"></div>
+    <div class="row"><div class="field"><label for="ld-canal">Canal</label><select class="input" id="ld-canal">${CANALES.map(([v, t]) => `<option value="${v}">${t}</option>`).join("")}</select></div>${f("ld-camp", "Campaña o anuncio", 'placeholder="Opcional"')}</div>
+    <div class="field"><label for="ld-msg">Mensaje del cliente</label><textarea class="input" id="ld-msg" style="min-height:64px" placeholder="Lo que escribió o pidió"></textarea></div>
     <p class="faint" style="margin:0;font-size:12px">Si ya existe un cliente con ese teléfono o RUT, el lead se suma a su ficha y no se duplica.</p>`,
     async () => {
-      const unidad = segVal(root, "u"); const b2b = !UNIDADES[unidad]?.b2c;
-      const p = { unidad, flujo: unidad === "nom" ? segVal(root, "flujo") : null, nombre: $("#ld-nom").value.trim() || null, telefono: $("#ld-tel").value.trim() || null, email: $("#ld-mail").value.trim() || null,
-        comuna: $("#ld-com").value.trim() || null, canal: $("#ld-canal").value, campana: $("#ld-camp").value.trim() || null, mensaje: $("#ld-msg").value.trim() || null, interes: $("#ld-msg").value.trim().slice(0, 120) || null };
-      if (b2b) Object.assign(p, { empresa: $("#ld-emp").value.trim() || null, rut: $("#ld-rut").value.trim() || null, flota: $("#ld-flota").value || null });
+      const unidad = segVal(root, "u"), b2b = !UNIDADES[unidad]?.b2c, fl = unidad === "nom" ? segVal(root, "flujo") : null;
+      const g = (id) => ($("#" + id, root)?.value || "").trim() || null;
+      const p = { unidad, flujo: fl, nombre: g("ld-nom"), telefono: g("ld-tel"), email: g("ld-mail"), comuna: g("ld-com"), canal: $("#ld-canal", root).value, campana: g("ld-camp") };
+      const det = []; let veh = null, interes = null;
+      if (unidad === "carclass") { veh = { marca: g("x-marca"), modelo: g("x-modelo"), anio: g("x-anio"), patente: g("x-pat") }; interes = g("x-serv"); det.push(`Servicio de interés: ${interes}`); }
+      if (unidad === "carwash") { interes = `${g("x-serv")} · ${g("x-tipo")}`; det.push(`Servicio: ${interes}`); if (g("x-fecha")) det.push(`Fecha deseada: ${g("x-fecha")}`); }
+      if (unidad === "nom" && fl === "consignante") { veh = { marca: g("x-marca"), modelo: g("x-modelo"), anio: g("x-anio"), km: g("x-km"), precio_esperado: g("x-precio") }; interes = `Consignar ${[g("x-marca"), g("x-modelo"), g("x-anio")].filter(Boolean).join(" ")}`.trim(); det.push(`Documentos y prendas: ${g("x-docs")}`); if (g("x-precio")) det.push(`Precio esperado: ${clp(g("x-precio"))}`); }
+      if (unidad === "nom" && fl === "comprador") { interes = g("x-interes") ? `Busca ${g("x-interes")}` : "Comprar un auto"; if (g("x-pres")) det.push(`Presupuesto: ${clp(g("x-pres"))}`); det.push(`Pago: ${g("x-pago")}`); }
+      if (b2b) Object.assign(p, { empresa: g("ld-emp"), rut: g("ld-rut"), flota: g("ld-flota"), rubro: g("ld-rubro"), cargo: g("ld-cargo") });
+      if (veh && (veh.marca || veh.modelo || veh.patente)) p.vehiculo = veh;
+      p.interes = interes ? interes.slice(0, 120) : null;
+      p.mensaje = [g("ld-msg"), det.filter(Boolean).join(" · ")].filter(Boolean).join("\n") || null;
       if (!p.telefono && !p.email) throw new Error("Escribe al menos un teléfono o un correo.");
       if (!p.nombre && !p.empresa) throw new Error("Escribe el nombre del cliente.");
       const r = await rpc("app_registrar_lead", { p });
       toast(r.nueva ? "Lead creado" : "Ya tenía una oportunidad abierta: se sumó a su ficha");
       cargarAvisos(); location.hash = "#/cliente/" + r.cliente_id;
     }, "Crear lead");
-  const sync = () => { const u = segVal(root, "u"); $("#ld-flujo", root).style.display = u === "nom" ? "" : "none"; $$(".b2b", root).forEach((x) => (x.style.display = UNIDADES[u]?.b2c ? "none" : "")); };
+  const extra = (u, fl) => {
+    if (u === "carclass") return `<div class="xbox"><div class="lbl">Auto y servicio</div><div class="row">${f("x-marca", "Marca")}${f("x-modelo", "Modelo")}${f("x-anio", "Año", 'type="number" min="1980" max="2030"', "flex:0 1 90px")}${f("x-pat", "Patente", "", "flex:0 1 110px")}</div>${sel("x-serv", "Servicio de interés", SERV_CARCLASS)}<div class="hint">Pide fotos del auto para la pre-evaluación remota. Pintura y desabolladura las cotiza una persona con el especialista.</div></div>`;
+    if (u === "carwash") return `<div class="xbox"><div class="lbl">Servicio</div><div class="row">${sel("x-tipo", "Vehículo", ["SUV", "Sedán", "Camioneta"])}${sel("x-serv", "Servicio", ["Lavado boutique", "Limpieza interior", "Lavado + interior", "Otro"])}${f("x-fecha", "Fecha deseada", 'type="date"', "flex:0 1 160px")}</div><div class="hint">Máximo 4 autos por día. Solo se informan precios aprobados (boutique SUV $35.000).</div></div>`;
+    if (u === "nom" && fl === "consignante") return `<div class="xbox"><div class="lbl">Auto a consignar</div><div class="row">${f("x-marca", "Marca")}${f("x-modelo", "Modelo")}${f("x-anio", "Año", 'type="number" min="1990" max="2030"', "flex:0 1 90px")}${f("x-km", "Km", 'type="number" min="0"', "flex:0 1 110px")}</div><div class="row">${f("x-precio", "Precio esperado", 'type="number" min="0" step="100000"')}${sel("x-docs", "Documentos y prendas", ["Por confirmar", "Al día y sin prendas", "Tiene prenda", "Documentos pendientes"])}</div><div class="hint">Califica si es 2015 o más, sin prendas y con precio dentro de ±10% del mercado. Comisión 4%, mínimo $150.000.</div></div>`;
+    if (u === "nom") return `<div class="xbox"><div class="lbl">Lo que busca</div><div class="row">${f("x-interes", "Auto de interés", 'placeholder="Ej: Corolla Cross o SUV hasta $17 MM"')}${f("x-pres", "Presupuesto", 'type="number" min="0" step="500000"', "flex:0 1 150px")}${sel("x-pago", "Pago", ["Por confirmar", "Contado", "Financiamiento", "Con auto en parte de pago"], "flex:0 1 200px")}</div><div class="hint">Visita y test drive solo con calificados (plazo menor a 30 días). Reserva mínima $200.000.</div></div>`;
+    return `<div class="xbox"><div class="lbl">Empresa</div><div class="row">${f("ld-emp", "Empresa", `value="${esc(pre.empresa || "")}"`)}${f("ld-rut", "RUT", `placeholder="76.123.456-7" value="${esc(pre.rut ? fmtRut(pre.rut) : "")}"`, "flex:0 1 150px")}${f("ld-flota", "Flota", 'type="number" min="0"', "flex:0 1 100px")}</div><div class="row">${f("ld-rubro", "Rubro")}${f("ld-cargo", "Cargo del contacto")}</div><div class="hint">Filtro BlackGPS: flotas de 10 o más vehículos. Desde la reunión en adelante manda Asisma.</div></div>`;
+  };
+  const sync = () => { const u = segVal(root, "u"); $("#ld-flujo", root).style.display = u === "nom" ? "" : "none"; $("#ld-extra", root).innerHTML = extra(u, segVal(root, "flujo")); };
   bindSeg(root, sync); sync();
 }
+
 function modalActividad(opId, nombre, after) {
   const root = modal(`Registrar gestión · ${nombre}`, `
     <div class="field"><span class="lbl">Tipo</span>${seg("tipo", [["whatsapp", "WhatsApp"], ["llamada", "Llamada"], ["correo", "Correo"], ["reunion", "Reunión"], ["nota", "Nota"]], "whatsapp")}</div>
@@ -940,6 +1256,15 @@ function modalTarea(after, preset = {}) {
     }, "Crear tarea");
   bindSeg(root);
 }
+function modalTraspaso(opId, after) {
+  modal("Pasar a Asisma", `<p style="margin:0">El lead está caliente y confirmado. Desde aquí, la cotización, la venta y el cierre siguen en <b>Asisma</b>; Core guarda el traspaso para medir al setter.</p>
+    <div class="field"><label for="tr-id">N° o ID en Asisma</label><input class="input" id="tr-id" placeholder="Opcional, se puede agregar después"></div>
+    <div class="field"><label for="tr-n">Resumen de la reunión</label><textarea class="input" id="tr-n" style="min-height:70px" placeholder="Qué necesita, cuántos vehículos, próximos pasos"></textarea></div>`, async () => {
+    await rpc("app_registrar_actividad", { p: { oportunidad_id: opId, tipo: "reunion", resultado: "reunion_agendada", nota: ($("#tr-n").value.trim() || "Reunión realizada") + " · traspaso a Asisma" } });
+    await rpc("app_mover_etapa", { p: { oportunidad_id: opId, etapa: "en_asisma", asisma_id: $("#tr-id").value.trim() || null, proxima_accion: "Seguimiento en Asisma", proxima_fecha: masDias(7) } });
+    toast("Traspasado a Asisma"); after && after(); modalAsisma(opId);
+  }, "Traspasar");
+}
 async function modalAsisma(opId) {
   const root = modal("Ficha para Asisma", loading(5), null);
   try {
@@ -978,6 +1303,7 @@ function onboarding(force = false) {
 
 /* ---------- router ---------- */
 async function render() {
+  if (location.hash.startsWith("#/c/")) return viewPublica(location.hash.slice(4).split(/[?/]/)[0]);
   const { data: { session } } = await sb.auth.getSession();
   if (!session) { ME = null; viewLogin(); return; }
   if (!ME) {
@@ -986,7 +1312,7 @@ async function render() {
       $("#app").innerHTML = `<div class="login-form" style="min-height:100vh"><div class="card" style="max-width:420px">${empty("team", "Tu usuario no tiene acceso a Carclass Core", "Pídele a Felipe que te habilite.")}<div style="text-align:center;padding:0 0 20px"><button class="btn" id="lo">Salir</button></div></div></div>`;
       $("#lo").onclick = async () => { await sb.auth.signOut(); render(); }; return;
     }
-    shell(); cargarAvisos(); clearInterval(render._t); render._t = setInterval(cargarAvisos, 60000);
+    const lg = lsGet("cc_linea", ""); UNI = unidadesMias().includes(lg) ? lg : ""; shell(); setLinea(UNI); cargarAvisos(); clearInterval(render._t); render._t = setInterval(cargarAvisos, 60000);
     setTimeout(() => onboarding(), 400);
   }
   const [path, qs] = (location.hash.slice(2) || "dashboard").split("?");
@@ -994,12 +1320,12 @@ async function render() {
   const params = new URLSearchParams(qs || "");
   window.scrollTo(0, 0);
   const R = { dashboard: () => viewDashboard(params), notificaciones: viewNotificaciones, bandeja: () => viewBandeja(params), conversaciones: viewConversaciones,
-    embudo: () => viewEmbudo(a1, a2), agenda: () => viewAgenda(params), cotizaciones: viewCotizaciones, clientes: () => viewClientes(params),
+    embudo: () => viewEmbudo(a1 || UNI || undefined, a2), cot: () => viewCot(a1), agenda: () => viewAgenda(params), cotizaciones: viewCotizaciones, clientes: () => viewClientes(params),
     cliente: () => a1 ? viewCliente(a1) : viewClientes(params), vehiculos: () => viewVehiculos(params), tareas: () => viewTareas(params),
     finanzas: viewFinanzas, equipo: viewEquipo, ayuda: () => viewAyuda(params) };
   return (R[r] || R.dashboard)();
 }
-window.addEventListener("hashchange", () => ME && render());
+window.addEventListener("hashchange", () => (ME || location.hash.startsWith("#/c/")) && render());
 document.addEventListener("visibilitychange", () => { if (!document.hidden && ME) cargarAvisos(); });
 sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_OUT") ME = null; if (ev === "PASSWORD_RECOVERY") recoverPassword(); });
 function recoverPassword() {
