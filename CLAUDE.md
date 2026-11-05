@@ -138,6 +138,12 @@ Felipe guarda los documentos y la base del negocio en su Drive (fmontecinos@carc
 - Comisión NOM (Felipe 5-nov): 5% general, 3% sobre $20 MM, mínimo $500.000 bajo $10 MM.
 - Drive: carpeta «Base financiera Carclass Group» (id `18Ul7zo4X4dw_S4zrQOeaVRPtbOnXrpgK`) dentro de «Directorio Carclass Group», con Ventas 2026, Costos y gastos 2026, EERR 2026, Flujo de caja 2026, Contratos BlackGPS y Gastos fijos (plantilla). Es copia: la fuente de verdad es Core.
 
+**v2.3.0 (5-nov) · Carwash.hf:**
+- Catálogo Carwash.hf en `crm.catalogo` (7 servicios × 3 tamaños, códigos `<slug>_t1..t3`, precios «desde», sin descuentos) y `core.parametros['carwash.negocio']` (dirección, horario lun–sáb 9–17, capacidad 4/día, tramos). Detalle y reglas en `docs/carwash-hf.md`.
+- Reclasificación (Felipe 5-nov): los lavados boutique y los clientes Gonzalo Cabello, Gisselle Salfate, Genesis Berrios, Thalia Rojo, Manuel Trem, Rodrigo, Millaray, Thermo Energía SpA, Globaltec, Jhonatan Barrera y Piloansa son de Carwash.hf. Cargadas las 4 ventas de septiembre 2026 (planilla COSTO UTILIDAD SERVICIOS 2026; fecha 30-sep por falta de fecha en la planilla). Migración `core_v9_carwash_reclasificacion_catalogo`.
+- Repositorio: https://github.com/fmontecinosc/carclass-core (rama `main`).
+- Tarea programada «Renovar base financiera en Drive» (`trig_01SH1NqB2HBzxPfxvH34droo`), lunes 7:17 hora de Chile: crea copias nuevas de las planillas en la carpeta de Drive y manda las anteriores a la papelera. Necesita los conectores Supabase y Google Drive agregados desde claude.ai.
+
 **Pendiente:**
 - Publicar la v2 en Netlify (desde la nube de Claude, la red bloqueó `netlify-mcp.netlify.app`).
 - Push con la app cerrada: claves VAPID, tabla de suscripciones y envío desde core-api.
