@@ -1,0 +1,551 @@
+<title>Carclass Core</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: sala de mando editorial — cabecera fija con pestañas, contenido en columna de 1100px, tablas y bloques técnicos con tipografía mono */
+:root{
+  --bg:#121212; --surface:#1a1a19; --raise:#222120; --line:#33312d;
+  --fg:#e9e5dc; --muted:#a39d91; --accent:#c9a45c; --accent-ink:#121212;
+  --ok:#7fae86; --warn:#d6a24a; --bad:#d4735e;
+  --f-display:"Newsreader",Georgia,"Times New Roman",serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){
+  --bg:#f5f3ee; --surface:#ffffff; --raise:#efece5; --line:#dcd7cc;
+  --fg:#1d1c1a; --muted:#6a655c; --accent:#8c6a26; --accent-ink:#ffffff;
+  --ok:#3f7a4a; --warn:#9a6a10; --bad:#a8432f; color-scheme:light}}
+:root[data-theme="light"]{
+  --bg:#f5f3ee; --surface:#ffffff; --raise:#efece5; --line:#dcd7cc;
+  --fg:#1d1c1a; --muted:#6a655c; --accent:#8c6a26; --accent-ink:#ffffff;
+  --ok:#3f7a4a; --warn:#9a6a10; --bad:#a8432f; color-scheme:light}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.6;margin:0}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.wrap{max-width:1100px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header.top{padding-block:40px 20px;border-bottom:1px solid var(--line)}
+.eyebrow{font-family:var(--f-mono);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+h1{font-family:var(--f-display);font-weight:500;font-size:clamp(34px,6vw,54px);line-height:1.05;margin:10px 0 12px;text-wrap:balance;letter-spacing:-.01em}
+.lede{color:var(--muted);max-width:68ch;margin:0;font-size:16px}
+nav.tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
+nav.tabs .wrap{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+nav.tabs button{font:500 13.5px var(--f-body);color:var(--muted);background:none;border:0;padding:14px 12px;cursor:pointer;white-space:nowrap;border-bottom:2px solid transparent}
+nav.tabs button:hover{color:var(--fg)}
+nav.tabs button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent)}
+nav.tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+main{padding-block:32px 72px}
+section.panel{display:grid;gap:28px}
+h2{font-family:var(--f-display);font-weight:500;font-size:30px;line-height:1.15;margin:0;text-wrap:balance}
+h3{font:600 15px var(--f-body);margin:0 0 6px;letter-spacing:.01em}
+p{margin:0;max-width:72ch}
+.muted{color:var(--muted)}
+.mono{font-family:var(--f-mono);font-size:13px}
+.intro{display:grid;gap:10px}
+
+.verdict{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);padding:20px 22px;display:grid;gap:8px}
+.verdict p{font-family:var(--f-display);font-size:20px;line-height:1.4;max-width:none}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line)}
+.stat{background:var(--surface);padding:16px 16px 14px;display:grid;gap:4px;align-content:start}
+.stat .n{font-family:var(--f-mono);font-size:28px;font-variant-numeric:tabular-nums;line-height:1.1}
+.stat .l{font-size:12.5px;color:var(--muted);line-height:1.4}
+.stat .src{font-family:var(--f-mono);font-size:10.5px;color:var(--muted);letter-spacing:.04em}
+.n.bad{color:var(--bad)} .n.warn{color:var(--warn)} .n.ok{color:var(--ok)}
+
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.block{display:grid;gap:8px;align-content:start;min-width:0}
+.block p{font-size:14.5px}
+.rule{border-top:1px solid var(--line);padding-top:16px}
+
+ul.list{margin:0;padding:0;list-style:none;display:grid;gap:10px}
+ul.list li{padding-left:18px;position:relative;font-size:14.5px;max-width:72ch}
+ul.list li::before{content:"";position:absolute;left:0;top:.62em;width:8px;height:1px;background:var(--accent)}
+
+.pill{display:inline-block;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border:1px solid currentColor;border-radius:2px;vertical-align:2px}
+.pill.bad{color:var(--bad)} .pill.warn{color:var(--warn)} .pill.ok{color:var(--ok)} .pill.acc{color:var(--accent)}
+
+/* tabla */
+.tbl{overflow-x:auto;border:1px solid var(--line)}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:13.5px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:500 11px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);background:var(--raise)}
+tr:last-child td{border-bottom:0}
+td.mono{font-size:12.5px;white-space:nowrap}
+td.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;text-align:right}
+
+/* arquitectura */
+.arch{display:grid;gap:10px}
+.layer{display:grid;grid-template-columns:150px 1fr;gap:12px;align-items:stretch}
+.layer .tag{font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding-top:12px}
+.boxes{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
+.box{background:var(--surface);border:1px solid var(--line);padding:12px 14px;display:grid;gap:4px;align-content:start}
+.box b{font-weight:600;font-size:14px}
+.box span{font-size:12.5px;color:var(--muted);line-height:1.45}
+.box.core{border-color:var(--accent);background:var(--raise)}
+.arrow{font-family:var(--f-mono);font-size:11px;color:var(--accent);padding-left:162px;letter-spacing:.06em}
+@media (max-width:640px){.layer{grid-template-columns:1fr}.layer .tag{padding-top:0}.arrow{padding-left:0}}
+
+/* pipeline */
+.flow{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px;counter-reset:st}
+.stage{background:var(--surface);border:1px solid var(--line);padding:12px;display:grid;gap:6px;align-content:start;position:relative}
+.stage .k{font-family:var(--f-mono);font-size:10.5px;color:var(--muted);letter-spacing:.06em}
+.stage b{font-size:13.5px;font-weight:600;line-height:1.3}
+.stage span{font-size:12px;color:var(--muted);line-height:1.45}
+.stage.hand{border-color:var(--accent)}
+.stage.ext{background:transparent;border-style:dashed}
+.legend{display:flex;flex-wrap:wrap;gap:16px;font-size:12.5px;color:var(--muted)}
+.legend i{display:inline-block;width:12px;height:12px;border:1px solid var(--line);margin-right:6px;vertical-align:-2px;background:var(--surface)}
+.legend i.h{border-color:var(--accent)} .legend i.e{border-style:dashed;background:transparent}
+
+pre{margin:0;background:var(--surface);border:1px solid var(--line);padding:14px 16px;overflow-x:auto;font:12.5px/1.6 var(--f-mono);color:var(--fg)}
+pre .c{color:var(--muted)}
+
+/* roadmap */
+.phases{display:grid;gap:0;border-left:1px solid var(--line);margin-left:6px}
+.phase{position:relative;padding:0 0 26px 26px;display:grid;gap:6px}
+.phase::before{content:"";position:absolute;left:-6px;top:6px;width:11px;height:11px;background:var(--bg);border:1px solid var(--accent);border-radius:50%}
+.phase:first-child::before{background:var(--accent)}
+.phase .when{font-family:var(--f-mono);font-size:11.5px;color:var(--accent);letter-spacing:.06em}
+.phase h3{font-family:var(--f-display);font-size:21px;font-weight:500;margin:0}
+.phase .done{font-size:13px;color:var(--muted)}
+.phase .done b{color:var(--fg);font-weight:500}
+
+.q{display:grid;grid-template-columns:28px 1fr;gap:12px;padding:16px 0;border-top:1px solid var(--line)}
+.q .i{font-family:var(--f-mono);color:var(--accent);font-size:13px;padding-top:2px}
+.q .rec{font-size:13.5px;color:var(--muted);margin-top:6px}
+.q .rec b{color:var(--fg);font-weight:500}
+
+footer{border-top:1px solid var(--line);padding-block:20px 40px;font-size:12.5px;color:var(--muted)}
+@media (prefers-reduced-motion:no-preference){section.panel{animation:in .25s ease-out}@keyframes in{from{opacity:.4;transform:translateY(4px)}to{opacity:1;transform:none}}}
+</style>
+
+<header class="top"><div class="wrap">
+  <div class="eyebrow">Carclass Group · Propuesta de sistema · 31 oct 2026</div>
+  <h1>Carclass Core</h1>
+  <p class="lede">Un núcleo de datos único para el holding: CRM, pipeline, proyectos, ventas, costos, márgenes y tareas en un solo lugar, conectado por API y MCP a Claude, ChatGPT y tus agentes. Asisma queda como CRM de la franquicia; Core es tu sistema de mando.</p>
+</div></header>
+
+<nav class="tabs" aria-label="Secciones"><div class="wrap" role="tablist">
+  <button role="tab" data-t="diagnostico">Diagnóstico</button>
+  <button role="tab" data-t="herramientas">Herramientas y SOPs</button>
+  <button role="tab" data-t="asisma">Qué tomar de Asisma</button>
+  <button role="tab" data-t="arquitectura">Arquitectura</button>
+  <button role="tab" data-t="datos">Modelo de datos</button>
+  <button role="tab" data-t="pipeline">Pipeline BlackGPS</button>
+  <button role="tab" data-t="agentes">Agentes y MCP</button>
+  <button role="tab" data-t="ruta">Hoja de ruta</button>
+  <button role="tab" data-t="decisiones">Decisiones</button>
+</div></nav>
+
+<main><div class="wrap">
+
+<!-- DIAGNÓSTICO -->
+<section class="panel" id="p-diagnostico" role="tabpanel">
+  <div class="intro">
+    <div class="eyebrow">01 · Estado real hoy</div>
+    <h2>Tienes datos. Lo que falta es un dueño único de cada dato.</h2>
+    <p class="muted">Conteos tomados directamente de tus dos proyectos Supabase el 31 de octubre de 2026.</p>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="n warn">635</div><div class="l">prospectos BlackGPS cargados</div><div class="src">blackgps-comercial</div></div>
+    <div class="stat"><div class="n bad">0</div><div class="l">llamadas registradas contra esos prospectos</div><div class="src">blackgps-comercial</div></div>
+    <div class="stat"><div class="n bad">0</div><div class="l">clientes en la tabla de clientes del holding</div><div class="src">carclass-group</div></div>
+    <div class="stat"><div class="n">45</div><div class="l">ventas Carclass sin cliente vinculado</div><div class="src">carclass-group</div></div>
+    <div class="stat"><div class="n">28</div><div class="l">contratos GPS (no refleja equipos en alta actuales)</div><div class="src">carclass-group</div></div>
+    <div class="stat"><div class="n">303</div><div class="l">movimientos financieros sin margen por unidad</div><div class="src">carclass-group</div></div>
+    <div class="stat"><div class="n bad">0</div><div class="l">tareas y snapshots de KPI</div><div class="src">carclass-group</div></div>
+  </div>
+
+  <div class="verdict">
+    <div class="eyebrow">Causa raíz</div>
+    <p>Cada herramienta nació con su propia tabla. No existe una entidad «empresa» compartida, así que una venta, un prospecto y un contrato GPS del mismo cliente no se reconocen entre sí. El dashboard no puede consolidar lo que la base nunca relacionó.</p>
+  </div>
+
+  <div class="grid2">
+    <div class="block rule">
+      <h3>Lo que está roto</h3>
+      <ul class="list">
+        <li>Dos proyectos Supabase con tablas duplicadas (<span class="mono">bgps_kv</span> y <span class="mono">bgps_cotizaciones</span> existen en ambos).</li>
+        <li><span class="mono">clientes</span> vacía: ventas, leads y contratos viven sueltos.</li>
+        <li>Equipos en alta solo existen en la plataforma BlackGPS. Ningún sistema tuyo los registra.</li>
+        <li>Pipeline de Asisma y análisis de GPT no entran a ninguna base.</li>
+        <li>La tabla <span class="mono">bgps_prospectos_bak_20261013</span> tiene la seguridad por filas desactivada: cualquiera con la llave pública puede leerla o modificarla.</li>
+      </ul>
+    </div>
+    <div class="block rule">
+      <h3>Lo que se rescata</h3>
+      <ul class="list">
+        <li>635 prospectos ya segmentados: pasan a ser empresas + oportunidades BlackGPS.</li>
+        <li>45 ventas Carclass y 303 movimientos: base histórica para márgenes reales.</li>
+        <li>28 contratos GPS: punto de partida de la cartera recurrente.</li>
+        <li>OKRs (7) y estructura de módulos de Group HQ como referencia de vistas.</li>
+        <li>Postgres en sa-east-1 con RLS en casi todo: la infraestructura sirve, el modelo no.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="verdict">
+    <div class="eyebrow">Lectura directa</div>
+    <p>635 prospectos y cero llamadas registradas dice que el sistema exigía entrar a cargar datos. El nuevo diseño tiene una sola regla de éxito: tú nunca escribes dos veces lo mismo, y la información te llega a ti en vez de esperar que la vayas a buscar.</p>
+  </div>
+</section>
+
+<!-- HERRAMIENTAS -->
+<section class="panel" id="p-herramientas" role="tabpanel" hidden>
+  <div class="intro">
+    <div class="eyebrow">02 · Inventario Netlify</div>
+    <h2>Diez herramientas, cuatro formas de guardar datos</h2>
+    <p class="muted">Revisión de los 9 sitios de tu cuenta Netlify más app.carclass.cl, el 31 de octubre de 2026: qué proceso cubre cada uno y dónde queda la información que se ingresa.</p>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="n warn">24 jun</div><div class="l">última venta Carclass registrada</div><div class="src">car_ventas</div></div>
+    <div class="stat"><div class="n warn">29 may</div><div class="l">último contrato GPS ingresado</div><div class="src">gps_contratos</div></div>
+    <div class="stat"><div class="n warn">1 ago</div><div class="l">último lead cargado</div><div class="src">leads</div></div>
+    <div class="stat"><div class="n warn">20 sep</div><div class="l">último movimiento financiero</div><div class="src">movimientos</div></div>
+    <div class="stat"><div class="n ok">21 oct</div><div class="l">última inspección NOM: la única herramienta viva</div><div class="src">nom_inspecciones</div></div>
+  </div>
+
+  <div class="tbl"><table>
+    <thead><tr><th>Herramienta</th><th>Unidad</th><th>Qué cubre</th><th>Dónde guarda</th><th>Destino en Core</th></tr></thead>
+    <tbody>
+      <tr><td><b>app.carclass.cl</b><br><span class="muted mono">panel con login</span></td><td>Holding</td><td>Panel de control interno con acceso por correo y contraseña</td><td><span class="pill acc">carclass-group</span><br><span class="muted">Hosting del sitio web (LiteSpeed). Lee 16 tablas y vistas; el código no cambia desde el 12 de junio</span></td><td>Se reescribe como vista de Core</td></tr>
+      <tr><td><b>tangerine-flan-697dfa</b><br><span class="muted mono">«HQ Centro de mando»</span></td><td>Holding</td><td>Pantalla de acceso de una versión anterior del HQ</td><td><span class="muted">Solo la puerta de acceso</span></td><td><span class="pill bad">Jubilar</span> tras confirmar</td></tr>
+      <tr><td><b>playbookblack</b></td><td>BlackGPS</td><td>12 módulos: perfiles, calificador ICP, prospección, pipeline, reunión, cotizador y ROI, objeciones, seguimiento, cierre, onboarding, tablero diario</td><td><span class="pill warn">blackgps-comercial</span> bgps_kv (0 filas) + navegador</td><td>Guion y reglas → SOP. Pipeline y tablero → Core</td></tr>
+      <tr><td><b>cotizador-black</b></td><td>BlackGPS</td><td>Cotización por flota con UF, IVA, mensualidad e implementación, salida PDF</td><td><span class="pill warn">blackgps-comercial</span> bgps_cotizaciones (1 guardada)</td><td>Módulo de cotizaciones, ligado a la oportunidad</td></tr>
+      <tr><td><b>playbook-carclass</b></td><td>Carclass</td><td>Buyer personas, flujo de atención, catálogo y scripts por servicio, objeciones, plantillas WhatsApp, postventa y control de calidad, reglas de oro</td><td><span class="pill bad">Nada</span> documento estático</td><td>SOP. Catálogo → tabla de servicios con precio y costo</td></tr>
+      <tr><td><b>cotizador-carclass</b></td><td>Carclass</td><td>Cotización de servicios con salida PDF</td><td><span class="pill bad">Nada</span> cada cotización se pierde</td><td>Módulo de cotizaciones; al ganar, nace la venta con costo</td></tr>
+      <tr><td><b>playbook-nom</b></td><td>NOM</td><td>Personas, flujo comprador, flujo consignante, revisión de 4 capas, operación, pricing y margen, objeciones, WhatsApp, reglas</td><td><span class="pill bad">Nada</span> documento estático</td><td>SOP. Reglas de pricing → cálculo en Core</td></tr>
+      <tr><td><b>nom-inspeccion</b></td><td>NOM</td><td>Inspección pre-compra con score, veredicto, precio máximo sugerido e informe</td><td><span class="pill ok">carclass-group</span> nom_inspecciones (4) + borrador en navegador</td><td>Se mantiene; se vincula a vehículo y cliente</td></tr>
+      <tr><td><b>reporte-consignacion</b></td><td>NOM</td><td>Reporte semanal al consignante, protocolo y cadencia, scripts por escenario, ajuste de precio</td><td><span class="pill bad">Nada</span></td><td>Reporte generado desde los datos del vehículo en Core</td></tr>
+      <tr><td><b>carclass.cl</b></td><td>Carclass</td><td>Sitio público</td><td><span class="muted">Formularios de Netlify desactivados</span></td><td>Sus formularios escriben a core-api</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="grid3">
+    <div class="block rule"><h3>Tres playbooks son tus SOPs</h3><p>Carclass, NOM y BlackGPS ya tienen documentado cómo vender y operar. Ese contenido es valioso y está encerrado en páginas que ningún agente lee. En Core pasa a una biblioteca de SOPs: los playbooks se siguen viendo igual, y los agentes los consultan para redactar con tus reglas y frases prohibidas.</p></div>
+    <div class="block rule"><h3>Cuatro herramientas no recuerdan nada</h3><p>Cotizador Carclass, reporte al consignante y dos playbooks no guardan lo que ingresas. Por eso no tienes base de ventas: la cotización se hace, se manda en PDF y desaparece. Este es el agujero principal del holding.</p></div>
+    <div class="block rule"><h3>Tres guardan en lugares distintos</h3><p>El cotizador y el playbook BlackGPS escriben en blackgps-comercial; la inspección NOM y el panel en carclass-group; varios usan además el navegador como respaldo. Cada uno resolvió su problema y ninguno se habla con el otro.</p></div>
+  </div>
+
+  <div class="verdict">
+    <div class="eyebrow">Regla para lo que viene</div>
+    <p>Ninguna herramienta nueva guarda datos por su cuenta. Toda pantalla, sea cotizador, inspección o playbook, lee y escribe por core-api. Así una cotización Carclass, una inspección NOM y una llamada BlackGPS terminan en la misma ficha de cliente.</p>
+  </div>
+
+  <div class="block rule">
+    <h3>Seguridad <span class="pill ok">corregido 31 oct</span></h3><p class="muted">Se cerró el acceso anónimo a todas las tablas y vistas excepto las que usan la inspección NOM, el cotizador y el playbook BlackGPS. Estado anterior:</p>
+    <ul class="list">
+      <li><b>El login de app.carclass.cl no protege los datos.</b> Las 29 tablas de carclass-group permiten leer, modificar y borrar a cualquiera con la llave pública, y esa llave está visible en la propia página de acceso. Ventas, movimientos y contratos quedan expuestos sin iniciar sesión.</li><li>Lo mismo en blackgps-comercial: prospectos, llamadas, cotizaciones y playbook están abiertos a cualquiera con la llave visible en playbookblack y cotizador-black. El respaldo de 120 prospectos ya quedó cerrado el 31 de octubre.</li>
+      <li>Ningún sitio Netlify tiene contraseña de acceso. Los playbooks dicen «no compartir con clientes» pero son públicos para quien tenga el enlace.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ASISMA -->
+<section class="panel" id="p-asisma" role="tabpanel" hidden>
+  <div class="intro">
+    <div class="eyebrow">03 · Referencia</div>
+    <h2>Copiar la lógica de Asisma, no sus menús</h2>
+    <p class="muted">Recorrido en tu cuenta de distribuidor el 31 de octubre: guía del sistema, tablero de leads, cotizaciones, pedidos, catálogo y directorio de clientes. Solo lectura.</p>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="n warn">20 de 27</div><div class="l">leads abiertos sin interacción hace 11 a 44 días</div><div class="src">tablero de leads</div></div>
+    <div class="stat"><div class="n warn">13</div><div class="l">leads en Entrante sin primer contacto</div><div class="src">tablero de leads</div></div>
+    <div class="stat"><div class="n">$5,8 MM</div><div class="l">neto en Cotizado y Negociando esperando seguimiento</div><div class="src">tablero de leads</div></div>
+    <div class="stat"><div class="n ok">$3,3 MM</div><div class="l">ganado en 10 negocios</div><div class="src">tablero de leads</div></div>
+    <div class="stat"><div class="n">96</div><div class="l">productos autorizados con banda de precio mínimo, máximo y sugerido</div><div class="src">mis productos</div></div>
+  </div>
+
+  <div class="verdict">
+    <div class="eyebrow">Lo que dicen tus propios datos</div>
+    <p>El cuello de botella no es captar: es seguir. Hay casi seis millones netos cotizados y la mayoría de esos clientes ya abrió la cotización. Lo primero que va a hacer el agente Comercial con el CSV de Asisma es armarte la lista de seguimiento de esos negocios.</p>
+  </div>
+
+  <div class="tbl"><table>
+    <thead><tr><th>Patrón de Asisma</th><th>Por qué funciona</th><th>Cómo entra en Core</th></tr></thead>
+    <tbody>
+      <tr><td>Rueda de leads con plazo de 5 min</td><td>Convierte el lead en una obligación con reloj</td><td>Cola del día con SLA por etapa: cada oportunidad tiene «próxima acción» y fecha. Si vence, sube a la cima y el agente te avisa.</td></tr>
+      <tr><td>Pipeline por etapas</td><td>Muestra dónde se estanca la venta</td><td>Pipeline por unidad con etapas propias (BlackGPS, Carclass, NOM, somosB2B, Carwash.hf) sobre una sola tabla de oportunidades.</td></tr>
+      <tr><td>Ficha de cliente con historial</td><td>Todo el contexto antes de llamar</td><td>Ficha empresa 360: análisis GPT, contactos, actividades, ventas y contratos de todas las unidades.</td></tr>
+      <tr><td>Actividades registradas</td><td>Da trazabilidad al seguimiento</td><td>Registro en un toque o por voz al agente («llamé a X, pidió reunión el martes»).</td></tr>
+      <tr><td>Cotizaciones ligadas al lead</td><td>Conecta propuesta con cierre</td><td>Cotizaciones de BlackGPS y Carclass ligadas a la oportunidad; al ganar se convierten en venta con costo.</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="tbl"><table>
+    <thead><tr><th>Función de Asisma</th><th>Cómo opera</th><th>Qué tomamos para Core</th></tr></thead>
+    <tbody>
+      <tr><td>Embudo automático</td><td>Registrar una llamada mueve a Contactado; cotizar mueve a Cotizado. Nunca retrocede solo.</td><td>Igual: la etapa avanza sola con la actividad. Perdido exige motivo.</td></tr>
+      <tr><td>Candados por RUT</td><td>Mismo RUT y misma marca con negocio abierto: bloqueado. Mismo teléfono: se anota como reingreso, no duplica.</td><td>La empresa se identifica por RUT; un segundo análisis de GPT se suma a la ficha existente.</td></tr>
+      <tr><td>Networking</td><td>Al buscar un RUT muestra quién ya le vende o le vendió.</td><td>Ficha 360 entre unidades: un cliente BlackGPS aparece como candidato Carclass o somosB2B.</td></tr>
+      <tr><td>Agenda que se propone sola</td><td>Crea actividades: llamar tras cotizar, retomar negocios detenidos, contacto mensual con clientes ganados. Se suscribe a Google Calendar.</td><td>Reglas de seguimiento en Core y el agente las agenda directo en tu Calendar.</td></tr>
+      <tr><td>Liberación por silencio</td><td>A los 2 meses sin respuesta del cliente el negocio queda libre.</td><td>Alerta a los 7 y 14 días sin interacción, mucho antes de perderlo.</td></tr>
+      <tr><td>Cotización con banda de precio</td><td>Precio dentro del mínimo y máximo de la marca, UF al valor del día, PDF y link público que registra si el cliente la vio.</td><td>Cotizador único para todas las unidades, con banda de precio, costo y margen visibles solo para ti, y aviso cuando el cliente la abre.</td></tr>
+      <tr><td>Confirmar negocio</td><td>Cierra el trato sin esperar pago; el pedido pasa a un kanban: recibido, en proceso, entregado, ganado. Factura y pago van aparte.</td><td>Venta cerrada separada de venta cobrada. Encaja con tu definición: la venta cuenta al cerrar, la cobranza se sigue aparte.</td></tr>
+      <tr><td>Bitácora con autor</td><td>Cada gestión y cada cambio de etapa queda con quién y cuándo.</td><td>Igual, con autor que distingue Felipe, Stephanie, Jorge, Bryan o el agente.</td></tr>
+      <tr><td>Soporte con folio y portal</td><td>Tickets TK con portal del cliente por RUT; notas internas por defecto y envío al cliente solo si se marca.</td><td>Postventa Carclass y NOM con folio; el agente redacta y tú decides qué sale al cliente.</td></tr>
+      <tr><td>Exportaciones</td><td>Leads en CSV, pedidos en Excel y CSV, catálogo en Excel.</td><td>Tres importadores: pipeline, pedidos ganados y catálogo con bandas de precio.</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="grid2">
+    <div class="block rule">
+      <h3>Lo que no copiamos</h3>
+      <ul class="list">
+        <li>Módulos que no usas. Core parte con 6 vistas, no 20 menús.</li>
+        <li>Carga manual como único método de entrada.</li>
+        <li>Datos encerrados: Core se lee y se escribe por API desde el día uno.</li>
+      </ul>
+    </div>
+    <div class="block rule">
+      <h3>Lo que Asisma no tiene y Core sí</h3>
+      <ul class="list">
+        <li>Visión de holding: las cinco unidades y el P&amp;L en el mismo lugar.</li>
+        <li>Venta cruzada: un cliente BlackGPS aparece como candidato Carclass o somosB2B.</li>
+        <li>Agentes que leen, priorizan y redactan sobre los mismos datos.</li>
+        <li>Costos y margen por venta. Asisma conoce el precio, nunca lo que te queda.</li>
+        <li>Proyectos y tareas internas del holding.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="verdict">
+    <div class="eyebrow">Sobre la plataforma que te presentaron</div>
+    <p>Sirve como referencia de interfaz. Como base solo tiene sentido si te deja exportar todo, tiene API abierta y alguien la mantiene. Si no cumple las tres, construir Core sobre tu Supabase es más barato a 12 meses y queda 100% tuyo.</p>
+  </div>
+</section>
+
+<!-- ARQUITECTURA -->
+<section class="panel" id="p-arquitectura" role="tabpanel" hidden>
+  <div class="intro">
+    <div class="eyebrow">04 · Arquitectura</div>
+    <h2>Una base, una API, muchas pantallas</h2>
+    <p class="muted">Todo lo que entra pasa por la misma API. Todo lo que se muestra se lee de la misma base. app.carclass.cl deja de guardar datos y pasa a ser una vista.</p>
+  </div>
+
+  <div class="arch">
+    <div class="layer"><div class="tag">Entradas</div><div class="boxes">
+      <div class="box"><b>GPT «Analista de prospectos»</b><span>Action que guarda cada análisis de empresa</span></div>
+      <div class="box"><b>Asisma CSV</b><span>Importación semanal del pipeline, cruce por ID</span></div>
+      <div class="box"><b>Formularios web</b><span>carclass.cl, NOM, Carwash.hf</span></div>
+      <div class="box"><b>Plataforma BlackGPS</b><span>Cierre mensual de equipos en alta y clientes activos</span></div>
+    </div></div>
+    <div class="arrow">↓ todo escribe por la API</div>
+    <div class="layer"><div class="tag">API</div><div class="boxes">
+      <div class="box core"><b>Edge Function «core-api»</b><span>Un solo punto: REST para ChatGPT y formularios, MCP para Claude. Valida, deduplica por RUT/dominio y registra quién escribió.</span></div>
+    </div></div>
+    <div class="arrow">↓</div>
+    <div class="layer"><div class="tag">Núcleo</div><div class="boxes">
+      <div class="box core"><b>Supabase carclass-group</b><span>Postgres con esquemas separados: crm, ops, fin. Seguridad por filas y por rol.</span></div>
+      <div class="box core"><b>Vistas calculadas</b><span>Pipeline, P&amp;L por unidad, MRR, KPIs del holding</span></div>
+    </div></div>
+    <div class="arrow">↓ todos leen lo mismo</div>
+    <div class="layer"><div class="tag">Salidas</div><div class="boxes">
+      <div class="box"><b>app.carclass.cl</b><span>Pipeline, ficha empresa, proyectos, P&amp;L, tareas</span></div>
+      <div class="box"><b>Claude + agentes</b><span>Conector MCP: Comercial, Finanzas, Operaciones, Gabinete</span></div>
+      <div class="box"><b>ChatGPT</b><span>Consulta la ficha antes de redactar correos o respuestas</span></div>
+      <div class="box"><b>Resumen matutino</b><span>Tarea programada: cola del día y alertas de seguimiento</span></div>
+    </div></div>
+  </div>
+
+  <div class="grid3">
+    <div class="block rule"><h3>Por qué un solo proyecto</h3><p>Hoy tienes ventas en uno y prospectos en otro. Un cliente que pasa de prospecto a cliente BlackGPS a comprador Carclass tiene que ser la misma fila. El aislamiento se logra con esquemas y permisos, no con proyectos separados.</p></div>
+    <div class="block rule"><h3>Por qué una API y no acceso directo</h3><p>Si GPT, Claude y la web escriben directo a tablas, vuelves a tener duplicados. La API deduplica, valida campos obligatorios y deja un registro de cada cambio con su autor.</p></div>
+    <div class="block rule"><h3>ChatGPT: Action, no MCP</h3><p>Un GPT personalizado con Action funciona en tu plan y en el celular, que es donde haces análisis rápidos. MCP en ChatGPT exige modo desarrollador y solo web. Claude sí usa MCP como conector.</p></div>
+  </div>
+</section>
+
+<!-- DATOS -->
+<section class="panel" id="p-datos" role="tabpanel" hidden>
+  <div class="intro">
+    <div class="eyebrow">05 · Modelo de datos</div>
+    <h2>Doce tablas reemplazan treinta</h2>
+    <p class="muted">La empresa es el centro. Todo lo demás cuelga de ella o de una oportunidad.</p>
+  </div>
+
+  <div class="tbl"><table>
+    <thead><tr><th>Tabla</th><th>Qué guarda</th><th>Campos clave</th><th>Viene de</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">crm.empresas</td><td>Toda organización con la que hay o hubo relación</td><td>rut, nombre, rubro, tamaño_flota, región, dominio, origen</td><td>bgps_prospectos, leads</td></tr>
+      <tr><td class="mono">crm.contactos</td><td>Personas dentro de una empresa (o clientes persona en Carclass)</td><td>empresa_id, nombre, cargo, teléfono, email, decisor</td><td>prospectos, ventas</td></tr>
+      <tr><td class="mono">crm.analisis</td><td>Cada investigación de empresa hecha por GPT o Claude</td><td>empresa_id, fuente, resumen, dolores, pilar, marcas_somosb2b, score</td><td>nuevo · GPT Action</td></tr>
+      <tr><td class="mono">crm.oportunidades</td><td>Un negocio posible con una unidad</td><td>empresa_id, unidad, etapa, monto_est, prob, próxima_acción, vence, asisma_id</td><td>leads, prospectos</td></tr>
+      <tr><td class="mono">crm.actividades</td><td>Llamadas, correos, WhatsApp, reuniones</td><td>oportunidad_id, tipo, resultado, nota, autor</td><td>bgps_llamadas</td></tr>
+      <tr><td class="mono">crm.cotizaciones</td><td>Propuestas enviadas</td><td>oportunidad_id, ítems, neto, costo_est, estado</td><td>car_cotizaciones, bgps_cotizaciones</td></tr>
+      <tr><td class="mono">fin.ventas</td><td>Venta cerrada con su costo</td><td>oportunidad_id, unidad, fecha, neto, costo, margen (calculado)</td><td>car_ventas, movimientos</td></tr>
+      <tr><td class="mono">fin.costos</td><td>Gastos fijos y variables por unidad</td><td>unidad, categoría, tipo, monto, fecha</td><td>movimientos, gastos_fijos</td></tr>
+      <tr><td class="mono">ops.contratos_gps</td><td>Cartera recurrente BlackGPS</td><td>empresa_id, equipos, valor_licencia, inicio, estado</td><td>gps_contratos</td></tr>
+      <tr><td class="mono">ops.cierres_mensuales</td><td>Foto del mes: equipos en alta, clientes activos, MRR</td><td>unidad, mes, equipos_alta, clientes, mrr</td><td>nuevo · plataforma BlackGPS</td></tr>
+      <tr><td class="mono">ops.proyectos</td><td>Proyectos internos y de cliente con hitos</td><td>unidad, empresa_id, estado, responsable, fecha_meta</td><td>nuevo</td></tr>
+      <tr><td class="mono">ops.tareas</td><td>To-do único del holding</td><td>título, responsable, vence, relacionado_a (empresa, oportunidad o proyecto), origen</td><td>tareas</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="grid2">
+    <div class="block">
+      <h3>Vistas que alimentan el dashboard</h3>
+      <pre><span class="c">-- se calculan solas, nadie las actualiza a mano</span>
+v_pipeline          oportunidades abiertas por unidad y etapa
+v_cola_del_dia      próximas acciones vencidas o de hoy
+v_pnl_unidad        ventas − costos por unidad y mes
+v_mrr_blackgps      cartera recurrente + cierre mensual
+v_kpis_holding      lo que hoy intentas ver en app.carclass.cl</pre>
+    </div>
+    <div class="block">
+      <h3>Reglas que evitan volver al desorden</h3>
+      <ul class="list">
+        <li>Una empresa se identifica por RUT o dominio. La API rechaza duplicados y los fusiona.</li>
+        <li>Toda oportunidad abierta tiene próxima acción y fecha. Sin eso no se guarda.</li>
+        <li>Cada fila registra su autor: felipe, gpt, claude, asisma-import.</li>
+        <li>Todo monto se registra en CLP con IVA incluido; el neto y el margen se calculan solos, nunca se escriben.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- PIPELINE -->
+<section class="panel" id="p-pipeline" role="tabpanel" hidden>
+  <div class="intro">
+    <div class="eyebrow">06 · Flujo comercial BlackGPS</div>
+    <h2>Core preselecciona. Asisma cierra.</h2>
+    <p class="muted">Tal como lo planteaste: todo análisis de GPT entra como oportunidad BlackGPS en Core. Cuando hay factibilidad, contacto y llamada en frío o reunión por agendar, pasa a Asisma.</p>
+  </div>
+
+  <div class="flow">
+    <div class="stage"><div class="k">ETAPA 1</div><b>Analizada</b><span>GPT guarda el análisis. Se crea empresa y oportunidad.</span></div>
+    <div class="stage"><div class="k">ETAPA 2</div><b>Factible</b><span>Tiene flota, rubro y tamaño que calzan con un pilar.</span></div>
+    <div class="stage"><div class="k">ETAPA 3</div><b>Contactable</b><span>Decisor identificado con teléfono o correo.</span></div>
+    <div class="stage"><div class="k">ETAPA 4</div><b>En prospección</b><span>Llamadas en frío, correos y WhatsApp registrados.</span></div>
+    <div class="stage hand"><div class="k">TRASPASO</div><b>Reunión por agendar</b><span>Agente prepara la ficha para Asisma. Tú la cargas.</span></div>
+    <div class="stage ext"><div class="k">ASISMA</div><b>En Asisma</b><span>Asisma manda. Core recibe el estado por CSV semanal.</span></div>
+    <div class="stage ext"><div class="k">ASISMA</div><b>Ganada / perdida</b><span>Al ganar, nace el contrato GPS en Core.</span></div>
+  </div>
+  <div class="legend"><span><i></i>Vive en Core</span><span><i class="h"></i>Traspaso</span><span><i class="e"></i>Fuente oficial: Asisma</span></div>
+
+  <div class="grid3">
+    <div class="block rule"><h3>Qué hace el agente Comercial</h3><p>Cada mañana arma la cola: oportunidades factibles sin contactar, seguimientos vencidos y reuniones por traspasar. Para cada una deja guion de llamada y mensaje listos, con cifras autorizadas.</p></div>
+    <div class="block rule"><h3>Qué haces tú</h3><p>Llamas, y dices el resultado en una línea. El agente registra la actividad, mueve la etapa, crea el seguimiento y agenda la reunión en tu Calendar.</p></div>
+    <div class="block rule"><h3>Cómo vuelve Asisma</h3><p>Exportas el CSV de leads una vez por semana y lo subes. Core cruza por ID de Asisma o RUT, actualiza etapas y marca ganadas. Cuando consigas la API, este paso se automatiza.</p></div>
+  </div>
+
+  <div class="block">
+    <h3>Ficha que GPT envía al terminar cada análisis</h3>
+    <pre>{
+  "empresa": { "nombre": "Transportes Ejemplo SpA", "rut": "76.000.000-0", "rubro": "Carga por carretera", "region": "Metropolitana", "tamano_flota": 60 },
+  "contacto": { "nombre": "…", "cargo": "Jefe de flota", "telefono": "…", "decisor": true },
+  "analisis": {
+    "resumen": "…", "dolores": ["consumo combustible", "robo de camionetas"],
+    "pilar": "software", "marcas_somosb2b": ["SimpliRoute"], "score": 78
+  },
+  "unidad": "blackgps"
+}  <span class="c">← ejemplo ilustrativo</span></pre>
+  </div>
+</section>
+
+<!-- AGENTES -->
+<section class="panel" id="p-agentes" role="tabpanel" hidden>
+  <div class="intro">
+    <div class="eyebrow">07 · Agentes y MCP</div>
+    <h2>Herramientas que exponemos a Claude y ChatGPT</h2>
+    <p class="muted">Cada agente ve las mismas herramientas, con permisos distintos. Las escrituras financieras siempre piden tu confirmación.</p>
+  </div>
+
+  <div class="tbl"><table>
+    <thead><tr><th>Herramienta</th><th>Qué hace</th><th>GPT</th><th>Comercial</th><th>Finanzas</th><th>Gabinete</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">buscar_empresa</td><td>Ficha 360 por nombre, RUT o dominio</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
+      <tr><td class="mono">registrar_analisis</td><td>Crea o actualiza empresa + análisis + oportunidad</td><td>✓</td><td>✓</td><td>—</td><td>—</td></tr>
+      <tr><td class="mono">cola_del_dia</td><td>Próximas acciones priorizadas por unidad</td><td>—</td><td>✓</td><td>—</td><td>✓</td></tr>
+      <tr><td class="mono">registrar_actividad</td><td>Llamada, correo, reunión con resultado</td><td>—</td><td>✓</td><td>—</td><td>—</td></tr>
+      <tr><td class="mono">mover_etapa</td><td>Avanza la oportunidad y fija próxima acción</td><td>—</td><td>✓</td><td>—</td><td>—</td></tr>
+      <tr><td class="mono">crear_tarea</td><td>To-do ligado a empresa, oportunidad o proyecto</td><td>—</td><td>✓</td><td>✓</td><td>✓</td></tr>
+      <tr><td class="mono">preparar_traspaso_asisma</td><td>Ficha resumida lista para cargar en Asisma</td><td>—</td><td>✓</td><td>—</td><td>—</td></tr>
+      <tr><td class="mono">importar_asisma_csv</td><td>Sincroniza estados desde la exportación</td><td>—</td><td>✓</td><td>—</td><td>—</td></tr>
+      <tr><td class="mono">registrar_venta / costo</td><td>Escribe en finanzas, con confirmación</td><td>—</td><td>—</td><td>✓</td><td>—</td></tr>
+      <tr><td class="mono">pnl_unidad · kpis_holding</td><td>Lectura de márgenes y métricas</td><td>—</td><td>lectura</td><td>✓</td><td>✓</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="grid2">
+    <div class="block rule"><h3>Lo que los agentes no hacen solos</h3><ul class="list">
+      <li>Enviar correos o WhatsApp: dejan el borrador, tú apruebas.</li>
+      <li>Cargar en Asisma: preparan la ficha, tú la subes.</li>
+      <li>Borrar registros: solo marcan como descartado.</li>
+    </ul></div>
+    <div class="block rule"><h3>Automatizaciones programadas</h3><ul class="list">
+      <li>Lunes a viernes temprano: resumen con cola del día y mensajes listos.</li>
+      <li>Diario: alerta de oportunidades con próxima acción vencida.</li>
+      <li>Lunes: recordatorio de subir el CSV de Asisma.</li>
+      <li>Día 1 de cada mes: pedir el cierre de equipos en alta y armar el P&amp;L.</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- RUTA -->
+<section class="panel" id="p-ruta" role="tabpanel" hidden>
+  <div class="intro">
+    <div class="eyebrow">08 · Hoja de ruta</div>
+    <h2>Valor en la semana dos, no en el mes tres</h2>
+    <p class="muted">Plazos estimados trabajando juntos en sesiones. Cada fase deja algo usable antes de seguir.</p>
+  </div>
+
+  <div class="phases">
+    <div class="phase"><div class="when">FASE 0 · DÍAS 1–3 · <span class="pill ok">hecha 31 oct</span></div><h3>Limpieza y decisiones</h3><p>Cerrar la brecha de seguridad del respaldo, inventariar columnas reales de cada tabla, revisar el código de app.carclass.cl, jubilar el HQ antiguo, proteger con acceso los playbooks y fijar las definiciones de venta y margen por unidad.</p><div class="done"><b>Listo cuando:</b> respondes las preguntas de la pestaña Decisiones.</div></div>
+    <div class="phase"><div class="when">FASE 1 · SEMANA 1–2 · <span class="pill ok">hecha 31 oct</span></div><h3>Núcleo y migración</h3><p class="muted">727 empresas, 674 oportunidades, 234 ventas, 28 contratos y 6 vehículos migrados y cuadrados contra el origen. Faltan los SOPs, que van con la Fase 2.</p><p>Crear esquemas crm, ops y fin. Migrar 635 prospectos, 45 ventas, 28 contratos, 303 movimientos y las inspecciones NOM con deduplicación. Cargar el contenido de los tres playbooks como biblioteca de SOPs. Las tablas antiguas quedan de solo lectura.</p><div class="done"><b>Listo cuando:</b> cada venta y contrato apunta a una empresa.</div></div>
+    <div class="phase"><div class="when">FASE 2 · SEMANA 2–3 · <span class="pill ok">hecha 31 oct</span></div><h3>API, GPT y conector Claude</h3><p class="muted">core-api en línea con 12 herramientas, claves separadas para GPT y Claude, y prueba completa aprobada. Falta que conectes el GPT y el conector con la guía.</p><p>Edge Function core-api con REST y MCP. GPT «Analista de prospectos» con su Action. Conector personalizado en Claude y ajuste de la skill del agente Comercial.</p><div class="done"><b>Listo cuando:</b> analizas una empresa en GPT y aparece en la cola del agente.</div></div>
+    <div class="phase"><div class="when">FASE 3 · SEMANA 3–5</div><h3>app.carclass.cl como vista</h3><p>Pipeline por unidad, ficha empresa, tareas, proyectos y P&amp;L leyendo solo del núcleo. Registro rápido de actividad desde el celular.</p><div class="done"><b>Listo cuando:</b> el dashboard muestra números que no tocaste a mano.</div></div>
+    <div class="phase"><div class="when">FASE 4 · SEMANA 5–6</div><h3>Automatización y Asisma</h3><p>Resumen matutino, alertas de seguimiento, importador CSV de Asisma y cierre mensual de BlackGPS. Si aparece la API de Asisma, la sincronización pasa a automática.</p><div class="done"><b>Listo cuando:</b> la información te llega sin que la pidas.</div></div>
+  </div>
+</section>
+
+<!-- DECISIONES -->
+<section class="panel" id="p-decisiones" role="tabpanel" hidden>
+  <div class="intro">
+    <div class="eyebrow">09 · Decisiones tomadas · 31 oct</div>
+    <h2>Lo que quedó definido</h2>
+  </div>
+  <div class="tbl"><table>
+    <thead><tr><th>Tema</th><th>Decisión</th><th>Qué implica en Core</th></tr></thead>
+    <tbody>
+      <tr><td>Proyecto</td><td>Todo en carclass-group</td><td>blackgps-comercial se migra y queda de solo lectura. Aislamiento por esquemas y roles.</td></tr>
+      <tr><td>Venta y margen</td><td>Venta = venta cerrada por su monto real. Margen = lo que queda después de los costos asociados.</td><td>Una sola regla para BlackGPS, Carclass broker, NOM consignación y NOM compra directa. Cada venta lleva sus costos ligados y el margen se calcula.</td></tr>
+      <tr><td>Accesos</td><td>Felipe y agentes: todo. Stephanie y Jorge: comercial y operación de Carclass y Carwash.hf. Bryan (futuro freelance): comercial y operación NOM. Finanzas: solo Felipe y agentes.</td><td>Cuatro roles: dueño, agente, operador por unidad y ejecutivo por unidad. Los costos y márgenes no se muestran fuera del rol dueño.</td></tr>
+      <tr><td>ChatGPT</td><td>Plan Pro</td><td>GPT con Action para escribir análisis. MCP en ChatGPT queda como opción de lectura.</td></tr>
+      <tr><td>Equipos en alta</td><td>El agente entra a la plataforma BlackGPS con el navegador de la app</td><td>El cierre mensual lo arma el agente: lee clientes y equipos activos y los carga en ops.cierres_mensuales. Sin digitación tuya.</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="intro">
+    <div class="eyebrow">Pendiente</div>
+    <h2>Lo que falta resolver</h2>
+  </div>
+  <div>
+    <div class="q"><div class="i">1</div><div><h3>¿Dónde vive el nuevo app.carclass.cl?</h3><p class="muted">Revisé el código actual: no está en Supabase. Supabase guarda los datos; las páginas (login y dashboard.html, sin cambios desde el 12 de junio) están en el hosting LiteSpeed de tu sitio.</p><p class="rec"><b>Recomiendo publicar Core en Netlify</b>, donde ya puedo desplegar con tu conector, y apuntar app.carclass.cl hacia allá con un cambio de DNS. Así cada mejora sale el mismo día sin pasar por el hosting. El panel antiguo queda en una subcarpeta como respaldo.</p></div></div>
+    <div class="q"><div class="i">2</div><div><h3>Análisis módulo por módulo de Asisma</h3><p class="rec"><b>Hecho el 31 de octubre.</b> Ver la pestaña «Qué tomar de Asisma».</p></div></div>
+  </div>
+</section>
+
+</div></main>
+<footer><div class="wrap">Carclass Core · propuesta v1 · datos de Supabase y Netlify consultados el 31-10-2026 · Asisma evaluado por uso declarado, sin documentación pública</div></footer>
+
+<script>
+(function(){
+  var tabs=[].slice.call(document.querySelectorAll('nav.tabs button'));
+  var ids=tabs.map(function(b){return b.dataset.t});
+  function show(id,push){
+    if(ids.indexOf(id)<0) id=ids[0];
+    tabs.forEach(function(b){b.setAttribute('aria-selected',b.dataset.t===id?'true':'false')});
+    ids.forEach(function(k){document.getElementById('p-'+k).hidden=(k!==id)});
+    if(push && location.hash!=='#'+id){try{history.replaceState(null,'','#'+id)}catch(e){location.hash=id}}
+  }
+  tabs.forEach(function(b){b.addEventListener('click',function(){show(b.dataset.t,true);var nt=document.querySelector('nav.tabs');if(window.scrollY>nt.offsetTop)window.scrollTo(0,nt.offsetTop)})});
+  window.addEventListener('hashchange',function(){show(location.hash.slice(1),false)});
+  show(location.hash.slice(1),false);
+})();
+</script>

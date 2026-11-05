@@ -1,0 +1,101 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Carclass Core",
+    "description": "Base única de clientes y prospectos de Carclass Group. Permite buscar una empresa y registrar el análisis de un potencial cliente.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    { "url": "https://tvjpwwwnpchecolcsnxp.supabase.co/functions/v1/core-api" }
+  ],
+  "paths": {
+    "/empresas": {
+      "get": {
+        "operationId": "buscarEmpresa",
+        "summary": "Busca una empresa por nombre o RUT y devuelve su ficha completa",
+        "description": "Úsala SIEMPRE antes de analizar una empresa, para saber si ya existe, en qué etapa está y qué se ha hecho con ella.",
+        "parameters": [
+          { "name": "q", "in": "query", "required": true, "schema": { "type": "string" }, "description": "Nombre, parte del nombre o RUT" },
+          { "name": "limite", "in": "query", "required": false, "schema": { "type": "integer", "default": 5 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Empresas encontradas",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "resultados": { "type": "array", "items": { "type": "object" } } } } } }
+          }
+        }
+      }
+    },
+    "/analisis": {
+      "post": {
+        "operationId": "registrarAnalisis",
+        "summary": "Guarda el análisis de una empresa como potencial cliente",
+        "description": "Crea o actualiza la empresa (no duplica: reconoce por RUT y nombre), su contacto, y la deja en el pipeline en etapa 'analizada'. Si ya estaba en el pipeline, solo suma el análisis a su ficha.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["empresa"],
+                "properties": {
+                  "unidad": { "type": "string", "enum": ["blackgps", "somosb2b", "carclass", "carwash", "nom"], "default": "blackgps" },
+                  "empresa": {
+                    "type": "object",
+                    "properties": {
+                      "nombre": { "type": "string", "description": "Razón social o nombre comercial" },
+                      "rut": { "type": "string", "description": "RUT de la empresa" },
+                      "rubro": { "type": "string" },
+                      "subsegmento": { "type": "string" },
+                      "tamano_flota": { "type": "integer", "description": "Cantidad estimada de vehículos" },
+                      "region": { "type": "string" },
+                      "comuna": { "type": "string" },
+                      "direccion": { "type": "string" },
+                      "web": { "type": "string" },
+                      "telefono": { "type": "string" },
+                      "email": { "type": "string" }
+                    }
+                  },
+                  "contacto": {
+                    "type": "object",
+                    "properties": {
+                      "nombre": { "type": "string" },
+                      "cargo": { "type": "string" },
+                      "telefono": { "type": "string" },
+                      "email": { "type": "string" },
+                      "decisor": { "type": "boolean" }
+                    }
+                  },
+                  "analisis": {
+                    "type": "object",
+                    "properties": {
+                      "titulo": { "type": "string", "description": "Título corto de la oportunidad" },
+                      "resumen": { "type": "string", "description": "Resumen del análisis y ángulo comercial para la primera llamada" },
+                      "dolores": { "type": "array", "items": { "type": "string" } },
+                      "pilar": { "type": "string", "enum": ["software", "conectividad", "hardware"] },
+                      "marcas_somosb2b": { "type": "array", "items": { "type": "string" } },
+                      "score": { "type": "integer", "minimum": 0, "maximum": 100, "description": "Calce con el cliente ideal" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado del registro",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "ok": { "type": "boolean" }, "mensaje": { "type": "string" }, "oportunidad_nueva": { "type": "boolean" } } } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {},
+    "securitySchemes": {
+      "ApiKey": { "type": "apiKey", "in": "header", "name": "X-API-Key" }
+    }
+  },
+  "security": [ { "ApiKey": [] } ]
+}

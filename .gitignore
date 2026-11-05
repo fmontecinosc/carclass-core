@@ -1,0 +1,6 @@
+.secrets/
+.netlify/
+.env
+.env.*
+node_modules/
+supabase/.temp/
