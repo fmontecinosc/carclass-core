@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.3.0";
+const VERSION = "2.4.0";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -216,7 +216,7 @@ function viewLogin(msg = "") {
 const NAV = [
   ["Análisis", [["dashboard", "Dashboard", "dash"], ["notificaciones", "Notificaciones", "bell", "avisos"]]],
   ["Comercial", [["bandeja", "Bandeja", "inbox", "bandeja"], ["conversaciones", "Conversaciones", "chat", null, true], ["embudo", "Embudo", "kanban"], ["agenda", "Agenda", "cal"], ["cotizaciones", "Cotizaciones", "doc"], ["clientes", "Clientes", "users"]]],
-  ["Catálogo", [["vehiculos", "Vehículos", "car"]]],
+  ["Catálogo", [["vehiculos", "Vehículos", "car"], ["herramientas", "Herramientas", "link"]]],
   ["Post-venta", [["tareas", "Tareas y postventa", "tasks", "tareas"]]],
   ["Finanzas", [["finanzas", "Resultados", "chart"], ["flujo", "Flujo de caja", "money"], ["registro", "Registro", "doc"], ["importar", "Importar", "dl"]], "fin"],
   ["Organización", [["equipo", "Equipo", "team"]]],
@@ -766,7 +766,7 @@ async function viewCotizaciones() {
   setActive("cotizaciones");
   const P = $("#page");
   P.innerHTML = `<div class="page-head"><div><h1>Cotizaciones</h1><p>Del catálogo vigente, con banda de precio, PDF y link público. Cuando el cliente abre el link, la cotización pasa a «vista» y te avisamos.</p></div>
-    <div class="actions"><button class="btn primary" id="q-new">${ico("plus", 16)} Nueva cotización</button></div></div><div id="ql">${loading(4)}</div>`;
+    <div class="actions"><a class="btn" href="${TOOLS.cotizador}" target="_blank" rel="noopener">${ico("link", 15)} Cotizador clásico</a><button class="btn primary" id="q-new">${ico("plus", 16)} Nueva cotización</button></div></div><div id="ql">${loading(4)}</div>`;
   $("#q-new").onclick = () => modalNuevaCotizacion();
   try {
     const q = (await rpc("app_cotizaciones")).filter((x) => enLinea(x.unidad));
@@ -877,7 +877,7 @@ function cotDoc(q, interno = false) {
     </tbody></table>
     <div class="qd-tot"><div><span>Neto</span><span>${clp(neto)}</span></div><div><span>IVA 19%</span><span>${clp(total - neto)}</span></div><div class="big"><span>Total</span><span>${clp(total)}</span></div></div>
     ${q.notas ? `<section class="qd-notas"><h4>Condiciones</h4><p>${esc(q.notas)}</p></section>` : ""}
-    <footer class="qd-f">${esc(marca)} · ${esc(pie)} · +56 9 8670 4745 · fmontecinos@carclass.cl</footer>
+    <footer class="qd-f">${esc(marca)} · ${esc(pie)} · ${q.unidad === "carwash" ? "+56 9 4619 6226" : "+56 9 8670 4745 · fmontecinos@carclass.cl"}</footer>
     ${interno && q.costo_estimado != null ? `<div class="no-print faint" style="font-size:12px;margin-top:10px">Interno: costo estimado ${clp(q.costo_estimado)} · margen ${total ? Math.round(((total - q.costo_estimado) / total) * 100) : 0}%</div>` : ""}
   </article>`;
 }
@@ -909,7 +909,7 @@ async function viewPublica(token) {
     if (error || !data) throw new Error("Esta cotización no existe o ya no está disponible.");
     document.title = `Cotización ${data.numero} · ${MARCA[data.unidad]?.[0] || "Carclass"}`;
     $("#app").innerHTML = `<div class="pub"><div class="pub-bar no-print"><span>Cotización ${esc(data.numero)}</span><button class="btn primary sm" id="pp">${ico("dl", 14)} Descargar PDF</button></div>${cotDoc(data)}
-      <div class="pub-cta no-print"><p>¿Te acomoda? Responde por WhatsApp y te proponemos dos fechas.</p><a class="btn primary" href="${waLink("+56986704745", `Hola, revisé la cotización ${data.numero} y quiero avanzar.`)}" target="_blank" rel="noopener">${ico("chat", 15)} Responder por WhatsApp</a></div></div>`;
+      <div class="pub-cta no-print"><p>¿Te acomoda? Responde por WhatsApp y te proponemos dos fechas.</p><a class="btn primary" href="${waLink(WA_UNIDAD[data.unidad] || "+56986704745", `Hola, revisé la cotización ${data.numero} y quiero avanzar.`)}" target="_blank" rel="noopener">${ico("chat", 15)} Responder por WhatsApp</a></div></div>`;
     $("#pp").onclick = () => window.print();
   } catch (e) { $("#app").innerHTML = `<div class="pub"><div class="card">${empty("doc", "Cotización no disponible", esc(e.message))}</div></div>`; }
 }
@@ -1021,9 +1021,35 @@ function oppCard(o) {
     ${abierta ? `<select class="input" style="width:auto;height:32px;font-size:12.5px" data-etapa="${o.id}" data-fecha="${o.proxima_fecha || ""}" aria-label="Etapa">${[...new Set([...et, o.etapa])].map((x) => `<option value="${esc(x)}" ${x === o.etapa ? "selected" : ""}>${esc(etapaTxt(x))}</option>`).join("")}</select>`
       : `<span class="pill ${o.estado === "ganada" ? "ok" : "bad"}">${esc(o.estado)}</span>`}
     ${o.asisma_id ? `<span class="pill gold">Asisma ${esc(o.asisma_id)}</span>` : ""}${o.canal ? `<span class="faint" style="font-size:12px">${esc(CANAL_TXT[o.canal] || o.canal)}${o.campana ? " · " + esc(o.campana) : ""}</span>` : ""}
-    <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">${abierta && COT_UNIDADES.includes(o.unidad) ? `<button class="btn sm primary" data-cotizar="${o.id}" data-u="${o.unidad}">${ico("doc", 14)} Cotizar</button>` : ""}${abierta && o.unidad === "blackgps" && ["reunion_por_agendar", "en_prospeccion"].includes(o.etapa) ? `<button class="btn sm" data-traspaso="${o.id}">Pasar a Asisma</button>` : ""}${abierta ? `<button class="btn sm" data-ganar="${o.id}">${ico("trophy", 14)} Ganada</button><button class="btn sm ghost danger" data-perder="${o.id}">Perdida</button>` : ""}${abierta && ["blackgps", "somosb2b"].includes(o.unidad) ? `<button class="btn sm" data-asisma="${o.id}">Ficha Asisma</button>` : ""}</span></div>
+    <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">${abierta && COT_UNIDADES.includes(o.unidad) ? `<button class="btn sm primary" data-cotizar="${o.id}" data-u="${o.unidad}">${ico("doc", 14)} Cotizar</button>` : ""}${abierta && o.unidad === "nom" && o.flujo === "consignante" && ["calificando", "revision_agendada", "revisado"].includes(o.etapa) ? `<a class="btn sm" href="${TOOLS.ipc}" target="_blank" rel="noopener">${ico("link", 14)} Inspección IPC</a>` : ""}${abierta && o.unidad === "blackgps" && ["reunion_por_agendar", "en_prospeccion"].includes(o.etapa) ? `<button class="btn sm" data-traspaso="${o.id}">Pasar a Asisma</button>` : ""}${abierta ? `<button class="btn sm" data-ganar="${o.id}">${ico("trophy", 14)} Ganada</button><button class="btn sm ghost danger" data-perder="${o.id}">Perdida</button>` : ""}${abierta && ["blackgps", "somosb2b"].includes(o.unidad) ? `<button class="btn sm" data-asisma="${o.id}">Ficha Asisma</button>` : ""}</span></div>
     ${idx >= 0 ? `<div class="steps" style="--c:${UNIDADES[o.unidad]?.c}" title="${esc(et.map(etapaTxt).join(" → "))}">${et.map((_, i) => `<i class="${i <= idx && abierta ? "done" : o.estado === "ganada" ? "done" : ""}"></i>`).join("")}</div>` : ""}
     <div class="muted" style="font-size:13px">${abierta ? `${o.proxima_fecha ? `<b style="color:${o.proxima_fecha < hoyISO() ? "var(--bad)" : "var(--fg)"}">${fecha(o.proxima_fecha)}</b> · ` : ""}${esc(o.proxima_accion || "Sin próxima acción definida")}` : esc([mot, o.motivo].filter(Boolean).join(" · "))}${o.monto ? ` · ${clp(o.monto)}` : ""}</div></div>`;
+}
+
+/* ---------- herramientas externas (Netlify) ---------- */
+const TOOLS = { cotizador: "https://cotizador-carclass.netlify.app", ipc: "https://nom-inspeccion.netlify.app" };
+const WA_UNIDAD = { carwash: "+56946196226", carclass: "+56986704745", nom: "+56986704745", blackgps: "+56986704745" };
+async function viewHerramientas() {
+  setActive("herramientas");
+  const P = $("#page");
+  P.innerHTML = `<div class="page-head"><div><h1>Herramientas</h1><p>Las herramientas que ya usas, enlazadas a Core. Se abren en una pestaña nueva.</p></div></div>
+    <div class="grid2">
+      <section class="card tool" style="--c:var(--u-carclass)"><div class="card-b" style="display:grid;gap:10px"><div class="row" style="align-items:center;gap:10px">${unidadPill("carclass")}<h3>Cotizador Carclass</h3></div>
+        <p class="muted" style="margin:0;font-size:13px">Documentos formales del servicio: cotización, ingreso a taller y acta de entrega en PDF. Para cotizar y medir si el cliente abrió la cotización, usa <a href="#/cotizaciones">Cotizaciones</a> de Core, que guarda todo en la ficha.</p>
+        <a class="btn primary" href="${TOOLS.cotizador}" target="_blank" rel="noopener" style="justify-self:start">${ico("link", 15)} Abrir cotizador</a></div></section>
+      <section class="card tool" style="--c:var(--u-nom)"><div class="card-b" style="display:grid;gap:10px"><div class="row" style="align-items:center;gap:10px">${unidadPill("nom")}<h3>Inspección IPC</h3></div>
+        <p class="muted" style="margin:0;font-size:13px">Revisión de 4 capas con puntaje y precio máximo sugerido. Cada inspección se guarda en la base del grupo y aparece sola en Vehículos y abajo.</p>
+        <a class="btn primary" href="${TOOLS.ipc}" target="_blank" rel="noopener" style="justify-self:start">${ico("link", 15)} Nueva inspección</a></div></section>
+    </div>
+    <section class="card"><div class="card-h"><h3>Últimas inspecciones IPC</h3><span class="badge" id="ins-n"></span></div><div id="ins">${loading(4)}</div></section>`;
+  try {
+    const l = await rpc("app_inspecciones", { p_limite: 50 });
+    $("#ins-n").textContent = l.length || "";
+    $("#ins").innerHTML = l.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Fecha</th><th>Folio</th><th>Vehículo</th><th>Cliente</th><th class="num">Puntaje</th><th>Veredicto</th><th class="num">Precio máx. sugerido</th>${ME.ve_finanzas ? '<th class="num">Servicio</th>' : ""}</tr></thead><tbody>
+      ${l.map((i) => `<tr><td>${fecha(i.fecha)}</td><td class="sub">${esc(i.folio || "")}</td><td><div class="name">${esc(i.auto || "—")}</div><div class="sub">${esc(i.patente || "")}${i.en_stock ? " · en stock" : ""}</div></td><td>${esc(i.cliente || "—")}${i.telefono ? `<div class="sub">${esc(i.telefono)}</div>` : ""}</td>
+        <td class="num">${i.score != null ? int(i.score) + "%" : "—"}</td><td><span class="pill ${i.veredicto === "APTO" ? "ok" : i.veredicto ? "warn" : ""}">${esc(i.veredicto || "sin veredicto")}</span>${i.criticos ? `<div class="sub">${int(i.criticos)} críticos</div>` : ""}</td>
+        <td class="num">${clp(i.precio_max_sugerido)}</td>${ME.ve_finanzas ? `<td class="num">${clp(i.valor_servicio)}<div class="sub">${esc(i.estado_pago || "")}</div></td>` : ""}</tr>`).join("")}</tbody></table></div>` : `<div class="card-b">${empty("car", "Sin inspecciones todavía")}</div>`;
+  } catch (e) { $("#ins").innerHTML = `<div class="card-b err">${esc(e.message)}</div>`; }
 }
 
 /* ---------- vehículos ---------- */
@@ -1031,7 +1057,7 @@ async function viewVehiculos(params) {
   setActive("vehiculos");
   const f = params.get("f") || (UNI === "carclass" ? "clientes" : "stock");
   const P = $("#page");
-  P.innerHTML = `<div class="page-head"><div><h1>Vehículos</h1><p>Stock de NOM con su rotación e inspección, y autos de clientes de Carclass.</p></div></div>
+  P.innerHTML = `<div class="page-head"><div><h1>Vehículos</h1><p>Stock de NOM con su rotación e inspección, y autos de clientes de Carclass.</p></div><div class="actions"><a class="btn" href="#/herramientas">Ver inspecciones</a><a class="btn primary" href="${TOOLS.ipc}" target="_blank" rel="noopener">${ico("link", 15)} Nueva inspección IPC</a></div></div>
     <div class="tabs">${[["stock", "Stock NOM"], ["clientes", "Autos de clientes"], ["todos", "Todos"]].map(([k, t]) => `<a href="#/vehiculos?f=${k}" class="${f === k ? "on" : ""}">${t}</a>`).join("")}</div><div id="vl">${loading(5)}</div>`;
   try {
     let v = await rpc("app_vehiculos");
@@ -1041,7 +1067,7 @@ async function viewVehiculos(params) {
     const stockMode = f !== "clientes";
     $("#vl").innerHTML = `<section class="card">${v.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Vehículo</th><th>Patente</th><th class="num">Km</th><th>Modalidad</th><th>Dueño</th>${stockMode ? `<th class="num">Publicado</th>${ME.rol === "dueno" ? '<th class="num">Piso (interno)</th>' : ""}<th class="num">Días</th><th>Inspección</th>` : ""}<th>Estado</th></tr></thead><tbody>
       ${v.map((x) => { const vivo = !["vendido", "retirado"].includes(x.estado); return `<tr class="${x.dueno_id ? "click" : ""}" data-emp="${x.dueno_id || ""}"><td class="name">${esc([x.marca, x.modelo, x.version].filter(Boolean).join(" ") || "—")}${x.anio ? ` <span class="faint">${x.anio}</span>` : ""}</td><td>${esc(x.patente || "—")}</td><td class="num">${x.km ? int(x.km) : "—"}</td><td>${x.modalidad === "compra_directa" ? "Propio" : x.modalidad === "consignacion" ? `Consignado${x.comision_pct ? " " + String(x.comision_pct).replace(".", ",") + "%" : ""}` : "Cliente"}</td><td>${esc(x.dueno || "—")}</td>
-        ${stockMode ? `<td class="num">${x.precio_publicado ? clp(x.precio_publicado) : '<span class="faint">—</span>'}</td>${ME.rol === "dueno" ? `<td class="num faint">${x.precio_minimo ? clp(x.precio_minimo) : "—"}</td>` : ""}<td class="num">${x.dias != null ? `<span class="pill ${vivo && x.dias > 45 ? "bad" : vivo && x.dias > 30 ? "warn" : ""}">${int(x.dias)}</span>` : "—"}</td><td>${x.inspeccion ? `<span class="pill ${x.inspeccion.veredicto === "APTO" ? "ok" : "warn"}" title="${esc(x.inspeccion.folio || "")}">${esc(x.inspeccion.veredicto || "")} · ${int(x.inspeccion.score)}%</span>` : x.modalidad !== "cliente" ? '<span class="pill">pendiente</span>' : ""}</td>` : ""}
+        ${stockMode ? `<td class="num">${x.precio_publicado ? clp(x.precio_publicado) : '<span class="faint">—</span>'}</td>${ME.rol === "dueno" ? `<td class="num faint">${x.precio_minimo ? clp(x.precio_minimo) : "—"}</td>` : ""}<td class="num">${x.dias != null ? `<span class="pill ${vivo && x.dias > 45 ? "bad" : vivo && x.dias > 30 ? "warn" : ""}">${int(x.dias)}</span>` : "—"}</td><td>${x.inspeccion ? `<span class="pill ${x.inspeccion.veredicto === "APTO" ? "ok" : "warn"}" title="${esc(x.inspeccion.folio || "")}">${esc(x.inspeccion.veredicto || "")} · ${int(x.inspeccion.score)}%</span>` : x.modalidad !== "cliente" ? `<a class="pill warn" href="${TOOLS.ipc}" target="_blank" rel="noopener" onclick="event.stopPropagation()">inspeccionar</a>` : ""}</td>` : ""}
         <td><span class="pill ${est[x.estado] ?? ""}">${esc(x.estado || "—")}</span></td></tr>`; }).join("")}
       </tbody></table></div>` : empty("car", "Sin vehículos en esta vista")}</section>
       ${stockMode ? '<p class="faint" style="font-size:12px;margin:0">Rotación: tope de 45 días. El precio piso es interno y nunca se comparte con compradores. La inspección se lee de la herramienta IPC de NOM.</p>' : ""}`;
@@ -1479,7 +1505,7 @@ function modalLead(pre = {}) {
     if (u === "carclass") return `<div class="xbox"><div class="lbl">Auto y servicio</div><div class="row">${f("x-marca", "Marca")}${f("x-modelo", "Modelo")}${f("x-anio", "Año", 'type="number" min="1980" max="2030"', "flex:0 1 90px")}${f("x-pat", "Patente", "", "flex:0 1 110px")}</div>${sel("x-serv", "Servicio de interés", SERV_CARCLASS)}<div class="hint">Pide fotos del auto para la pre-evaluación remota. Pintura y desabolladura las cotiza una persona con el especialista.</div></div>`;
     if (u === "carwash") return `<div class="xbox"><div class="lbl">Vehículo y servicio</div><div class="row">${f("x-marca", "Marca y modelo", 'placeholder="Ej: Toyota Hilux"')}${sel("x-tipo", "Tamaño", ["Pequeño y mediano (citycar, sedán, SUV compacto)", "SUV y pickup mediana (Hilux, L200, Ranger)", "Pickup XL o SUV 3 corridas (F-150, Ram, Tahoe)", "Van, furgón o flota (lo cotiza Felipe)"])}</div>
       <div class="row">${sel("x-serv", "Servicio", ["Lavado Boutique", "Lavado Básico (solo exterior)", "Lavado Técnico", "Pulido Básico", "Limpieza Interior + Tapicería", "Pulido Intermedio + Sellado Sintético", "Pulido + Sellado Cerámico", "No sabe aún"])}${f("x-fecha", "Fecha deseada", 'type="date"', "flex:0 1 160px")}</div>
-      <div class="hint">4 Oriente #278, Huertos Familiares · lunes a sábado 9:00 a 17:00 · máximo 4 autos por día · sin servicio a domicilio. Precios «desde» según tamaño; pulidos, cerámico e interior los confirma una persona.</div></div>`;
+      <div class="hint">WhatsApp Carwash.hf +56 9 4619 6226 · 4 Oriente #278, Huertos Familiares · lunes a sábado 9:00 a 17:00 · máximo 4 autos por día · sin domicilio. Lista oficial con precios «desde» según tamaño; en pulidos, cerámico e interior se confirma el estado del auto.</div></div>`;
     if (u === "nom" && fl === "consignante") return `<div class="xbox"><div class="lbl">Auto a consignar</div><div class="row">${f("x-marca", "Marca")}${f("x-modelo", "Modelo")}${f("x-anio", "Año", 'type="number" min="1990" max="2030"', "flex:0 1 90px")}${f("x-km", "Km", 'type="number" min="0"', "flex:0 1 110px")}</div><div class="row">${f("x-precio", "Precio esperado", 'type="number" min="0" step="100000"')}${sel("x-docs", "Documentos y prendas", ["Por confirmar", "Al día y sin prendas", "Tiene prenda", "Documentos pendientes"])}</div><div class="hint">Califica si es 2015 o más, sin prendas y con precio dentro de ±10% del mercado. Comisión 5% (3% sobre $20 MM; mínimo $500.000 bajo $10 MM). Exclusividad 45 días.</div></div>`;
     if (u === "nom") return `<div class="xbox"><div class="lbl">Lo que busca</div><div class="row">${f("x-interes", "Auto de interés", 'placeholder="Ej: Corolla Cross o SUV hasta $17 MM"')}${f("x-pres", "Presupuesto", 'type="number" min="0" step="500000"', "flex:0 1 150px")}${sel("x-pago", "Pago", ["Por confirmar", "Contado", "Financiamiento", "Con auto en parte de pago"], "flex:0 1 200px")}</div><div class="hint">Visita y test drive solo con calificados (plazo menor a 30 días). Reserva mínima $200.000.</div></div>`;
     return `<div class="xbox"><div class="lbl">Empresa</div><div class="row">${f("ld-emp", "Empresa", `value="${esc(pre.empresa || "")}"`)}${f("ld-rut", "RUT", `placeholder="76.123.456-7" value="${esc(pre.rut ? fmtRut(pre.rut) : "")}"`, "flex:0 1 150px")}${f("ld-flota", "Flota", 'type="number" min="0"', "flex:0 1 100px")}</div><div class="row">${f("ld-rubro", "Rubro")}${f("ld-cargo", "Cargo del contacto")}</div><div class="hint">Filtro BlackGPS: flotas de 10 o más vehículos. Desde la reunión en adelante manda Asisma.</div></div>`;
@@ -1593,7 +1619,7 @@ async function render() {
   const params = new URLSearchParams(qs || "");
   window.scrollTo(0, 0);
   const R = { dashboard: () => viewDashboard(params), notificaciones: viewNotificaciones, bandeja: () => viewBandeja(params), conversaciones: viewConversaciones,
-    embudo: () => viewEmbudo(a1 || UNI || undefined, a2), cot: () => viewCot(a1), agenda: () => viewAgenda(params), cotizaciones: viewCotizaciones, clientes: () => viewClientes(params),
+    embudo: () => viewEmbudo(a1 || UNI || undefined, a2), cot: () => viewCot(a1), herramientas: viewHerramientas, agenda: () => viewAgenda(params), cotizaciones: viewCotizaciones, clientes: () => viewClientes(params),
     cliente: () => a1 ? viewCliente(a1) : viewClientes(params), vehiculos: () => viewVehiculos(params), tareas: () => viewTareas(params),
     finanzas: () => viewFinanzas(params), flujo: () => viewFlujo(params), registro: () => viewRegistro(params), importar: viewImportar, equipo: viewEquipo, ayuda: () => viewAyuda(params) };
   return (R[r] || R.dashboard)();

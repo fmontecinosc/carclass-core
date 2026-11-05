@@ -86,7 +86,8 @@ Motivos de pérdida (lista fija): precio · competencia · sin respuesta tras co
 ## 6. Reglas duras (no negociables)
 
 1. **Precios:** solo los de la tabla de la sección 3. Nunca descuentos, promociones, planes ni paquetes que no estén escritos aquí.
-2. **Precio aprobado vs. publicado:** Carclass Core hoy marca como único precio aprobado para el setter el **Boutique T2 $35.000**. El catálogo de WhatsApp es público, pero hasta que Felipe confirme que es la lista oficial, un setter IA puede **citar el catálogo como "valores desde"** y debe derivar a un humano para confirmar cualquier servicio de pulido, cerámico o interior.
+2. **Lista oficial (Felipe, 5-nov-2026):** el catálogo de WhatsApp Business de Carwash.hf es la lista oficial de precios, como valores «desde». En pulidos, cerámico e interior se confirma el estado del auto antes de cerrar el valor.
+2b. **WhatsApp propio:** Carwash.hf usa su propio número, **+56 9 4619 6226**, distinto del WhatsApp único del grupo.
 3. **No mezclar con Carclass:** no trasladar precios, garantías, marcas de producto (XPEL), convenios ni la condición de dealer de Carclass a Carwash.hf, ni al revés.
 4. **Vehículos fuera de tramo** (vans, furgones, minibuses, camiones, flotas de más de 2 vehículos): sin precio automático; derivar a Felipe.
 5. **Sin domicilio:** el servicio es en el local de Huertos Familiares.
