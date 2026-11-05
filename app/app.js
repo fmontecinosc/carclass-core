@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.1.0";
+const VERSION = "2.2.0";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -25,7 +25,7 @@ const UNIDADES = {
   nom:      { n: "NOM", c: "var(--u-nom)", b2c: true },
   blackgps: { n: "BlackGPS", c: "var(--u-blackgps)" },
   somosb2b: { n: "somosB2B", c: "var(--u-somosb2b)" },
-  grupo:    { n: "Holding", c: "var(--u-grupo)" },
+  grupo:    { n: "Grupo", c: "var(--u-grupo)" },
 };
 const ETAPA_TXT = {
   pre_revision: "Pre-revisión", por_contactar: "Por contactar", en_prospeccion: "En prospección", reunion_por_agendar: "Reunión por agendar",
@@ -48,7 +48,7 @@ let installPrompt = null;
 /* ---------- líneas de negocio ---------- */
 // Core gestiona completo Carclass, NOM y Carwash.hf. BlackGPS: solo setter hasta la reunión; desde ahí manda Asisma.
 const LINEAS = [
-  ["", "Holding", "Tres unidades. Un mismo respaldo."],
+  ["", "Grupo", "Tres unidades. Un mismo respaldo."],
   ["carclass", "Carclass", "Tu auto, en manos correctas."],
   ["nom", "NOM", "Más confianza. Mejor decisión."],
   ["carwash", "Carwash.hf", "Lavado y cuidado en Huertos Familiares."],
@@ -62,8 +62,8 @@ function setLinea(u) { UNI = u || ""; lsSet("cc_linea", UNI); document.documentE
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const clp = (n) => n == null ? "—" : "$" + Math.round(Number(n)).toLocaleString("es-CL");
-const clpM = (n) => n == null ? "—" : Math.abs(n) >= 1e6 ? "$" + (n / 1e6).toLocaleString("es-CL", { maximumFractionDigits: 1 }) + " MM" : clp(n);
+const clp = (n) => n == null ? "—" : (Number(n) < 0 ? "-$" : "$") + Math.abs(Math.round(Number(n))).toLocaleString("es-CL");
+const clpM = (n) => n == null ? "—" : Math.abs(n) >= 1e6 ? (n < 0 ? "-$" : "$") + (Math.abs(n) / 1e6).toLocaleString("es-CL", { maximumFractionDigits: 1 }) + " MM" : clp(n);
 const int = (n) => n == null ? "—" : Number(n).toLocaleString("es-CL");
 const iso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
 const hoyISO = () => iso(new Date());
@@ -169,7 +169,7 @@ function viewLogin(msg = "") {
     <section class="login-brand">
       <div class="logo-row">${logoDisc()}<div><b>Carclass Core</b><small>Carclass Group</small></div></div>
       <div style="position:relative;z-index:1">
-        <h1>Todo el holding, <em>en un solo lugar</em>.</h1>
+        <h1>Todo el grupo, <em>en un solo lugar</em>.</h1>
         <p class="lead">El CRM de Carclass, Carwash.hf, NOM, BlackGPS y somosB2B. Leads, clientes, agenda y resultados conectados a tus agentes.</p>
         <ul class="benefits">
           <li><span class="ck">${ico("check", 14)}</span><div><b>Cada lead respondido a tiempo</b><span class="s">Bandeja con reloj de minutos sin respuesta y avisos al teléfono.</span></div></li>
@@ -218,7 +218,7 @@ const NAV = [
   ["Comercial", [["bandeja", "Bandeja", "inbox", "bandeja"], ["conversaciones", "Conversaciones", "chat", null, true], ["embudo", "Embudo", "kanban"], ["agenda", "Agenda", "cal"], ["cotizaciones", "Cotizaciones", "doc"], ["clientes", "Clientes", "users"]]],
   ["Catálogo", [["vehiculos", "Vehículos", "car"]]],
   ["Post-venta", [["tareas", "Tareas y postventa", "tasks", "tareas"]]],
-  ["Finanzas", [["finanzas", "Ventas y márgenes", "chart"]], "fin"],
+  ["Finanzas", [["finanzas", "Resultados", "chart"], ["flujo", "Flujo de caja", "money"], ["registro", "Registro", "doc"], ["importar", "Importar", "dl"]], "fin"],
   ["Organización", [["equipo", "Equipo", "team"]]],
   ["Ayuda", [["ayuda", "Procesos", "help"]]],
 ];
@@ -357,7 +357,7 @@ async function viewDashboard(params) {
   const saludo = h < 12 ? "Buenos días" : h < 20 ? "Buenas tardes" : "Buenas noches";
   const lin = LINEAS.find(([k]) => k === u);
   P.innerHTML = `
-    <div class="page-head"><div><h1>${u ? esc(uName(u)) : `${saludo}, ${esc(nombre)}`}</h1><p>${u ? esc(lin?.[2] || "") : `${new Date().toLocaleDateString("es-CL", { weekday: "long", day: "numeric", month: "long" })} · las cuatro líneas del holding de un vistazo.`}</p></div>
+    <div class="page-head"><div><h1>${u ? esc(uName(u)) : `${saludo}, ${esc(nombre)}`}</h1><p>${u ? esc(lin?.[2] || "") : `${new Date().toLocaleDateString("es-CL", { weekday: "long", day: "numeric", month: "long" })} · las cuatro líneas del grupo de un vistazo.`}</p></div>
       <div class="actions"><button class="btn" id="csv">${ico("dl", 16)} Exportar CSV</button></div></div>
     <div class="ltabs">${LINEAS.filter(([k]) => !k || unidadesMias().includes(k)).map(([k, n]) => `<button class="${k === u ? "on" : ""}" data-go-linea="${k}" style="--c:${k ? UNIDADES[k].c : "var(--brand)"}"><span class="ldot"></span>${n}</button>`).join("")}</div>
     <div class="filters">
@@ -532,7 +532,7 @@ function comercialDash(d, u) {
   const slaPct = d.con_respuesta ? Math.round((d.sla_5min / d.con_respuesta) * 100) : null;
   const canales = d.por_canal || []; const maxC = Math.max(1, ...canales.map((x) => x.n));
   return `
-    <h2 class="sec">Comercial${u ? "" : " del holding"} <span class="faint">· leads del rango</span></h2>
+    <h2 class="sec">Comercial${u ? "" : " del grupo"} <span class="faint">· leads del rango</span></h2>
     <div class="kpis">
       <div class="kpi"><div class="top-row"><span class="l">Leads totales</span><span class="ki">${ico("inbox", 17)}</span></div><span class="v">${int(d.leads)}</span><span class="s">${int(d.abiertas)} abiertos · ${int(d.perdidas)} perdidos</span></div>
       <div class="kpi"><div class="top-row"><span class="l">Tasa de conversión</span><span class="ki">${ico("trophy", 17)}</span></div><span class="v">${conv.toLocaleString("es-CL", { maximumFractionDigits: 1 })}%</span><span class="s">${int(d.ganadas)} ganados de ${int(d.leads)}</span></div>
@@ -833,6 +833,10 @@ async function modalCotizador({ oportunidad_id, unidad, cliente, cot = null, aft
     if (unidad === "carclass") {
       if (cods.includes("ppf_frontal") && !cods.some((c) => ["ceramico_1", "ceramico_4", "protect_plus", "shield"].includes(c))) reglas.push("El PPF nunca se cotiza solo: agrega cerámico, corrección y láminas de seguridad.");
       if (lineas.length > 4) reglas.push("Muchas opciones enfrían al cliente: deja una recomendada y una alternativa.");
+      if (total >= 600000 && !cods.includes("retiro")) reglas.push("Venta de mayor valor: puedes ofrecer retiro y entrega a domicilio sin costo en Chicureo, Las Condes o Lo Barnechea.");
+      if (lineas.some((l) => cat.find((c) => c.codigo === l.codigo)?.aproximado)) reglas.push("Incluye valores aproximados (cerámico, PPF total o desabolladura): se confirman con el cliente y el vehículo.");
+      if (lineas.some((l) => cat.find((c) => c.codigo === l.codigo)?.requiere_humano)) reglas.push("Desabolladura y personalización las evalúa una persona con fotos y el especialista antes de enviar.");
+      if (lineas.some((l) => { const c = cat.find((x) => x.codigo === l.codigo); return c && l.precio < c.precio; })) reglas.push("Hay descuento: evítalo si puedes. Hasta 5% solo si el cliente lo exige para cerrar; más que eso requiere tu aprobación.");
     }
     $("#q-rules", root).innerHTML = reglas.map((r) => `<div class="alert">${ico("alert", 16)}<div>${r}</div></div>`).join("");
   };
@@ -1067,42 +1071,303 @@ async function viewTareas(params) {
   } catch (e) { $("#tl").innerHTML = fail(e); }
 }
 
-/* ---------- finanzas ---------- */
-async function viewFinanzas() {
+/* ---------- finanzas · control financiero del grupo (solo dueño o rol finanzas) ---------- */
+const FIN_TABS = [["finanzas", "Resultados"], ["flujo", "Flujo de caja"], ["registro", "Registro"], ["importar", "Importar"]];
+const FIN_U = ["carclass", "nom", "carwash", "blackgps", "somosb2b", "grupo"];
+const MODALIDADES = [["servicio", "Servicio"], ["licencia", "Mensualidad"], ["instalacion", "Instalación"], ["hardware", "Equipos"], ["consignacion", "Comisión"], ["compraventa", "Compraventa"], ["broker", "Servicio broker"], ["otro", "Otro"]];
+const CAT_COSTO = { directo: ["partner", "compra_equipos", "hardware_franquicia", "insumos", "retiro_domicilio", "comision_venta", "reparacion", "otro"],
+  operacional: ["arriendo", "sueldos_honorarios", "marketing", "software", "contabilidad", "combustible_transporte", "bancos_comisiones", "seguros", "servicios_basicos", "patentes_impuestos", "otro"] };
+const CAT_MOV = { ingreso: ["aporte_socios", "prestamo_recibido", "devolucion", "otro"], egreso: ["retiro_socios", "pago_prestamo", "impuesto_iva", "impuesto_renta", "inversion", "otro"] };
+const catTxt = (c) => (c || "otro").replace(/_/g, " ").replace(/^./, (x) => x.toUpperCase());
+const FIN_PRESETS = [["anio", "Este año"], ["12m", "Últimos 12 meses"], ["sem", "Semestre actual"], ["mes", "Mes actual"], ["anio_ant", "Año anterior"]];
+function finRango(k) {
+  const h = new Date(), y = h.getFullYear(), m = h.getMonth();
+  return { anio: [`${y}-01-01`, `${y}-12-31`], "12m": [iso(new Date(y, m - 11, 1)), iso(new Date(y, m + 1, 0))], sem: m < 6 ? [`${y}-01-01`, `${y}-06-30`] : [`${y}-07-01`, `${y}-12-31`],
+    mes: [iso(new Date(y, m, 1)), iso(new Date(y, m + 1, 0))], anio_ant: [`${y - 1}-01-01`, `${y - 1}-12-31`] }[k] || [`${y}-01-01`, `${y}-12-31`];
+}
+function finCtx(params, ruta) {
+  const pre = params.get("r") || (params.get("desde") ? "" : "anio");
+  const [d0, d1] = pre ? finRango(pre) : [params.get("desde"), params.get("hasta")];
+  const per = params.get("per") || (pre === "mes" ? "mes" : "mes"), u = params.get("u") || "", neto = params.get("iva") !== "1";
+  const link = (o) => { const p = new URLSearchParams({ r: pre, desde: pre ? "" : d0, hasta: pre ? "" : d1, per, u, iva: neto ? "" : "1", ...o }); [...p.keys()].forEach((k) => !p.get(k) && p.delete(k)); return `#/${ruta}?` + p; };
+  return { pre, d0, d1, per, u, neto, link };
+}
+function finHead(ruta, titulo, sub, ctx, opts = {}) {
+  return `<div class="page-head no-print"><div><h1>${titulo}</h1><p>${sub}</p></div><div class="actions">${opts.actions || ""}</div></div>
+    <div class="tabs no-print">${FIN_TABS.map(([r, t]) => `<a href="#/${r}" class="${r === ruta ? "on" : ""}">${t}</a>`).join("")}</div>
+    ${ctx ? `<div class="filters no-print"><div class="chips">${FIN_PRESETS.map(([k, t]) => `<a class="chip ${ctx.pre === k ? "on" : ""}" href="${ctx.link({ r: k, desde: "", hasta: "" })}">${t}</a>`).join("")}</div>
+      <form class="daterange">${ico("cal", 15)}<input type="date" id="fr-d" value="${ctx.d0}" aria-label="Desde"><span class="faint">→</span><input type="date" id="fr-h" value="${ctx.d1}" aria-label="Hasta"></form>
+      ${opts.per !== false ? `<select class="input" id="fr-per" style="width:auto;height:38px" aria-label="Agrupar por">${[["mes", "Por mes"], ["trimestre", "Por trimestre"], ["semestre", "Por semestre"], ["anio", "Por año"]].map(([k, t]) => `<option value="${k}" ${ctx.per === k ? "selected" : ""}>${t}</option>`).join("")}</select>` : ""}
+      ${opts.unidad !== false ? `<select class="input" id="fr-u" style="width:auto;height:38px" aria-label="Unidad"><option value="">Todo el grupo</option>${FIN_U.map((x) => `<option value="${x}" ${ctx.u === x ? "selected" : ""}>${uName(x)}</option>`).join("")}</select>` : ""}
+      ${opts.iva !== false ? `<div class="seg" id="fr-iva"><button type="button" class="${ctx.neto ? "on" : ""}" data-v="">Neto</button><button type="button" class="${ctx.neto ? "" : "on"}" data-v="1">Con IVA</button></div>` : ""}</div>` : ""}`;
+}
+function bindFin(ctx) {
+  if (!ctx) return;
+  const go = (o) => (location.hash = ctx.link(o));
+  if ($("#fr-d")) { $("#fr-d").onchange = () => go({ r: "", desde: $("#fr-d").value, hasta: $("#fr-h").value }); $("#fr-h").onchange = $("#fr-d").onchange; }
+  if ($("#fr-per")) $("#fr-per").onchange = () => go({ per: $("#fr-per").value });
+  if ($("#fr-u")) $("#fr-u").onchange = () => go({ u: $("#fr-u").value });
+  $$("#fr-iva button").forEach((b) => b.onclick = () => go({ iva: b.dataset.v }));
+}
+const perTxt = (p) => /^\d{4}-\d{2}$/.test(p) ? new Date(p + "-15").toLocaleDateString("es-CL", { month: "short", year: "2-digit" }).replace(".", "") : p.replace("-S", " · S").replace("-T", " · T");
+const sinAcceso = () => `<div class="card">${empty("chart", "Sin acceso", "Finanzas es solo para el dueño y el rol de finanzas.")}</div>`;
+const pct = (a, b) => b ? `${(Math.round((a / b) * 1000) / 10).toLocaleString("es-CL")}%` : "—";
+
+async function viewFinanzas(params) {
   setActive("finanzas");
   const P = $("#page");
-  if (!ME.ve_finanzas) { P.innerHTML = `<div class="card">${empty("chart", "Sin acceso", "Esta sección es solo para el dueño.")}</div>`; return; }
-  P.innerHTML = `<div class="page-head"><div><h1>Ventas y márgenes</h1><p>Venta cerrada por su monto real con IVA, menos sus costos asociados. Venta cerrada no es venta cobrada.</p></div></div>${loading(8)}`;
+  if (!ME.ve_finanzas) { P.innerHTML = sinAcceso(); return; }
+  const ctx = finCtx(params, "finanzas");
+  P.innerHTML = finHead("finanzas", "Estado de resultados", `Ingresos, costos directos, gastos y resultado del grupo y de cada unidad. ${ctx.neto ? "Montos netos, sin IVA." : "Montos con IVA."}`, ctx,
+    { actions: `<button class="btn" id="fx-csv">${ico("dl", 16)} Exportar CSV</button><button class="btn primary" id="fx-pdf">${ico("doc", 16)} PDF</button>` }) + `<div id="fin">${loading(8)}</div>`;
+  bindFin(ctx);
   try {
-    const d = await rpc("app_finanzas", { p_meses: 12 });
-    const tot = (k) => d.pnl.reduce((a, r) => a + Number(r[k] || 0), 0);
-    const porU = {}; d.pnl.forEach((r) => { const x = (porU[r.unidad] ||= { ventas: 0, costos: 0, margen: 0, n: 0 }); x.ventas += +r.ventas; x.costos += +r.costos; x.margen += +r.margen; x.n += +(r.n || 0); });
-    const meses = [...new Set(d.pnl.map((r) => r.mes))].sort().reverse();
-    const pend = d.ventas.filter((v) => v.cobro !== "cobrado").reduce((a, v) => a + Number(v.monto), 0);
-    P.innerHTML = `<div class="page-head"><div><h1>Ventas y márgenes</h1><p>Últimos 12 meses. Montos con IVA; el neto se calcula aparte.</p></div>
-      <div class="actions"><button class="btn" id="fx">${ico("dl", 16)} Exportar ventas</button></div></div>
-    <div class="kpis">
-      <div class="kpi"><div class="top-row"><span class="l">Ventas 12 meses</span><span class="ki gold">${ico("money", 17)}</span></div><span class="v">${clpM(tot("ventas"))}</span><span class="s">neto ${clpM(tot("ventas_neto"))}</span></div>
-      <div class="kpi"><div class="top-row"><span class="l">Margen 12 meses</span><span class="ki">${ico("chart", 17)}</span></div><span class="v">${clpM(tot("margen"))}</span><span class="s">${tot("ventas") ? Math.round((tot("margen") / tot("ventas")) * 100) : 0}% sobre ventas</span></div>
-      <div class="kpi"><div class="top-row"><span class="l">MRR BlackGPS</span><span class="ki">${ico("spark", 17)}</span></div><span class="v">${clpM(d.mrr?.mrr)}</span><span class="s">${int(d.mrr?.equipos_activos)} equipos · ${int(d.mrr?.clientes_activos)} clientes</span></div>
-      <div class="kpi"><div class="top-row"><span class="l">Por cobrar</span><span class="ki">${ico("clock", 17)}</span></div><span class="v ${pend ? "warn" : ""}">${clpM(pend)}</span><span class="s">en las últimas ventas</span></div>
-    </div>
-    <section class="card"><div class="card-h"><h3>Por unidad</h3></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Unidad</th><th class="num">Ventas</th><th class="num">Costos directos</th><th class="num">Margen</th><th class="num">%</th><th style="width:28%"></th></tr></thead><tbody>
-      ${Object.entries(porU).sort((a, b) => b[1].ventas - a[1].ventas).map(([u, x]) => `<tr><td>${unidadPill(u)}</td><td class="num">${clp(x.ventas)}</td><td class="num">${clp(x.costos)}</td><td class="num">${clp(x.margen)}</td><td class="num">${x.ventas ? Math.round((x.margen / x.ventas) * 100) : 0}%</td>
-        <td><div class="bar-track"><i style="width:${x.ventas ? Math.max(0, (x.margen / x.ventas) * 100) : 0}%;background:${UNIDADES[u]?.c}"></i></div></td></tr>`).join("")}</tbody></table></div></section>
-    <section class="card"><div class="card-h"><h3>Mes a mes</h3><span class="r faint" style="font-size:12px">un mes sin costos registrados muestra un margen inflado</span></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Mes</th><th>Unidad</th><th class="num">Ventas</th><th class="num">Costos</th><th class="num">Margen</th><th class="num">Gastos</th><th class="num">Resultado</th></tr></thead><tbody>
-      ${meses.map((m) => d.pnl.filter((r) => r.mes === m).map((r, i) => `<tr><td style="text-transform:capitalize">${i === 0 ? new Date(m + "-15").toLocaleDateString("es-CL", { month: "long", year: "numeric" }) : ""}</td><td>${unidadPill(r.unidad)}</td><td class="num">${clp(r.ventas)}</td><td class="num">${+r.costos ? clp(r.costos) : '<span class="pill warn">sin costos</span>'}</td><td class="num">${clp(r.margen)}</td><td class="num">${+r.gastos ? clp(r.gastos) : "—"}</td><td class="num">${clp(r.resultado)}</td></tr>`).join("")).join("")}
-    </tbody></table></div></section>
-    <section class="card"><div class="card-h"><h3>Últimas ventas</h3></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Fecha</th><th>Unidad</th><th>Cliente</th><th>Detalle</th><th class="num">Monto</th><th class="num">Margen</th><th>Cobro</th></tr></thead><tbody>
-      ${d.ventas.map((v) => `<tr><td>${fecha(v.fecha)}</td><td>${unidadPill(v.unidad)}</td><td>${esc(v.cliente || "—")}</td><td class="muted">${esc(v.descripcion || "")}</td><td class="num">${clp(v.monto)}</td><td class="num">${+v.costos ? `<span style="color:${v.monto - v.costos < 0 ? "var(--bad)" : "inherit"}">${clp(v.monto - v.costos)}</span>` : '<span class="faint">sin costo</span>'}</td><td>${v.cobro === "cobrado" ? '<span class="pill ok">Cobrada</span>' : `<span class="pill warn">${esc(v.cobro)}</span>`}</td></tr>`).join("")}
-    </tbody></table></div></section>`;
-    $("#fx").onclick = () => downloadCSV(`ventas_${hoyISO()}.csv`, d.ventas);
-  } catch (e) { P.innerHTML = fail(e); }
+    const d = await rpc("app_eerr", { p_desde: ctx.d0, p_hasta: ctx.d1, p_periodo: ctx.per, p_unidad: ctx.u || null, p_neto: ctx.neto });
+    const pers = d.periodos, F = d.filas;
+    const sum = (f) => { const o = {}; pers.forEach((p) => (o[p] = 0)); F.filter(f).forEach((r) => (o[r.periodo] = (o[r.periodo] || 0) + Number(r.monto || 0))); o._t = pers.reduce((a, p) => a + o[p], 0); return o; };
+    const resta = (a, b) => { const o = {}; [...pers, "_t"].forEach((p) => (o[p] = (a[p] || 0) - (b[p] || 0))); return o; };
+    const ing = sum((r) => r.seccion === "ingresos"), cos = sum((r) => r.seccion === "costos"), gas = sum((r) => r.seccion === "gastos");
+    const mb = resta(ing, cos), res = resta(mb, gas);
+    const rows = [];
+    const sec = (titulo) => rows.push({ t: titulo, k: "sec" });
+    const grupo = (seccion) => {
+      const us = [...new Set(F.filter((r) => r.seccion === seccion).map((r) => r.unidad))].sort((a, b) => FIN_U.indexOf(a) - FIN_U.indexOf(b));
+      us.forEach((u) => {
+        rows.push({ t: uName(u), v: sum((r) => r.seccion === seccion && r.unidad === u), k: "sub", u });
+        [...new Set(F.filter((r) => r.seccion === seccion && r.unidad === u).map((r) => r.concepto))].sort().forEach((c) => rows.push({ t: c, v: sum((r) => r.seccion === seccion && r.unidad === u && r.concepto === c), k: "det" }));
+      });
+    };
+    sec("Ingresos"); grupo("ingresos"); rows.push({ t: "Total ingresos", v: ing, k: "tot" });
+    sec("Costos directos"); grupo("costos"); rows.push({ t: "Total costos directos", v: cos, k: "tot" });
+    rows.push({ t: "Margen bruto", v: mb, k: "big" }); rows.push({ t: "Margen bruto %", v: mb, base: ing, k: "pct" });
+    sec("Gastos operacionales"); grupo("gastos"); rows.push({ t: "Total gastos operacionales", v: gas, k: "tot" });
+    rows.push({ t: "Resultado operacional", v: res, k: "big" }); rows.push({ t: "Margen operacional %", v: res, base: ing, k: "pct" });
+    const cell = (r, p) => r.k === "pct" ? pct(r.v[p], r.base[p]) : r.v[p] ? clp(r.v[p]) : '<span class="faint">—</span>';
+    const sinCostos = pers.filter((p) => ing[p] > 0 && !cos[p]);
+    $("#fin").innerHTML = `
+      <div class="kpis">
+        <div class="kpi"><span class="l">Ingresos</span><span class="v">${clpM(ing._t)}</span><span class="s">${ctx.neto ? "netos" : "con IVA"} · ${esc(fecha(ctx.d0))} a ${esc(fecha(ctx.d1))}</span></div>
+        <div class="kpi"><span class="l">Margen bruto</span><span class="v">${clpM(mb._t)}</span><span class="s">${pct(mb._t, ing._t)} sobre ingresos</span></div>
+        <div class="kpi"><span class="l">Gastos operacionales</span><span class="v ${gas._t ? "" : "warn"}">${clpM(gas._t)}</span><span class="s">${gas._t ? pct(gas._t, ing._t) + " de los ingresos" : "aún sin gastos registrados"}</span></div>
+        <div class="kpi"><span class="l">Resultado operacional</span><span class="v ${res._t < 0 ? "bad" : ""}">${clpM(res._t)}</span><span class="s">${pct(res._t, ing._t)} margen operacional</span></div>
+      </div>
+      ${sinCostos.length || !gas._t ? `<div class="alert no-print">${ico("alert", 18)}<div>${sinCostos.length ? `<b>${sinCostos.map(perTxt).join(", ")}</b> tienen ventas sin costos registrados: el margen aparece inflado. ` : ""}${!gas._t ? "Faltan los gastos operacionales del grupo (arriendo, sueldos, marketing, software, contador): regístralos en <a href=\"#/registro?t=costos\">Registro</a> para ver el resultado real." : ""}</div></div>` : ""}
+      <section class="card eerr-card"><div class="card-h"><h3>Estado de resultados ${ctx.u ? "· " + esc(uName(ctx.u)) : "· Carclass Group"}</h3><span class="r faint" style="font-size:12px">${ctx.neto ? "CLP netos" : "CLP con IVA"}</span></div>
+        <div class="tbl-wrap"><table class="tbl eerr"><thead><tr><th>Concepto</th>${pers.map((p) => `<th class="num">${esc(perTxt(p))}</th>`).join("")}<th class="num">Total</th></tr></thead><tbody>
+        ${rows.map((r) => r.k === "sec" ? `<tr class="e-sec"><td colspan="${pers.length + 2}">${esc(r.t)}</td></tr>` : `<tr class="e-${r.k}">${`<td>${r.k === "sub" ? `<span class="ldot" style="--c:${UNIDADES[r.u]?.c || "var(--muted)"}"></span> ` : ""}${esc(r.t)}</td>`}${pers.map((p) => `<td class="num ${r.k !== "pct" && r.v[p] < 0 ? "neg" : ""}">${cell(r, p)}</td>`).join("")}<td class="num ${r.k !== "pct" && r.v._t < 0 ? "neg" : ""}"><b>${cell(r, "_t")}</b></td></tr>`).join("")}
+        </tbody></table></div></section>
+      <p class="faint" style="font-size:12px;margin:0">Base devengada: la venta cuenta en su fecha de emisión y el costo en su fecha de registro. Para caja real usa <a href="#/flujo">Flujo de caja</a>.</p>`;
+    const csvRows = rows.filter((r) => r.k !== "sec").map((r) => Object.fromEntries([["Concepto", (r.k === "det" ? "   " : "") + r.t], ...pers.map((p) => [perTxt(p), r.k === "pct" ? pct(r.v[p], r.base[p]) : Math.round(r.v[p] || 0)]), ["Total", r.k === "pct" ? pct(r.v._t, r.base._t) : Math.round(r.v._t || 0)]]));
+    $("#fx-csv").onclick = () => downloadCSV(`EERR_${ctx.u || "grupo"}_${ctx.d0}_${ctx.d1}.csv`, csvRows);
+    $("#fx-pdf").onclick = () => window.print();
+  } catch (e) { $("#fin").innerHTML = fail(e); }
+}
+
+async function viewFlujo(params) {
+  setActive("flujo");
+  const P = $("#page");
+  if (!ME.ve_finanzas) { P.innerHTML = sinAcceso(); return; }
+  const ctx = finCtx(params, "flujo");
+  P.innerHTML = finHead("flujo", "Flujo de caja", "Lo que efectivamente entró y salió: cobros, pagos y otros movimientos, con saldo inicial y final. Montos con IVA.", ctx,
+    { iva: false, unidad: false, actions: `<button class="btn" id="fl-csv">${ico("dl", 16)} Exportar CSV</button><button class="btn primary" id="fl-pdf">${ico("doc", 16)} PDF</button>` }) + `<div id="fin">${loading(8)}</div>`;
+  bindFin(ctx);
+  try {
+    const d = await rpc("app_flujo", { p_desde: ctx.d0, p_hasta: ctx.d1, p_periodo: ctx.per });
+    const pers = d.periodos, F = d.filas;
+    const sum = (f) => { const o = {}; pers.forEach((p) => (o[p] = 0)); F.filter(f).forEach((r) => (o[r.periodo] = (o[r.periodo] || 0) + Number(r.monto || 0))); o._t = pers.reduce((a, p) => a + o[p], 0); return o; };
+    const rows = []; const secs = [["cobros", "Cobros de clientes", 1], ["otros_ingresos", "Otros ingresos", 1], ["pagos_costos", "Pagos de costos directos", -1], ["pagos_gastos", "Pagos de gastos", -1], ["otros_egresos", "Otros egresos", -1]];
+    const neto = {}; pers.forEach((p) => (neto[p] = 0)); neto._t = 0;
+    let saldo = Number(d.saldo_inicial || 0); const ini = {}, fin = {};
+    secs.forEach(([s, t, sg]) => {
+      const tot = sum((r) => r.seccion === s); if (!tot._t) return;
+      rows.push({ t, v: tot, k: "sub", sg });
+      [...new Set(F.filter((r) => r.seccion === s).map((r) => r.concepto))].forEach((c) => rows.push({ t: s === "cobros" ? uName(c) : c, v: sum((r) => r.seccion === s && r.concepto === c), k: "det", sg }));
+      [...pers, "_t"].forEach((p) => (neto[p] += sg * tot[p]));
+    });
+    pers.forEach((p) => { ini[p] = saldo; saldo += neto[p]; fin[p] = saldo; }); ini._t = Number(d.saldo_inicial || 0); fin._t = saldo;
+    const c = (v, sg = 1) => v ? clp(sg * v) : '<span class="faint">—</span>';
+    const pc = d.por_cobrar || [], pp = d.por_pagar || [];
+    const tramo = (x) => x.dias <= 30 ? 0 : x.dias <= 60 ? 1 : 2; const tr = [0, 0, 0]; pc.forEach((x) => (tr[tramo(x)] += Number(x.monto)));
+    $("#fin").innerHTML = `
+      ${!d.cuentas?.length ? `<div class="alert info no-print">${ico("info", 18)}<div><b>Agrega tus cuentas bancarias con su saldo y fecha</b> para que el flujo parta del saldo real. Mientras tanto se calcula desde $0.</div></div>` : ""}
+      <div class="kpis">
+        <div class="kpi"><span class="l">Saldo inicial</span><span class="v">${clpM(ini._t)}</span><span class="s">${d.cuentas?.length ? d.cuentas.length + " cuentas" : "sin cuentas registradas"}</span></div>
+        <div class="kpi"><span class="l">Flujo neto del período</span><span class="v ${neto._t < 0 ? "bad" : ""}">${clpM(neto._t)}</span><span class="s">entradas menos salidas</span></div>
+        <div class="kpi"><span class="l">Saldo final</span><span class="v ${fin._t < 0 ? "bad" : ""}">${clpM(fin._t)}</span><span class="s">al ${fecha(ctx.d1)}</span></div>
+        <div class="kpi"><span class="l">Por cobrar</span><span class="v ${tr[2] ? "warn" : ""}">${clpM(pc.reduce((a, x) => a + Number(x.monto), 0))}</span><span class="s">${clpM(tr[2])} con más de 60 días</span></div>
+      </div>
+      <section class="card"><div class="card-h"><h3>Flujo de caja · Carclass Group</h3><span class="r faint" style="font-size:12px">CLP con IVA · base caja</span></div>
+        <div class="tbl-wrap"><table class="tbl eerr"><thead><tr><th>Concepto</th>${pers.map((p) => `<th class="num">${esc(perTxt(p))}</th>`).join("")}<th class="num">Total</th></tr></thead><tbody>
+          <tr class="e-tot"><td>Saldo inicial</td>${pers.map((p) => `<td class="num">${clp(ini[p])}</td>`).join("")}<td class="num"><b>${clp(ini._t)}</b></td></tr>
+          ${rows.map((r) => `<tr class="e-${r.k}"><td>${esc(r.t)}</td>${pers.map((p) => `<td class="num ${r.sg < 0 && r.v[p] ? "neg" : ""}">${c(r.v[p], r.sg)}</td>`).join("")}<td class="num ${r.sg < 0 ? "neg" : ""}"><b>${c(r.v._t, r.sg)}</b></td></tr>`).join("") || `<tr><td colspan="${pers.length + 2}" class="muted">Sin cobros ni pagos en el período.</td></tr>`}
+          <tr class="e-big"><td>Flujo neto</td>${pers.map((p) => `<td class="num ${neto[p] < 0 ? "neg" : ""}">${c(neto[p])}</td>`).join("")}<td class="num ${neto._t < 0 ? "neg" : ""}"><b>${c(neto._t)}</b></td></tr>
+          <tr class="e-big"><td>Saldo final</td>${pers.map((p) => `<td class="num ${fin[p] < 0 ? "neg" : ""}">${clp(fin[p])}</td>`).join("")}<td class="num"><b>${clp(fin._t)}</b></td></tr>
+        </tbody></table></div></section>
+      <div class="grid2">
+        <section class="card"><div class="card-h"><h3>Por cobrar</h3><span class="badge ${pc.length ? "warn" : ""}">${pc.length}</span><span class="r faint" style="font-size:12px">0–30 d ${clpM(tr[0])} · 31–60 d ${clpM(tr[1])} · +60 d ${clpM(tr[2])}</span></div>
+          ${pc.length ? `<div class="tbl-wrap" style="max-height:420px"><table class="tbl"><thead><tr><th>Cliente</th><th>Unidad</th><th class="num">Monto</th><th class="num">Días</th><th></th></tr></thead><tbody>${pc.map((x) => `<tr><td><div class="name">${esc(x.cliente || "—")}</div><div class="sub">${esc([x.documento, fecha(x.fecha)].filter(Boolean).join(" · "))}</div></td><td>${unidadPill(x.unidad)}</td><td class="num">${clp(x.monto)}</td><td class="num"><span class="pill ${x.dias > 60 ? "bad" : x.dias > 30 ? "warn" : ""}">${x.dias}</span></td><td class="no-print"><button class="btn sm" data-cobrar="${x.id}">Cobrada</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="card-b muted">Nada pendiente de cobro.</div>`}</section>
+        <div class="stack">
+          <section class="card"><div class="card-h"><h3>Por pagar</h3><span class="badge">${pp.length}</span></div>${pp.length ? `<div class="tbl-wrap"><table class="tbl"><tbody>${pp.map((x) => `<tr><td><div class="name">${esc(x.proveedor || x.descripcion || "—")}</div><div class="sub">${esc([x.documento, fecha(x.fecha)].filter(Boolean).join(" · "))}</div></td><td class="num">${clp(x.monto)}</td><td class="no-print"><button class="btn sm" data-pagar="${x.id}">Pagada</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="card-b muted">Nada pendiente de pago.</div>`}</section>
+          <section class="card"><div class="card-h"><h3>Cuentas</h3><button class="r btn sm no-print" id="fl-cta">${ico("plus", 14)} Agregar cuenta</button></div><div class="card-b" style="display:grid;gap:8px;font-size:13px">${(d.cuentas || []).map((k) => `<a class="row" href="#" data-cta='${esc(JSON.stringify(k))}' style="justify-content:space-between"><span><b>${esc(k.nombre)}</b> <span class="faint">${esc(k.banco || "")}</span></span><span>${clp(k.saldo_inicial)} <span class="faint">al ${fecha(k.fecha_saldo)}</span></span></a>`).join("") || '<span class="muted">Sin cuentas. Agrega cada cuenta con su saldo a una fecha.</span>'}</div></section>
+        </div>
+      </div>`;
+    const recargar = () => viewFlujo(params);
+    $$("[data-cobrar]").forEach((b) => b.onclick = async () => { b.disabled = true; try { await rpc("app_fin_guardar", { p: { tabla: "ventas", id: b.dataset.cobrar, datos: { estado_cobro: "cobrado", fecha_cobro: hoyISO() } } }); toast("Marcada como cobrada hoy"); recargar(); } catch (e) { toast(e.message, true); b.disabled = false; } });
+    $$("[data-pagar]").forEach((b) => b.onclick = async () => { b.disabled = true; try { await rpc("app_fin_guardar", { p: { tabla: "costos", id: b.dataset.pagar, datos: { estado_pago: "pagado", fecha_pago: hoyISO() } } }); toast("Marcado como pagado hoy"); recargar(); } catch (e) { toast(e.message, true); b.disabled = false; } });
+    $("#fl-cta").onclick = () => modalCuenta(null, recargar);
+    $$("[data-cta]").forEach((a) => a.onclick = (e) => { e.preventDefault(); modalCuenta(JSON.parse(a.dataset.cta), recargar); });
+    $("#fl-csv").onclick = () => downloadCSV(`Flujo_${ctx.d0}_${ctx.d1}.csv`, [{ t: "Saldo inicial", v: ini, sg: 1 }, ...rows, { t: "Flujo neto", v: neto, sg: 1 }, { t: "Saldo final", v: fin, sg: 1 }].map((r) => Object.fromEntries([["Concepto", (r.k === "det" ? "   " : "") + r.t], ...pers.map((p) => [perTxt(p), Math.round((r.sg || 1) * (r.v[p] || 0))]), ["Total", Math.round((r.sg || 1) * (r.v._t || 0))]])));
+    $("#fl-pdf").onclick = () => window.print();
+  } catch (e) { $("#fin").innerHTML = fail(e); }
+}
+function modalCuenta(k, after) {
+  const root = modal(k ? "Editar cuenta" : "Agregar cuenta", `<div class="row"><div class="field"><label for="ct-n">Nombre</label><input class="input" id="ct-n" value="${esc(k?.nombre || "")}" placeholder="Cuenta corriente Carclass"></div><div class="field"><label for="ct-b">Banco</label><input class="input" id="ct-b" value="${esc(k?.banco || "")}"></div></div>
+    <div class="row"><div class="field"><label for="ct-s">Saldo (CLP)</label><input class="input" id="ct-s" type="number" value="${k?.saldo_inicial ?? ""}"></div><div class="field"><label for="ct-f">A la fecha</label><input class="input" id="ct-f" type="date" value="${k?.fecha_saldo || hoyISO()}"></div></div>
+    <p class="faint" style="margin:0;font-size:12px">El flujo suma y resta desde esta fecha. Si cambias el saldo, usa la fecha de la cartola.</p>`, async () => {
+    if (!$("#ct-n").value.trim()) throw new Error("Escribe el nombre de la cuenta.");
+    await rpc("app_fin_guardar", { p: { tabla: "cuentas", id: k?.id || null, datos: { nombre: $("#ct-n").value.trim(), banco: $("#ct-b").value.trim(), saldo_inicial: $("#ct-s").value || 0, fecha_saldo: $("#ct-f").value } } });
+    toast("Cuenta guardada"); after && after();
+  }, "Guardar", false, k ? { text: "Desactivar", fn: async () => { await rpc("app_fin_guardar", { p: { tabla: "cuentas", id: k.id, eliminar: true } }); toast("Cuenta desactivada"); after && after(); } } : null);
+}
+
+async function viewRegistro(params) {
+  setActive("registro");
+  const P = $("#page");
+  if (!ME.ve_finanzas) { P.innerHTML = sinAcceso(); return; }
+  const t = params.get("t") || "ventas";
+  const ctx = finCtx(params, "registro");
+  const link0 = ctx.link; ctx.link = (o) => link0({ t, ...o });
+  const tits = { ventas: "Nueva venta", costos: "Nuevo costo o gasto", movimientos: "Nuevo movimiento" };
+  P.innerHTML = finHead("registro", "Registro financiero", "Ventas, costos, gastos y movimientos de caja de todas las unidades. Montos con IVA; el neto se calcula solo.", ctx,
+    { per: false, iva: false, actions: `<button class="btn" id="rg-csv">${ico("dl", 16)} Exportar CSV</button><button class="btn primary" id="rg-new">${ico("plus", 16)} ${tits[t]}</button>` })
+    + `<div class="seg no-print">${[["ventas", "Ventas"], ["costos", "Costos y gastos"], ["movimientos", "Movimientos"]].map(([k, x]) => `<button class="${k === t ? "on" : ""}" data-t="${k}">${x}</button>`).join("")}</div><div id="fin">${loading(8)}</div>`;
+  bindFin(ctx);
+  $$("[data-t]").forEach((b) => b.onclick = () => (location.hash = link0({ t: b.dataset.t })));
+  const recargar = () => viewRegistro(params);
+  $("#rg-new").onclick = () => modalFin(t, null, recargar);
+  try {
+    const rows = await rpc("app_fin_registros", { p_tabla: t, p_desde: ctx.d0, p_hasta: ctx.d1, p_unidad: ctx.u || null });
+    const tot = rows.reduce((a, r) => a + Number(r.monto || 0), 0);
+    const cols = t === "ventas" ? ["Fecha", "Unidad", "Cliente", "Detalle", "Tipo", "Monto", "Cobro"] : t === "costos" ? ["Fecha", "Unidad", "Tipo", "Categoría", "Proveedor y detalle", "Monto", "Pago"] : ["Fecha", "Tipo", "Categoría", "Detalle", "Cuenta", "Monto"];
+    $("#fin").innerHTML = `<section class="card"><div class="card-h"><h3>${rows.length} registros</h3><span class="r"><b>${clp(tot)}</b></span></div>${rows.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr>${cols.map((c) => `<th class="${c === "Monto" ? "num" : ""}">${c}</th>`).join("")}</tr></thead><tbody>
+      ${rows.map((r, i) => t === "ventas" ? `<tr class="click" data-i="${i}"><td>${fecha(r.fecha)}</td><td>${unidadPill(r.unidad)}</td><td class="name">${esc(r.cliente || "—")}</td><td><div>${esc((r.descripcion || "").slice(0, 80))}</div>${r.documento ? `<div class="sub">${esc(r.documento)}</div>` : ""}</td><td>${esc((MODALIDADES.find((m) => m[0] === r.modalidad) || [0, r.modalidad || "—"])[1])}</td><td class="num">${clp(r.monto)}</td><td><span class="pill ${r.estado_cobro === "cobrado" ? "ok" : "warn"}">${esc(r.estado_cobro)}</span>${r.fecha_cobro ? `<div class="sub">${fecha(r.fecha_cobro)}</div>` : ""}</td></tr>`
+        : t === "costos" ? `<tr class="click" data-i="${i}"><td>${fecha(r.fecha)}</td><td>${unidadPill(r.unidad)}</td><td>${r.tipo === "directo" ? "Costo directo" : "Gasto"}</td><td>${esc(catTxt(r.categoria))}</td><td><div>${esc(r.proveedor || "")}</div><div class="sub">${esc((r.descripcion || "").slice(0, 80))}</div></td><td class="num">${clp(r.monto)}</td><td><span class="pill ${r.estado_pago === "pagado" ? "ok" : "warn"}">${esc(r.estado_pago)}</span></td></tr>`
+        : `<tr class="click" data-i="${i}"><td>${fecha(r.fecha)}</td><td><span class="pill ${r.tipo === "ingreso" ? "ok" : "bad"}">${esc(r.tipo)}</span></td><td>${esc(catTxt(r.categoria))}</td><td>${esc(r.descripcion || "")}</td><td>${esc(r.cuenta || "—")}</td><td class="num">${clp(r.monto)}</td></tr>`).join("")}
+      </tbody></table></div>` : empty("doc", "Sin registros en el rango", "Cambia el rango o crea uno nuevo.")}</section>`;
+    $$("#fin tr[data-i]").forEach((tr) => tr.onclick = () => modalFin(t, rows[tr.dataset.i], recargar));
+    $("#rg-csv").onclick = () => downloadCSV(`${t}_${ctx.d0}_${ctx.d1}.csv`, rows);
+  } catch (e) { $("#fin").innerHTML = fail(e); }
+}
+function modalFin(t, r, after) {
+  const uSel = (v, incluirGrupo = true) => `<select class="input" id="fn-u">${FIN_U.filter((x) => incluirGrupo || x !== "grupo").map((x) => `<option value="${x}" ${x === (v || UNI || "carclass") ? "selected" : ""}>${uName(x)}</option>`).join("")}</select>`;
+  const opt = (arr, v, txt = (x) => x) => arr.map((x) => { const [k, l] = Array.isArray(x) ? x : [x, txt(x)]; return `<option value="${k}" ${k === v ? "selected" : ""}>${esc(l)}</option>`; }).join("");
+  let body = "";
+  if (t === "ventas") body = `<div class="row"><div class="field"><label for="fn-f">Fecha de emisión</label><input class="input" id="fn-f" type="date" value="${r?.fecha || hoyISO()}"></div><div class="field"><label for="fn-u">Unidad</label>${uSel(r?.unidad, false)}</div><div class="field"><label for="fn-m">Tipo</label><select class="input" id="fn-m">${opt(MODALIDADES, r?.modalidad || "servicio")}</select></div></div>
+    <div class="row"><div class="field"><label for="fn-c">Cliente</label><input class="input" id="fn-c" value="${esc(r?.cliente || "")}"></div><div class="field" style="flex:0 1 180px"><label for="fn-doc">N° factura o boleta</label><input class="input" id="fn-doc" value="${esc(r?.documento || "")}"></div></div>
+    <div class="field"><label for="fn-d">Detalle</label><input class="input" id="fn-d" value="${esc(r?.descripcion || "")}" placeholder="Servicio, vehículo, período"></div>
+    <div class="row"><div class="field"><label for="fn-mo">Monto con IVA</label><input class="input" id="fn-mo" type="number" min="0" value="${r?.monto ?? ""}"></div><div class="field"><label for="fn-iva">IVA</label><select class="input" id="fn-iva">${opt([["true", "Afecto"], ["false", "Exento"]], String(r?.afecto_iva ?? true))}</select></div>
+      <div class="field"><label for="fn-e">Cobro</label><select class="input" id="fn-e">${opt([["pendiente", "Pendiente"], ["cobrado", "Cobrado"]], r?.estado_cobro || "pendiente")}</select></div><div class="field"><label for="fn-fe">Fecha de cobro</label><input class="input" id="fn-fe" type="date" value="${r?.fecha_cobro || ""}"></div></div>`;
+  if (t === "costos") body = `<div class="row"><div class="field"><label for="fn-f">Fecha</label><input class="input" id="fn-f" type="date" value="${r?.fecha || hoyISO()}"></div><div class="field"><label for="fn-u">Unidad</label>${uSel(r?.unidad)}</div><div class="field"><label for="fn-tp">Tipo</label><select class="input" id="fn-tp">${opt([["operacional", "Gasto operacional"], ["directo", "Costo directo de venta"]], r?.tipo === "directo" ? "directo" : "operacional")}</select></div></div>
+    <div class="row"><div class="field"><label for="fn-cat">Categoría</label><select class="input" id="fn-cat"></select></div><div class="field"><label for="fn-p">Proveedor</label><input class="input" id="fn-p" value="${esc(r?.proveedor || "")}"></div><div class="field" style="flex:0 1 160px"><label for="fn-doc">N° documento</label><input class="input" id="fn-doc" value="${esc(r?.documento || "")}"></div></div>
+    <div class="field"><label for="fn-d">Detalle</label><input class="input" id="fn-d" value="${esc(r?.descripcion || "")}"></div>
+    <div class="row"><div class="field"><label for="fn-mo">Monto con IVA</label><input class="input" id="fn-mo" type="number" min="0" value="${r?.monto ?? ""}"></div><div class="field"><label for="fn-iva">IVA</label><select class="input" id="fn-iva">${opt([["true", "Con IVA (factura)"], ["false", "Sin IVA (boleta de honorarios, exento)"]], String(r?.afecto_iva ?? true))}</select></div>
+      <div class="field"><label for="fn-e">Pago</label><select class="input" id="fn-e">${opt([["pagado", "Pagado"], ["pendiente", "Pendiente"]], r?.estado_pago || "pagado")}</select></div><div class="field"><label for="fn-fe">Fecha de pago</label><input class="input" id="fn-fe" type="date" value="${r?.fecha_pago || ""}"></div></div>`;
+  if (t === "movimientos") body = `<div class="row"><div class="field"><label for="fn-f">Fecha</label><input class="input" id="fn-f" type="date" value="${r?.fecha || hoyISO()}"></div><div class="field"><label for="fn-tp">Tipo</label><select class="input" id="fn-tp">${opt([["ingreso", "Ingreso"], ["egreso", "Egreso"]], r?.tipo || "egreso")}</select></div><div class="field"><label for="fn-cat">Categoría</label><select class="input" id="fn-cat"></select></div></div>
+    <div class="row"><div class="field"><label for="fn-u">Unidad</label>${uSel(r?.unidad || "grupo")}</div><div class="field"><label for="fn-mo">Monto</label><input class="input" id="fn-mo" type="number" min="1" value="${r?.monto ?? ""}"></div><div class="field" style="flex:0 1 160px"><label for="fn-doc">N° documento</label><input class="input" id="fn-doc" value="${esc(r?.documento || "")}"></div></div>
+    <div class="field"><label for="fn-d">Detalle</label><input class="input" id="fn-d" value="${esc(r?.descripcion || "")}" placeholder="Ej: aporte de socio, pago cuota préstamo, IVA de octubre"></div>`;
+  const nombres = { ventas: "venta", costos: "costo o gasto", movimientos: "movimiento" };
+  const g = (id) => $("#" + id)?.value ?? null;
+  const root = modal(r ? `Editar ${nombres[t]}` : `Nuevo ${nombres[t]}`, body + `<p class="faint" style="margin:0;font-size:12px">Queda en la auditoría con tu usuario.</p>`, async () => {
+    if (!g("fn-mo") || Number(g("fn-mo")) <= 0) throw new Error("Escribe el monto.");
+    const datos = t === "ventas" ? { fecha: g("fn-f"), unidad: g("fn-u"), modalidad: g("fn-m"), cliente: g("fn-c"), documento: g("fn-doc"), descripcion: g("fn-d"), monto: g("fn-mo"), afecto_iva: g("fn-iva") === "true", estado_cobro: g("fn-e"), fecha_cobro: g("fn-fe") }
+      : t === "costos" ? { fecha: g("fn-f"), unidad: g("fn-u"), tipo: g("fn-tp"), categoria: g("fn-cat"), proveedor: g("fn-p"), documento: g("fn-doc"), descripcion: g("fn-d"), monto: g("fn-mo"), afecto_iva: g("fn-iva") === "true", estado_pago: g("fn-e"), fecha_pago: g("fn-fe") }
+      : { fecha: g("fn-f"), tipo: g("fn-tp"), categoria: g("fn-cat"), unidad: g("fn-u"), monto: g("fn-mo"), documento: g("fn-doc"), descripcion: g("fn-d") };
+    await rpc("app_fin_guardar", { p: { tabla: t, id: r?.id || null, datos } });
+    toast("Guardado"); after && after();
+  }, "Guardar", false, r ? { text: "Eliminar", fn: async () => { if (!confirm("¿Eliminar este registro? Queda en la auditoría.")) throw new Error("Cancelado"); await rpc("app_fin_guardar", { p: { tabla: t, id: r.id, eliminar: true } }); toast("Eliminado"); after && after(); } } : null);
+  const syncCat = () => { const sel = $("#fn-cat", root); if (!sel) return; const lista = t === "costos" ? CAT_COSTO[$("#fn-tp", root).value] : CAT_MOV[$("#fn-tp", root).value]; sel.innerHTML = opt(lista, r?.categoria || lista[0], catTxt); };
+  if ($("#fn-tp", root)) { $("#fn-tp", root).onchange = syncCat; syncCat(); }
+}
+
+/* importar: CSV de Asisma, facturas o planillas, y mensualidades BlackGPS */
+function parseCSV(txt) {
+  const sep = (txt.split("\n")[0].match(/;/g) || []).length >= (txt.split("\n")[0].match(/,/g) || []).length ? ";" : ",";
+  const out = []; let row = [], cur = "", q = false;
+  for (let i = 0; i < txt.length; i++) { const ch = txt[i];
+    if (q) { if (ch === '"' && txt[i + 1] === '"') { cur += '"'; i++; } else if (ch === '"') q = false; else cur += ch; }
+    else if (ch === '"') q = true; else if (ch === sep) { row.push(cur); cur = ""; } else if (ch === "\n" || ch === "\r") { if (ch === "\r" && txt[i + 1] === "\n") i++; row.push(cur); if (row.some((c) => c.trim())) out.push(row); row = []; cur = ""; } else cur += ch; }
+  row.push(cur); if (row.some((c) => c.trim())) out.push(row);
+  return out;
+}
+const numCL = (s) => { if (s == null) return null; let x = String(s).replace(/[^\d,.-]/g, ""); if (/,\d{1,2}$/.test(x)) x = x.replace(/\./g, "").replace(",", "."); else x = x.replace(/[.,]/g, ""); const n = Number(x); return isNaN(n) ? null : Math.round(n); };
+const fechaCL = (s) => { if (!s) return null; s = String(s).trim(); let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`; m = s.match(/^(\d{1,2})\s*[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{2,4})/); if (m) { const y = m[3].length === 2 ? "20" + m[3] : m[3]; return `${y}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`; } return null; };
+async function viewImportar() {
+  setActive("importar");
+  const P = $("#page");
+  if (!ME.ve_finanzas) { P.innerHTML = sinAcceso(); return; }
+  P.innerHTML = finHead("importar", "Importar y cargar", "Carga masiva desde Asisma, facturas o planillas, y mensualidades de BlackGPS. Nada se duplica: se omite lo que ya tenga el mismo N° de documento en la misma unidad.", null) + `
+    <div class="grid2">
+      <section class="card"><div class="card-h"><h3>Mensualidades BlackGPS</h3></div><div class="card-b" style="display:grid;gap:12px">
+        <p class="muted" style="margin:0;font-size:13px">Crea una venta pendiente de cobro por cada contrato activo, con su valor mensual. Se omiten los clientes que ya tengan su mensualidad de ese mes (por ejemplo, la facturación de noviembre que ya cargó el asistente de finanzas).</p>
+        <div class="row" style="align-items:flex-end"><div class="field" style="flex:0 1 180px"><label for="mm-mes">Mes</label><input class="input" id="mm-mes" type="month" value="${hoyISO().slice(0, 7)}"></div><button class="btn" id="mm-ver">Vista previa</button></div>
+        <div id="mm-res"></div></div></section>
+      <section class="card"><div class="card-h"><h3>Importar CSV</h3><a class="r btn sm ghost" href="#" id="im-plant">${ico("dl", 14)} Plantillas</a></div><div class="card-b" style="display:grid;gap:12px">
+        <div class="row"><div class="field"><label for="im-t">Qué importas</label><select class="input" id="im-t"><option value="ventas">Ventas</option><option value="costos">Costos y gastos</option></select></div><div class="field"><label for="im-u">Unidad (si el archivo no la trae)</label><select class="input" id="im-u">${FIN_U.map((x) => `<option value="${x}">${uName(x)}</option>`).join("")}</select></div></div>
+        <div class="field"><label for="im-f">Archivo CSV</label><input class="input" id="im-f" type="file" accept=".csv,text/csv,text/plain" style="padding-top:8px"></div>
+        <div class="field"><label for="im-txt">o pega aquí las filas (con encabezado)</label><textarea class="input" id="im-txt" style="min-height:80px" placeholder="fecha;documento;cliente;detalle;monto"></textarea></div>
+        <button class="btn primary" id="im-leer" style="justify-self:start">Leer archivo</button></div></section>
+    </div><div id="im-map"></div>`;
+  $("#mm-ver").onclick = async () => {
+    const mes = $("#mm-mes").value + "-01";
+    try {
+      const r = await rpc("app_fin_mensualidades", { p_mes: mes, p_crear: false });
+      const nuevas = r.filas.filter((f) => !f.ya_registrada);
+      $("#mm-res").innerHTML = `<div class="tbl-wrap" style="max-height:300px"><table class="tbl"><tbody>${r.filas.map((f) => `<tr><td>${esc(f.empresa)} <span class="faint">· ${int(f.equipos)} eq.</span></td><td class="num">${clp(f.monto)}</td><td>${f.ya_registrada ? '<span class="pill ok">ya cargada</span>' : '<span class="pill">nueva</span>'}</td></tr>`).join("")}</tbody></table></div>
+        <div class="row" style="justify-content:space-between;align-items:center"><span><b>${nuevas.length}</b> por crear · <b>${clp(r.total)}</b></span>${nuevas.length ? `<button class="btn primary" id="mm-ok">Crear ${nuevas.length} mensualidades</button>` : ""}</div>`;
+      if ($("#mm-ok")) $("#mm-ok").onclick = async () => { if (!confirm(`¿Crear ${nuevas.length} ventas de mensualidad de ${r.mes} por ${clp(r.total)}?`)) return; const x = await rpc("app_fin_mensualidades", { p_mes: mes, p_crear: true }); toast(`${x.creadas} mensualidades creadas`); $("#mm-ver").click(); };
+    } catch (e) { $("#mm-res").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+  };
+  $("#im-plant").onclick = (e) => { e.preventDefault();
+    downloadCSV("plantilla_ventas.csv", [{ fecha: "2026-11-05", unidad: "carclass", documento: "F-1234", cliente: "Nombre cliente", detalle: "Sellado cerámico · Audi A3", tipo: "servicio", monto: 280000, estado: "cobrado", fecha_cobro: "2026-11-05" }]);
+    setTimeout(() => downloadCSV("plantilla_costos_gastos.csv", [{ fecha: "2026-11-05", unidad: "grupo", tipo: "operacional", categoria: "arriendo", proveedor: "Proveedor", documento: "F-998", detalle: "Arriendo oficina noviembre", monto: 350000, estado: "pagado" }]), 400);
+  };
+  $("#im-f").onchange = async () => { const f = $("#im-f").files[0]; if (f) $("#im-txt").value = await f.text(); };
+  $("#im-leer").onclick = () => {
+    const filas = parseCSV($("#im-txt").value || ""); if (filas.length < 2) { toast("No encontré filas: revisa que tenga encabezado y al menos una fila", true); return; }
+    const head = filas[0].map((h) => h.trim()), datos = filas.slice(1), t = $("#im-t").value;
+    const CAMPOS = t === "ventas" ? [["fecha", "Fecha *"], ["monto", "Monto con IVA *"], ["documento", "N° documento"], ["cliente", "Cliente"], ["descripcion", "Detalle"], ["modalidad", "Tipo"], ["estado_cobro", "Estado de cobro"], ["fecha_cobro", "Fecha de cobro"], ["unidad", "Unidad"]]
+      : [["fecha", "Fecha *"], ["monto", "Monto con IVA *"], ["documento", "N° documento"], ["proveedor", "Proveedor"], ["descripcion", "Detalle"], ["tipo", "Tipo (directo u operacional)"], ["categoria", "Categoría"], ["estado_pago", "Estado de pago"], ["unidad", "Unidad"]];
+    const adivina = (c) => { const k = c[0]; const rx = { fecha: /^fecha( de)? ?(emisi|doc|$)|^fecha$|fecha ing/i, monto: /monto|total|valor bruto|importe/i, documento: /folio|n[°º]|factura|documento|pedido|boleta/i, cliente: /cliente|raz[oó]n|empresa/i, proveedor: /proveedor|raz[oó]n/i, descripcion: /detalle|descrip|glosa|servicio|concepto/i, modalidad: /^tipo|modalidad/i, tipo: /^tipo/i, categoria: /categor/i, estado_cobro: /estado|pagad|cobr/i, estado_pago: /estado|pagad/i, fecha_cobro: /fecha (de )?(cobro|pago)/i, unidad: /unidad|negocio/i }[k];
+      const i = head.findIndex((h) => rx && rx.test(h)); return i; };
+    $("#im-map").innerHTML = `<section class="card"><div class="card-h"><h3>Columnas · ${datos.length} filas</h3></div><div class="card-b" style="display:grid;gap:12px">
+      <div class="row">${CAMPOS.map(([k, l]) => `<div class="field" style="flex:1 1 170px"><label>${l}</label><select class="input" data-map="${k}"><option value="-1">—</option>${head.map((h, i) => `<option value="${i}" ${adivina([k]) === i ? "selected" : ""}>${esc(h)}</option>`).join("")}</select></div>`).join("")}</div>
+      <div id="im-prev"></div><div class="row"><button class="btn primary" id="im-go">Importar</button></div><div id="im-out"></div></div></section>`;
+    const normal = () => {
+      const mp = Object.fromEntries($$("[data-map]").map((s) => [s.dataset.map, Number(s.value)]));
+      return datos.map((r) => { const o = {}; for (const [k, i] of Object.entries(mp)) if (i >= 0) o[k] = (r[i] || "").trim();
+        o.fecha = fechaCL(o.fecha); o.monto = numCL(o.monto); if (o.fecha_cobro) o.fecha_cobro = fechaCL(o.fecha_cobro);
+        if (o.estado_cobro != null) o.estado_cobro = /cobr|pagad|ok|si|sí/i.test(o.estado_cobro) ? "cobrado" : "pendiente";
+        if (o.estado_pago != null) o.estado_pago = /pend|no/i.test(o.estado_pago) ? "pendiente" : "pagado";
+        if (o.tipo != null) o.tipo = /direct|venta|partner/i.test(o.tipo) ? "directo" : "operacional";
+        if (o.unidad) { const u = Object.keys(UNIDADES).find((k) => k === o.unidad.toLowerCase() || UNIDADES[k].n.toLowerCase() === o.unidad.toLowerCase()); o.unidad = u || null; }
+        return o; }).filter((o) => o.fecha && o.monto);
+    };
+    const prev = () => { const n = normal(); $("#im-prev").innerHTML = `<div class="faint" style="font-size:12.5px">${n.length} filas válidas de ${datos.length} (sin fecha o monto se omiten). Primeras 8:</div><div class="tbl-wrap"><table class="tbl"><tbody>${n.slice(0, 8).map((o) => `<tr><td>${fecha(o.fecha)}</td><td>${esc(o.documento || "")}</td><td>${esc(o.cliente || o.proveedor || "")}</td><td>${esc((o.descripcion || "").slice(0, 60))}</td><td class="num">${clp(o.monto)}</td></tr>`).join("")}</tbody></table></div>`; };
+    $$("[data-map]").forEach((s) => (s.onchange = prev)); prev();
+    $("#im-go").onclick = async () => {
+      const n = normal(); if (!n.length) { toast("No hay filas válidas", true); return; }
+      if (!confirm(`¿Importar ${n.length} ${t === "ventas" ? "ventas" : "costos o gastos"}?`)) return;
+      const b = $("#im-go"); b.disabled = true;
+      try { const r = await rpc("app_fin_importar", { p: { tabla: t, unidad: $("#im-u").value, filas: n } });
+        $("#im-out").innerHTML = `<div class="alert ${r.errores ? "" : "brand"}">${ico(r.errores ? "alert" : "check", 18)}<div><b>${r.importadas}</b> importadas · ${r.duplicadas} omitidas por duplicadas · ${r.errores} con error${r.detalle_errores?.length ? `<div class="faint" style="font-size:12px;margin-top:4px">${r.detalle_errores.slice(0, 5).map((e) => esc(e.error)).join("<br>")}</div>` : ""}</div></div>`;
+      } catch (e) { toast(e.message, true); } finally { b.disabled = false; }
+    };
+  };
 }
 
 /* ---------- equipo ---------- */
-const MODULOS = ["Dashboard", "Bandeja", "Conversaciones", "Embudo", "Agenda", "Cotizaciones", "Clientes", "Vehículos", "Tareas y postventa", "Ventas y márgenes", "Equipo"];
-const ROLES = [["Dueño", MODULOS.map(() => "total")], ["Comercial Carclass y Carwash.hf", ["ver", "total", "total", "total", "total", "total", "total", "total", "total", "—", "—"]], ["Ejecutivo NOM", ["ver", "total", "total", "total", "total", "—", "total", "total", "total", "—", "—"]]];
+const MODULOS = ["Dashboard", "Bandeja", "Conversaciones", "Embudo", "Agenda", "Cotizaciones", "Clientes", "Vehículos", "Tareas y postventa", "Finanzas", "Equipo"];
+const ROLES = [["Dueño", MODULOS.map(() => "total")], ["Administrador de finanzas", ["ver", "—", "—", "—", "—", "ver", "ver", "ver", "—", "total", "—"]], ["Comercial Carclass y Carwash.hf", ["ver", "total", "total", "total", "total", "total", "total", "total", "total", "—", "—"]], ["Ejecutivo NOM", ["ver", "total", "total", "total", "total", "—", "total", "total", "total", "—", "—"]]];
 async function viewEquipo() {
   setActive("equipo");
   const P = $("#page");
@@ -1207,7 +1472,7 @@ function modalLead(pre = {}) {
   const extra = (u, fl) => {
     if (u === "carclass") return `<div class="xbox"><div class="lbl">Auto y servicio</div><div class="row">${f("x-marca", "Marca")}${f("x-modelo", "Modelo")}${f("x-anio", "Año", 'type="number" min="1980" max="2030"', "flex:0 1 90px")}${f("x-pat", "Patente", "", "flex:0 1 110px")}</div>${sel("x-serv", "Servicio de interés", SERV_CARCLASS)}<div class="hint">Pide fotos del auto para la pre-evaluación remota. Pintura y desabolladura las cotiza una persona con el especialista.</div></div>`;
     if (u === "carwash") return `<div class="xbox"><div class="lbl">Servicio</div><div class="row">${sel("x-tipo", "Vehículo", ["SUV", "Sedán", "Camioneta"])}${sel("x-serv", "Servicio", ["Lavado boutique", "Limpieza interior", "Lavado + interior", "Otro"])}${f("x-fecha", "Fecha deseada", 'type="date"', "flex:0 1 160px")}</div><div class="hint">Máximo 4 autos por día. Solo se informan precios aprobados (boutique SUV $35.000).</div></div>`;
-    if (u === "nom" && fl === "consignante") return `<div class="xbox"><div class="lbl">Auto a consignar</div><div class="row">${f("x-marca", "Marca")}${f("x-modelo", "Modelo")}${f("x-anio", "Año", 'type="number" min="1990" max="2030"', "flex:0 1 90px")}${f("x-km", "Km", 'type="number" min="0"', "flex:0 1 110px")}</div><div class="row">${f("x-precio", "Precio esperado", 'type="number" min="0" step="100000"')}${sel("x-docs", "Documentos y prendas", ["Por confirmar", "Al día y sin prendas", "Tiene prenda", "Documentos pendientes"])}</div><div class="hint">Califica si es 2015 o más, sin prendas y con precio dentro de ±10% del mercado. Comisión 4%, mínimo $150.000.</div></div>`;
+    if (u === "nom" && fl === "consignante") return `<div class="xbox"><div class="lbl">Auto a consignar</div><div class="row">${f("x-marca", "Marca")}${f("x-modelo", "Modelo")}${f("x-anio", "Año", 'type="number" min="1990" max="2030"', "flex:0 1 90px")}${f("x-km", "Km", 'type="number" min="0"', "flex:0 1 110px")}</div><div class="row">${f("x-precio", "Precio esperado", 'type="number" min="0" step="100000"')}${sel("x-docs", "Documentos y prendas", ["Por confirmar", "Al día y sin prendas", "Tiene prenda", "Documentos pendientes"])}</div><div class="hint">Califica si es 2015 o más, sin prendas y con precio dentro de ±10% del mercado. Comisión 5% (3% sobre $20 MM; mínimo $500.000 bajo $10 MM). Exclusividad 45 días.</div></div>`;
     if (u === "nom") return `<div class="xbox"><div class="lbl">Lo que busca</div><div class="row">${f("x-interes", "Auto de interés", 'placeholder="Ej: Corolla Cross o SUV hasta $17 MM"')}${f("x-pres", "Presupuesto", 'type="number" min="0" step="500000"', "flex:0 1 150px")}${sel("x-pago", "Pago", ["Por confirmar", "Contado", "Financiamiento", "Con auto en parte de pago"], "flex:0 1 200px")}</div><div class="hint">Visita y test drive solo con calificados (plazo menor a 30 días). Reserva mínima $200.000.</div></div>`;
     return `<div class="xbox"><div class="lbl">Empresa</div><div class="row">${f("ld-emp", "Empresa", `value="${esc(pre.empresa || "")}"`)}${f("ld-rut", "RUT", `placeholder="76.123.456-7" value="${esc(pre.rut ? fmtRut(pre.rut) : "")}"`, "flex:0 1 150px")}${f("ld-flota", "Flota", 'type="number" min="0"', "flex:0 1 100px")}</div><div class="row">${f("ld-rubro", "Rubro")}${f("ld-cargo", "Cargo del contacto")}</div><div class="hint">Filtro BlackGPS: flotas de 10 o más vehículos. Desde la reunión en adelante manda Asisma.</div></div>`;
   };
@@ -1283,7 +1548,7 @@ async function modalAsisma(opId) {
 function onboarding(force = false) {
   if (!force && lsGet("cc_onb_v2")) return;
   const pasos = [
-    ["spark", "Bienvenido a Carclass Core", "Tu holding en un solo lugar: Carclass, Carwash.hf, NOM, BlackGPS y somosB2B. El menú de la izquierda está ordenado como tu día: analizar, vender, operar y cobrar."],
+    ["spark", "Bienvenido a Carclass Core", "Todo el grupo en un solo lugar: Carclass, Carwash.hf, NOM, BlackGPS y somosB2B. El menú de la izquierda está ordenado como tu día: analizar, vender, operar y cobrar."],
     ["bell", "Activa los avisos", "Te avisamos cuando entra un lead y cuando lleva 5 minutos sin respuesta. En iPhone, primero instala la app: Safari → Compartir → Agregar a pantalla de inicio."],
     ["inbox", "Empieza por la Bandeja", "Ahí está cada lead con su reloj de minutos sin respuesta. Cada gestión que registras avanza el embudo solo; tú decides cuándo se gana o se pierde."],
   ];
@@ -1322,7 +1587,7 @@ async function render() {
   const R = { dashboard: () => viewDashboard(params), notificaciones: viewNotificaciones, bandeja: () => viewBandeja(params), conversaciones: viewConversaciones,
     embudo: () => viewEmbudo(a1 || UNI || undefined, a2), cot: () => viewCot(a1), agenda: () => viewAgenda(params), cotizaciones: viewCotizaciones, clientes: () => viewClientes(params),
     cliente: () => a1 ? viewCliente(a1) : viewClientes(params), vehiculos: () => viewVehiculos(params), tareas: () => viewTareas(params),
-    finanzas: viewFinanzas, equipo: viewEquipo, ayuda: () => viewAyuda(params) };
+    finanzas: () => viewFinanzas(params), flujo: () => viewFlujo(params), registro: () => viewRegistro(params), importar: viewImportar, equipo: viewEquipo, ayuda: () => viewAyuda(params) };
   return (R[r] || R.dashboard)();
 }
 window.addEventListener("hashchange", () => (ME || location.hash.startsWith("#/c/")) && render());

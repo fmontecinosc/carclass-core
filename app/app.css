@@ -485,3 +485,20 @@ h2.sec .faint { font-weight: 500; font-size: 13px; }
   .fstep { grid-template-columns: 22px 96px minmax(0, 1fr) 40px; }
   .minis { gap: 8px 10px; }
 }
+
+/* ---------- v2.2 · finanzas ---------- */
+.eerr { font-size: 12.5px; }
+.eerr th:first-child, .eerr td:first-child { position: sticky; left: 0; background: var(--surface); z-index: 1; min-width: 220px; }
+.eerr thead th:first-child { background: var(--surface-2); }
+.eerr td { padding: 8px 12px; white-space: nowrap; }
+.eerr .e-sec td { background: var(--surface-2); font-weight: 800; text-transform: uppercase; font-size: 11px; letter-spacing: .06em; color: var(--muted); padding-top: 12px; }
+.eerr .e-sub td { font-weight: 700; }
+.eerr .e-det td { color: var(--muted); }
+.eerr .e-det td:first-child { padding-left: 32px; }
+.eerr .e-tot td { font-weight: 700; border-top: 1px solid var(--border-2); }
+.eerr .e-big td { font-weight: 800; font-size: 13.5px; background: var(--brand-050); border-top: 2px solid var(--brand); }
+.eerr .e-big td:first-child { background: var(--brand-050); }
+.eerr .e-pct td { color: var(--muted); font-style: italic; }
+.eerr .neg { color: var(--bad); }
+.eerr .ldot { display: inline-block; width: 8px; height: 8px; margin-right: 4px; }
+@media print { .eerr-card, .card { box-shadow: none !important; border: 1px solid #ddd !important; break-inside: avoid; } .kpis { grid-template-columns: repeat(4, 1fr) !important; } .tbl-wrap { overflow: visible !important; max-height: none !important; } .eerr td, .eerr th { font-size: 9.5px; padding: 4px 6px; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }

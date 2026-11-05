@@ -4,7 +4,7 @@
 
 ## 1. Qué es Carclass Core
 
-El CRM y sistema de gestión propio del holding **Carclass Group** (Felipe Montecinos, CEO y operador único, Huertos Familiares, Tiltil). Una base única para pipeline, leads, clientes, vehículos, agenda, cotizaciones, ventas, costos, márgenes y tareas, conectada por API y MCP a Claude, ChatGPT, WhatsApp y las webs.
+El CRM y sistema de gestión propio del grupo empresarial **Carclass Group** (Felipe Montecinos, CEO y operador único, Huertos Familiares, Tiltil). Una base única para pipeline, leads, clientes, vehículos, agenda, cotizaciones, ventas, costos, márgenes y tareas, conectada por API y MCP a Claude, ChatGPT, WhatsApp y las webs.
 
 **Unidades de negocio**
 
@@ -102,7 +102,7 @@ App instalable (PWA) con **notificaciones push** al teléfono y computador (en i
   - **Pintura y desabolladura: los gestiona un humano** (hay que evaluar fotos y cotizar con el especialista). El asesor recibe fotos y datos y traspasa.
   - **Setter de NOM:** calificar consignantes y compradores según `docs/procesos-comerciales.md` y agendar con el closer. No tasa ni acepta autos.
   - Traspaso a humano: si el cliente lo pide, reclamo, negociación de precio fuera de política, pintura.
-- Política de Meta (2026): prohíbe chatbots de IA de uso general en WhatsApp Business; los asistentes propios de un negocio están permitidos. El asesor debe hablar solo de los servicios del holding.
+- Política de Meta (2026): prohíbe chatbots de IA de uso general en WhatsApp Business; los asistentes propios de un negocio están permitidos. El asesor debe hablar solo de los servicios del grupo.
 
 ### 6.3 Web y formularios
 - **carclass.cl** (Netlify, sitio `spectacular-fox-4802ec`): botón de WhatsApp con la campaña de origen en el mensaje prellenado; sin formulario.
@@ -124,11 +124,19 @@ Felipe guarda los documentos y la base del negocio en su Drive (fmontecinos@carc
 **v2.1.0 (5-nov, tarde) · líneas de negocio diferenciadas:**
 - Decisión de Felipe: Core gestiona **completo** Carclass, NOM y Carwash.hf (comercial, cartera, ventas, finanzas, administración, postventa). **BlackGPS solo como setter**: pre-revisión → prospección → reunión → botón «Pasar a Asisma». Desde ahí cotización, venta, pedidos y soporte viven en Asisma; Core guarda copia de cartera/ventas/MRR para cierres de mes. No hay cotizador BlackGPS en Core.
 - Selector de línea en la barra superior (`cc_linea`, `data-linea` en `<html>` tiñe la app con el color de la unidad) y filtro en Bandeja, Embudo, Agenda, Tareas, Cotizaciones y Conversaciones. Orden: Carclass, NOM, Carwash.hf, BlackGPS.
-- Dashboard Holding con una tarjeta por línea (meta de diciembre, 4 indicadores, alertas). Dashboard por línea: Carclass (venta vs $6 MM, margen, mezcla de servicios, cotizaciones sin seguimiento 48 h), NOM (ventas vs 2/mes, stock con días e inspección IPC, embudos consignantes y compradores), Carwash.hf (ocupación vs 4 autos/día, recompra), BlackGPS (llamadas vs 30, reuniones vs 3, concentración de cartera, clientes en riesgo).
+- Dashboard Grupo con una tarjeta por línea (meta de diciembre, 4 indicadores, alertas). Dashboard por línea: Carclass (venta vs $6 MM, margen, mezcla de servicios, cotizaciones sin seguimiento 48 h), NOM (ventas vs 2/mes, stock con días e inspección IPC, embudos consignantes y compradores), Carwash.hf (ocupación vs 4 autos/día, recompra), BlackGPS (llamadas vs 30, reuniones vs 3, concentración de cartera, clientes en riesgo).
 - Cotizador Carclass y Carwash.hf (`crm.catalogo`, precios abril 2026 del Cerebro), banda de precio (`descuento_max_pct`, hoy 0%), PDF por impresión, link público `#/c/<token>` (`public.cotizacion_publica`, anon) que marca «vista» y avisa. Al enviar, la oportunidad pasa a «Cotizado» con seguimiento a 48 h.
 - Formulario de lead con campos por unidad (auto y servicio en Carclass; auto, km, precio y documentos en NOM consignante; presupuesto y pago en comprador; vehículo y fecha en Carwash.hf; empresa y flota en BlackGPS).
 - Metas en `core.metas` (editables por el dueño). Migraciones `core_v6_metas_catalogo_cotizador` y `core_v6_resumen_lineas` (`app_lineas`).
 - Probado de punta a punta en una transacción revertida: lead → cotización enviada → vista por link → ganada → 4 tareas de postventa.
+
+**v2.2.0 (5-nov, noche) · control financiero del grupo:**
+- Terminología: Carclass Group es un **grupo empresarial**, no un holding. En la interfaz se dice «Grupo».
+- Finanzas (solo `core.ve_finanzas()`: dueño o un futuro rol de administrador de finanzas): Resultados (EERR por mes, trimestre, semestre o año, neto o con IVA, por unidad), Flujo de caja (base caja, saldo inicial por cuentas, por cobrar con antigüedad, por pagar), Registro (ventas, costos, gastos, movimientos y cuentas) e Importar (CSV con mapeo de columnas y mensualidades BlackGPS desde contratos). Exporta CSV y PDF.
+- Migraciones `core_v7_finanzas_eerr_flujo` (fecha de cobro y de pago, `fin.cuentas`, `fin.movimientos`, app_eerr, app_flujo, app_fin_*) y `core_v8_catalogo_completo_parametros` (13 servicios Carclass con costo de referencia, 5% de descuento sin aprobación, retiro sin costo en Chicureo, Las Condes y Lo Barnechea, comisión NOM en `core.parametros`).
+- BlackGPS en finanzas: todas sus ventas (equipos, instalación, mensualidades) viven en `fin.ventas`. Desde noviembre factura el asistente de finanzas; Asisma prepara un módulo de facturación que podría reemplazarlo.
+- Comisión NOM (Felipe 5-nov): 5% general, 3% sobre $20 MM, mínimo $500.000 bajo $10 MM.
+- Drive: carpeta «Base financiera Carclass Group» (id `18Ul7zo4X4dw_S4zrQOeaVRPtbOnXrpgK`) dentro de «Directorio Carclass Group», con Ventas 2026, Costos y gastos 2026, EERR 2026, Flujo de caja 2026, Contratos BlackGPS y Gastos fijos (plantilla). Es copia: la fuente de verdad es Core.
 
 **Pendiente:**
 - Publicar la v2 en Netlify (desde la nube de Claude, la red bloqueó `netlify-mcp.netlify.app`).
