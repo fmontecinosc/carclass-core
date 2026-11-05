@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.5.0";
+const VERSION = "2.5.1";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
