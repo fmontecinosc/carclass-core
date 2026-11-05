@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.2.0";
+const VERSION = "2.3.0";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -753,7 +753,7 @@ const COT_UNIDADES = ["carclass", "carwash"];
 const COT_EST = { borrador: "", enviada: "info", vista: "gold", aceptada: "ok", rechazada: "bad", vencida: "warn" };
 const DEF_NOTAS = {
   carclass: "Valores con IVA incluido. Precio final sujeto a evaluación presencial del vehículo. Pago 50/50: mitad para reservar y mitad a la entrega. Recepción en Chicureo o retiro a domicilio. Incluye corrección de pintura en todo plan de cerámico, garantía XPEL y acta de entrega.",
-  carwash: "Valores con IVA incluido. Pago al momento de la entrega.",
+  carwash: "Valores «desde», con IVA incluido, según el tamaño del vehículo. Servicio en 4 Oriente #278, Huertos Familiares, de lunes a sábado de 9:00 a 17:00. Pago al momento de la entrega.",
 };
 const MARCA = {
   carclass: ["Carclass", "Tu auto, en manos correctas.", "Instalador oficial XPEL · desde 2017"],
@@ -836,7 +836,13 @@ async function modalCotizador({ oportunidad_id, unidad, cliente, cot = null, aft
       if (total >= 600000 && !cods.includes("retiro")) reglas.push("Venta de mayor valor: puedes ofrecer retiro y entrega a domicilio sin costo en Chicureo, Las Condes o Lo Barnechea.");
       if (lineas.some((l) => cat.find((c) => c.codigo === l.codigo)?.aproximado)) reglas.push("Incluye valores aproximados (cerámico, PPF total o desabolladura): se confirman con el cliente y el vehículo.");
       if (lineas.some((l) => cat.find((c) => c.codigo === l.codigo)?.requiere_humano)) reglas.push("Desabolladura y personalización las evalúa una persona con fotos y el especialista antes de enviar.");
-      if (lineas.some((l) => { const c = cat.find((x) => x.codigo === l.codigo); return c && l.precio < c.precio; })) reglas.push("Hay descuento: evítalo si puedes. Hasta 5% solo si el cliente lo exige para cerrar; más que eso requiere tu aprobación.");
+      if (false) reglas.push("Hay descuento: evítalo si puedes. Hasta 5% solo si el cliente lo exige para cerrar; más que eso requiere tu aprobación.");
+    }
+    if (unidad === "carclass" && lineas.some((l) => { const c = cat.find((x) => x.codigo === l.codigo); return c && l.precio < c.precio; })) reglas.push("Hay descuento: evítalo si puedes. Hasta 5% solo si el cliente lo exige para cerrar; más que eso requiere tu aprobación.");
+    if (unidad === "carwash") {
+      if (lineas.some((l) => { const c = cat.find((x) => x.codigo === l.codigo); return c && l.precio < c.precio; })) reglas.push("Carwash.hf no hace descuentos: usa los precios del catálogo.");
+      if (lineas.some((l) => cat.find((c) => c.codigo === l.codigo)?.requiere_humano)) reglas.push("Pulidos, cerámico e interior: confirma el valor con el auto a la vista antes de enviar.");
+      reglas.push("Vans, furgones y flotas de más de 2 vehículos no tienen precio de catálogo: los cotiza Felipe.");
     }
     $("#q-rules", root).innerHTML = reglas.map((r) => `<div class="alert">${ico("alert", 16)}<div>${r}</div></div>`).join("");
   };
@@ -1456,7 +1462,7 @@ function modalLead(pre = {}) {
       const p = { unidad, flujo: fl, nombre: g("ld-nom"), telefono: g("ld-tel"), email: g("ld-mail"), comuna: g("ld-com"), canal: $("#ld-canal", root).value, campana: g("ld-camp") };
       const det = []; let veh = null, interes = null;
       if (unidad === "carclass") { veh = { marca: g("x-marca"), modelo: g("x-modelo"), anio: g("x-anio"), patente: g("x-pat") }; interes = g("x-serv"); det.push(`Servicio de interés: ${interes}`); }
-      if (unidad === "carwash") { interes = `${g("x-serv")} · ${g("x-tipo")}`; det.push(`Servicio: ${interes}`); if (g("x-fecha")) det.push(`Fecha deseada: ${g("x-fecha")}`); }
+      if (unidad === "carwash") { interes = `${g("x-serv")} · ${(g("x-tipo") || "").split(" (")[0]}`; det.push(`Servicio: ${interes}`); if (g("x-marca")) det.push(`Vehículo: ${g("x-marca")}`); if (g("x-fecha")) det.push(`Fecha deseada: ${g("x-fecha")}`); }
       if (unidad === "nom" && fl === "consignante") { veh = { marca: g("x-marca"), modelo: g("x-modelo"), anio: g("x-anio"), km: g("x-km"), precio_esperado: g("x-precio") }; interes = `Consignar ${[g("x-marca"), g("x-modelo"), g("x-anio")].filter(Boolean).join(" ")}`.trim(); det.push(`Documentos y prendas: ${g("x-docs")}`); if (g("x-precio")) det.push(`Precio esperado: ${clp(g("x-precio"))}`); }
       if (unidad === "nom" && fl === "comprador") { interes = g("x-interes") ? `Busca ${g("x-interes")}` : "Comprar un auto"; if (g("x-pres")) det.push(`Presupuesto: ${clp(g("x-pres"))}`); det.push(`Pago: ${g("x-pago")}`); }
       if (b2b) Object.assign(p, { empresa: g("ld-emp"), rut: g("ld-rut"), flota: g("ld-flota"), rubro: g("ld-rubro"), cargo: g("ld-cargo") });
@@ -1471,7 +1477,9 @@ function modalLead(pre = {}) {
     }, "Crear lead");
   const extra = (u, fl) => {
     if (u === "carclass") return `<div class="xbox"><div class="lbl">Auto y servicio</div><div class="row">${f("x-marca", "Marca")}${f("x-modelo", "Modelo")}${f("x-anio", "Año", 'type="number" min="1980" max="2030"', "flex:0 1 90px")}${f("x-pat", "Patente", "", "flex:0 1 110px")}</div>${sel("x-serv", "Servicio de interés", SERV_CARCLASS)}<div class="hint">Pide fotos del auto para la pre-evaluación remota. Pintura y desabolladura las cotiza una persona con el especialista.</div></div>`;
-    if (u === "carwash") return `<div class="xbox"><div class="lbl">Servicio</div><div class="row">${sel("x-tipo", "Vehículo", ["SUV", "Sedán", "Camioneta"])}${sel("x-serv", "Servicio", ["Lavado boutique", "Limpieza interior", "Lavado + interior", "Otro"])}${f("x-fecha", "Fecha deseada", 'type="date"', "flex:0 1 160px")}</div><div class="hint">Máximo 4 autos por día. Solo se informan precios aprobados (boutique SUV $35.000).</div></div>`;
+    if (u === "carwash") return `<div class="xbox"><div class="lbl">Vehículo y servicio</div><div class="row">${f("x-marca", "Marca y modelo", 'placeholder="Ej: Toyota Hilux"')}${sel("x-tipo", "Tamaño", ["Pequeño y mediano (citycar, sedán, SUV compacto)", "SUV y pickup mediana (Hilux, L200, Ranger)", "Pickup XL o SUV 3 corridas (F-150, Ram, Tahoe)", "Van, furgón o flota (lo cotiza Felipe)"])}</div>
+      <div class="row">${sel("x-serv", "Servicio", ["Lavado Boutique", "Lavado Básico (solo exterior)", "Lavado Técnico", "Pulido Básico", "Limpieza Interior + Tapicería", "Pulido Intermedio + Sellado Sintético", "Pulido + Sellado Cerámico", "No sabe aún"])}${f("x-fecha", "Fecha deseada", 'type="date"', "flex:0 1 160px")}</div>
+      <div class="hint">4 Oriente #278, Huertos Familiares · lunes a sábado 9:00 a 17:00 · máximo 4 autos por día · sin servicio a domicilio. Precios «desde» según tamaño; pulidos, cerámico e interior los confirma una persona.</div></div>`;
     if (u === "nom" && fl === "consignante") return `<div class="xbox"><div class="lbl">Auto a consignar</div><div class="row">${f("x-marca", "Marca")}${f("x-modelo", "Modelo")}${f("x-anio", "Año", 'type="number" min="1990" max="2030"', "flex:0 1 90px")}${f("x-km", "Km", 'type="number" min="0"', "flex:0 1 110px")}</div><div class="row">${f("x-precio", "Precio esperado", 'type="number" min="0" step="100000"')}${sel("x-docs", "Documentos y prendas", ["Por confirmar", "Al día y sin prendas", "Tiene prenda", "Documentos pendientes"])}</div><div class="hint">Califica si es 2015 o más, sin prendas y con precio dentro de ±10% del mercado. Comisión 5% (3% sobre $20 MM; mínimo $500.000 bajo $10 MM). Exclusividad 45 días.</div></div>`;
     if (u === "nom") return `<div class="xbox"><div class="lbl">Lo que busca</div><div class="row">${f("x-interes", "Auto de interés", 'placeholder="Ej: Corolla Cross o SUV hasta $17 MM"')}${f("x-pres", "Presupuesto", 'type="number" min="0" step="500000"', "flex:0 1 150px")}${sel("x-pago", "Pago", ["Por confirmar", "Contado", "Financiamiento", "Con auto en parte de pago"], "flex:0 1 200px")}</div><div class="hint">Visita y test drive solo con calificados (plazo menor a 30 días). Reserva mínima $200.000.</div></div>`;
     return `<div class="xbox"><div class="lbl">Empresa</div><div class="row">${f("ld-emp", "Empresa", `value="${esc(pre.empresa || "")}"`)}${f("ld-rut", "RUT", `placeholder="76.123.456-7" value="${esc(pre.rut ? fmtRut(pre.rut) : "")}"`, "flex:0 1 150px")}${f("ld-flota", "Flota", 'type="number" min="0"', "flex:0 1 100px")}</div><div class="row">${f("ld-rubro", "Rubro")}${f("ld-cargo", "Cargo del contacto")}</div><div class="hint">Filtro BlackGPS: flotas de 10 o más vehículos. Desde la reunión en adelante manda Asisma.</div></div>`;
