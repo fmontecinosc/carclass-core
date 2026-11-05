@@ -502,3 +502,17 @@ h2.sec .faint { font-weight: 500; font-size: 13px; }
 .eerr .neg { color: var(--bad); }
 .eerr .ldot { display: inline-block; width: 8px; height: 8px; margin-right: 4px; }
 @media print { .eerr-card, .card { box-shadow: none !important; border: 1px solid #ddd !important; break-inside: avoid; } .kpis { grid-template-columns: repeat(4, 1fr) !important; } .tbl-wrap { overflow: visible !important; max-height: none !important; } .eerr td, .eerr th { font-size: 9.5px; padding: 4px 6px; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+
+/* v2.5 · inspecciones IPC */
+.tbl.click tbody tr { cursor: pointer; }
+.tbl.click tbody tr:hover, .tbl.click tbody tr:focus { background: var(--surface-2); outline: none; }
+.ins-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 16px; font-size: 13.5px; }
+.ins-capa { border: 1px solid var(--border); border-radius: var(--r-sm); margin-bottom: 8px; }
+.ins-capa summary { padding: 10px 12px; cursor: pointer; }
+.ins-capa .tbl { margin: 0; }
+.solo-obs .ins-ok { display: none; }
+.ins-gal { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; }
+.ins-gal figure { margin: 0; }
+.ins-gal img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: var(--r-sm); border: 1px solid var(--border); display: block; }
+.ins-gal figcaption { font-size: 12px; color: var(--muted); margin-top: 4px; }
+@media (max-width: 640px) { #ins-q { width: 100% !important; } .ins-capa td { width: auto !important; padding-left: 6px; padding-right: 6px; } }

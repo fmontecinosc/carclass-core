@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.4.0";
+const VERSION = "2.5.0";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -1041,15 +1041,83 @@ async function viewHerramientas() {
         <p class="muted" style="margin:0;font-size:13px">Revisión de 4 capas con puntaje y precio máximo sugerido. Cada inspección se guarda en la base del grupo y aparece sola en Vehículos y abajo.</p>
         <a class="btn primary" href="${TOOLS.ipc}" target="_blank" rel="noopener" style="justify-self:start">${ico("link", 15)} Nueva inspección</a></div></section>
     </div>
-    <section class="card"><div class="card-h"><h3>Últimas inspecciones IPC</h3><span class="badge" id="ins-n"></span></div><div id="ins">${loading(4)}</div></section>`;
-  try {
-    const l = await rpc("app_inspecciones", { p_limite: 50 });
+    <section class="card"><div class="card-h"><h3>Inspecciones IPC por mes</h3></div><div id="ins-mes">${loading(2)}</div></section>
+    <section class="card"><div class="card-h"><h3>Histórico de inspecciones</h3><span class="badge" id="ins-n"></span><div class="row" style="margin-left:auto;gap:8px"><input class="input" id="ins-q" type="search" placeholder="Folio, patente, marca, cliente…" style="width:240px"><select class="input" id="ins-v" style="width:auto"><option value="">Todos los veredictos</option></select></div></div><div id="ins">${loading(4)}</div></section>`;
+  let D;
+  const pintar = () => {
+    const q = $("#ins-q").value.trim().toLowerCase(), v = $("#ins-v").value;
+    const l = D.filas.filter((i) => (!v || (i.veredicto || "sin veredicto") === v) && (!q || [i.folio, i.patente, i.auto, i.cliente, i.tecnico].join(" ").toLowerCase().includes(q)));
     $("#ins-n").textContent = l.length || "";
-    $("#ins").innerHTML = l.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Fecha</th><th>Folio</th><th>Vehículo</th><th>Cliente</th><th class="num">Puntaje</th><th>Veredicto</th><th class="num">Precio máx. sugerido</th>${ME.ve_finanzas ? '<th class="num">Servicio</th>' : ""}</tr></thead><tbody>
-      ${l.map((i) => `<tr><td>${fecha(i.fecha)}</td><td class="sub">${esc(i.folio || "")}</td><td><div class="name">${esc(i.auto || "—")}</div><div class="sub">${esc(i.patente || "")}${i.en_stock ? " · en stock" : ""}</div></td><td>${esc(i.cliente || "—")}${i.telefono ? `<div class="sub">${esc(i.telefono)}</div>` : ""}</td>
-        <td class="num">${i.score != null ? int(i.score) + "%" : "—"}</td><td><span class="pill ${i.veredicto === "APTO" ? "ok" : i.veredicto ? "warn" : ""}">${esc(i.veredicto || "sin veredicto")}</span>${i.criticos ? `<div class="sub">${int(i.criticos)} críticos</div>` : ""}</td>
-        <td class="num">${clp(i.precio_max_sugerido)}</td>${ME.ve_finanzas ? `<td class="num">${clp(i.valor_servicio)}<div class="sub">${esc(i.estado_pago || "")}</div></td>` : ""}</tr>`).join("")}</tbody></table></div>` : `<div class="card-b">${empty("car", "Sin inspecciones todavía")}</div>`;
-  } catch (e) { $("#ins").innerHTML = `<div class="card-b err">${esc(e.message)}</div>`; }
+    $("#ins").innerHTML = l.length ? `<div class="tbl-wrap"><table class="tbl click"><thead><tr><th>Fecha</th><th>Folio</th><th>Vehículo</th><th>Cliente</th><th class="num">Puntaje</th><th>Veredicto</th><th class="num">Precio máx. sugerido</th>${ME.ve_finanzas ? '<th class="num">Servicio</th>' : ""}</tr></thead><tbody>
+      ${l.map((i) => `<tr data-ins="${esc(i.id)}" tabindex="0"><td>${fecha(i.fecha)}</td><td class="sub">${esc(i.folio || "")}</td><td><div class="name">${esc(i.auto || "—")}</div><div class="sub">${esc(i.patente || "")}${i.en_stock ? " · en stock" : ""}${i.n_fotos ? ` · ${int(i.n_fotos)} fotos` : ""}</div></td><td>${esc(i.cliente || "—")}${i.telefono ? `<div class="sub">${esc(i.telefono)}</div>` : ""}</td>
+        <td class="num">${i.score != null ? int(i.score) + "%" : "—"}<div class="sub">${i.completitud != null ? int(i.completitud) + "% completa" : ""}</div></td><td><span class="pill ${insTono(i.veredicto)}">${esc(i.veredicto || "sin veredicto")}</span>${i.criticos ? `<div class="sub">${int(i.criticos)} críticos</div>` : ""}</td>
+        <td class="num">${clp(i.precio_max_sugerido)}</td>${ME.ve_finanzas ? `<td class="num">${clp(i.valor_servicio)}<div class="sub">${esc(i.estado_pago || "")}</div></td>` : ""}</tr>`).join("")}</tbody></table></div>` : `<div class="card-b">${empty("car", D.filas.length ? "Ninguna inspección coincide con el filtro" : "Sin inspecciones todavía")}</div>`;
+    $$("[data-ins]").forEach((r) => { r.onclick = () => modalInspeccion(r.dataset.ins); r.onkeydown = (e) => e.key === "Enter" && modalInspeccion(r.dataset.ins); });
+  };
+  try {
+    D = await rpc("app_inspecciones", { p_limite: 500 });
+    const fin = ME.ve_finanzas;
+    $("#ins-mes").innerHTML = D.mensual.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Mes</th><th class="num">Inspecciones</th><th class="num">Apto</th><th class="num">Condicionado</th><th class="num">Rechazado</th><th class="num">Índice prom.</th><th class="num">Ahorro prom. detectado</th>${fin ? '<th class="num">Pagadas</th><th class="num">Cobrado</th><th class="num">Por cobrar</th>' : ""}</tr></thead><tbody>
+      ${D.mensual.map((m) => `<tr><td>${esc(mesTxt(m.mes))}</td><td class="num">${int(m.inspecciones)}</td><td class="num">${int(m.apto)}</td><td class="num">${int(m.condicionado)}</td><td class="num">${int(m.rechazado)}</td><td class="num">${m.indice_promedio != null ? int(m.indice_promedio) + "%" : "—"}</td><td class="num">${clp(m.ahorro_promedio)}</td>${fin ? `<td class="num">${int(m.pagadas)}</td><td class="num">${clp(m.ingreso_cobrado)}</td><td class="num">${clp(m.ingreso_pendiente)}</td>` : ""}</tr>`).join("")}</tbody></table></div>
+      ${fin ? `<p class="muted card-b" style="margin:0;font-size:12px">Las inspecciones marcadas como pagadas en la herramienta entran solas a Ventas NOM (modalidad «Inspecciones IPC»), una vez por hora.</p>` : ""}` : `<div class="card-b">${empty("chart", "Sin datos mensuales")}</div>`;
+    const vs = [...new Set(D.filas.map((i) => i.veredicto || "sin veredicto"))];
+    $("#ins-v").insertAdjacentHTML("beforeend", vs.map((v) => `<option>${esc(v)}</option>`).join(""));
+    $("#ins-q").oninput = pintar; $("#ins-v").onchange = pintar;
+    pintar();
+  } catch (e) { $("#ins").innerHTML = `<div class="card-b err">${esc(e.message)}</div>`; $("#ins-mes").innerHTML = ""; }
+}
+const insTono = (v) => !v ? "" : /^APTO/i.test(v) ? "ok" : /RECHAZ|NO APTO/i.test(v) ? "bad" : "warn";
+const mesTxt = (m) => { const [y, mm] = String(m).split("-"); return ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"][+mm - 1] + " " + y; };
+const INS_E = { ok: ["Bien", "ok"], obs: ["Observado", "warn"], na: ["No aplica", ""], "": ["Sin revisar", ""] };
+async function modalInspeccion(id) {
+  const root = modal("Inspección IPC", loading(4), null, "", true);
+  let d;
+  try { d = await rpc("app_inspeccion", { p_id: id }); } catch (e) { $(".modal-b", root).innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
+  if (!d) { $(".modal-b", root).innerHTML = `<div class="err">No se encontró la inspección.</div>`; return; }
+  $(".modal-h h3", root).textContent = `Inspección ${d.folio || ""}`;
+  const m = d.meta || {}, it = d.items || {}, fpi = d.fotos_por_item || {};
+  const grupos = {};
+  Object.entries(it).forEach(([k, v]) => { const [c, n] = k.replace(/^c/, "").split("_").map(Number); (grupos[c] ||= []).push({ k, i: n, e: v.e || "" }); });
+  const cuenta = (e) => Object.values(it).filter((v) => (v.e || "") === e).length;
+  const kv = (t, v) => v == null || v === "" ? "" : `<div><div class="sub">${esc(t)}</div><div>${v}</div></div>`;
+  const det = Object.keys(grupos).sort((a, b) => a - b).map((c) => {
+    const l = grupos[c].sort((a, b) => a.i - b.i), obs = l.filter((x) => x.e === "obs");
+    return `<details class="ins-capa" ${obs.length ? "open" : ""}><summary><b>Sección ${c}</b> <span class="sub">${l.length} puntos · ${obs.length} observado${obs.length === 1 ? "" : "s"}${l.some((x) => fpi[x.k]) ? " · con fotos" : ""}</span></summary>
+      <table class="tbl"><tbody>${l.map((x) => `<tr class="${x.e === "obs" ? "" : "ins-ok"}"><td class="sub" style="width:56px">${c}.${x.i + 1}</td><td style="width:120px"><span class="pill ${INS_E[x.e || ""]?.[1] || ""}">${INS_E[x.e || ""]?.[0] || esc(x.e)}</span></td><td>${esc(it[x.k].n || "")}${it[x.k].val ? ` <span class="sub">· ${esc(it[x.k].val)}</span>` : ""}${fpi[x.k] ? ` <span class="sub">· ${int(fpi[x.k])} foto${fpi[x.k] > 1 ? "s" : ""}</span>` : ""}</td><td class="num" style="width:110px">${it[x.k].cost ? clp(it[x.k].cost) : ""}</td></tr>`).join("")}</tbody></table></details>`;
+  }).join("");
+  const nf = Object.values(fpi).reduce((a, b) => a + b, 0);
+  $(".modal-b", root).innerHTML = `<div class="ins-det">
+    <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center"><h3 style="margin:0">${esc(d.auto || "Vehículo")}</h3>${d.patente ? `<span class="badge">${esc(d.patente)}</span>` : ""}<span class="pill ${insTono(d.veredicto)}">${esc(d.veredicto || "sin veredicto")}</span></div>
+    <div class="kpis" style="margin:12px 0">
+      <div class="kpi"><div class="l">Puntaje</div><div class="v" style="font-size:22px">${d.score != null ? int(d.score) + "%" : "—"}</div></div>
+      <div class="kpi"><div class="l">Completitud</div><div class="v" style="font-size:22px">${d.completitud != null ? int(d.completitud) + "%" : "—"}</div></div>
+      <div class="kpi"><div class="l">Observados / críticos</div><div class="v" style="font-size:22px">${int(cuenta("obs"))} / ${int(d.criticos || 0)}</div></div>
+      <div class="kpi"><div class="l">Costo de regularizar</div><div class="v" style="font-size:22px">${clp(d.costo_regularizacion)}</div></div>
+    </div>
+    <div class="ins-grid">
+      ${kv("Fecha", fecha(d.fecha))}${kv("Técnico", esc(d.tecnico))}${kv("Lugar", esc(m.lugar))}${kv("Origen", esc(d.origen))}
+      ${kv("Cliente", esc(d.cliente))}${kv("Teléfono", esc(d.telefono))}${kv("Vendedor", esc([m.vendedor, m.vendedorTel].filter(Boolean).join(" · ")))}${kv("Versión", esc(m.version))}
+      ${kv("Kilometraje", d.km != null ? int(d.km) + " km" : esc(m.km))}${kv("Color", esc(m.color))}${kv("Combustible", esc(m.combustible))}${kv("Transmisión", esc(m.transmision))}${kv("VIN", esc(d.vin || m.vin))}
+      ${kv("Precio pedido", d.precio_pedido != null ? clp(d.precio_pedido) : "")}${kv("Precio de mercado", d.precio_mercado != null ? clp(d.precio_mercado) : "")}${kv("Precio máx. sugerido", d.precio_max_sugerido != null ? `<b>${clp(d.precio_max_sugerido)}</b>` : "")}${kv("Liquidez", esc(d.mk?.liquidez))}
+      ${ME.ve_finanzas ? kv("Servicio", d.valor_servicio != null ? `${clp(d.valor_servicio)} · ${esc(d.estado_pago || "")}` : "") : ""}
+    </div>
+    ${typeof d.rec === "string" && d.rec.trim() ? `<div class="card-b" style="background:var(--surface-2);border-radius:10px;margin-top:12px"><div class="sub">Recomendación</div>${esc(d.rec)}</div>` : ""}
+    ${d.mk?.obsNeg ? `<div class="card-b" style="background:var(--surface-2);border-radius:10px;margin-top:8px"><div class="sub">Observaciones de negociación</div>${esc(d.mk.obsNeg)}</div>` : ""}
+    <div class="row" style="justify-content:space-between;align-items:center;margin:16px 0 6px"><h4 style="margin:0">Puntos revisados</h4><label class="sub"><input type="checkbox" id="ins-todo"> Mostrar también los que están bien</label></div>
+    <div id="ins-capas" class="solo-obs">${det || `<p class="muted">La inspección no tiene puntos registrados (quedó incompleta).</p>`}</div>
+    ${nf ? `<div style="margin-top:14px"><button type="button" class="btn" id="ins-fotos">Ver ${int(nf)} foto${nf > 1 ? "s" : ""}</button><div id="ins-gal" class="ins-gal"></div></div>` : ""}
+  </div>`;
+  $("#ins-todo", root).onchange = (e) => $("#ins-capas", root).classList.toggle("solo-obs", !e.target.checked);
+  const bf = $("#ins-fotos", root);
+  if (bf) bf.onclick = async () => {
+    bf.disabled = true; bf.textContent = "Cargando fotos…";
+    try {
+      const f = await rpc("app_inspeccion_fotos", { p_id: id });
+      const lista = Object.entries(f || {}).flatMap(([k, v]) => (Array.isArray(v) ? v : [v]).filter((u) => typeof u === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(u)).map((u) => [k, u]));
+      $("#ins-gal", root).innerHTML = lista.map(([k, u]) => { const [c, n] = k.replace(/^c/, "").split("_").map(Number); return `<figure><a href="${u}" target="_blank" rel="noopener"><img src="${u}" alt="Foto punto ${c}.${n + 1}" loading="lazy"></a><figcaption>${c}.${n + 1} ${esc(it[k]?.n || "")}</figcaption></figure>`; }).join("");
+      bf.remove();
+    } catch (e) { bf.disabled = false; bf.textContent = "Reintentar fotos"; toast(e.message, true); }
+  };
 }
 
 /* ---------- vehículos ---------- */

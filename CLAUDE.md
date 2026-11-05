@@ -32,7 +32,7 @@ El CRM y sistema de gestión propio del grupo empresarial **Carclass Group** (Fe
 | Esquemas | `core` (usuarios, claves API, eventos de auditoría, SOPs/vistas), `crm` (empresas, contactos, analisis, oportunidades, actividades, cotizaciones), `fin` (ventas, costos), `ops` (contratos_gps, cierres_mensuales, vehiculos, proyectos, tareas, sops) | |
 | Lógica de negocio | Funciones SQL `core.api_*` (para la API) y `public.app_*` (para la app web, con RLS por rol) | |
 | API | Edge Function **core-api** (Deno). REST para ChatGPT y formularios, MCP para Claude, endpoint `/lead-web` para formularios públicos | v1.1.0 en producción |
-| App web | Netlify, sitio **carclass-core** (`deb7fddb-d934-4858-88eb-58428e9b3b1a`) → carclass-core.netlify.app | v2.3 publicada por Felipe (zip manual, 5-nov); v2.4 en el repo. v1 respaldada en `app-v1/` |
+| App web | Netlify, sitio **carclass-core** (`deb7fddb-d934-4858-88eb-58428e9b3b1a`) → carclass-core.netlify.app | v2.3 publicada por Felipe (zip manual, 5-nov); v2.5 en el repo. v1 respaldada en `app-v1/` |
 | Herramientas externas | Netlify: **cotizador-carclass** (`e5290aca-…`, PDF cotización → ingreso → acta, no guarda datos) y **nom-inspeccion** (`c71b83a5-…`, inspección IPC; guarda en `public.nom_inspecciones`) | Enlazadas desde Core (Catálogo → Herramientas). Subidas a mano, sin repositorio |
 | Dominio | `app.carclass.cl` hoy apunta al panel antiguo en el hosting de la web (**Premium Hosting**, LiteSpeed). Falta CNAME `app` → `carclass-core.netlify.app` | Pendiente |
 | Proyecto antiguo | Supabase `blackgps-comercial` (`jacsosgucokqwmwqqjij`): ya migrado a Core, queda de solo lectura | |
@@ -148,8 +148,14 @@ Felipe guarda los documentos y la base del negocio en su Drive (fmontecinos@carc
 **v2.4.0 (5-nov) · herramientas y Carwash.hf:**
 - Sección Catálogo → Herramientas: accesos al cotizador Carclass y a la inspección IPC, y lista de las últimas inspecciones (`public.app_inspecciones`, lee `public.nom_inspecciones`). Botones «Nueva inspección IPC» en Vehículos y en oportunidades NOM consignante (calificando, revisión agendada, revisado), y «Cotizador clásico» en Cotizaciones.
 - WhatsApp por unidad en `core.parametros['whatsapp.unidades']`; el link público de cotizaciones de Carwash.hf responde al +56 9 4619 6226. Catálogo Carwash.hf = lista oficial (precios «desde»). Migración `core_v10_herramientas_inspecciones_carwash_whatsapp`.
-- Las inspecciones IPC registran un valor de servicio de $99.000 con estado de pago: hoy no entran a finanzas (pendiente que Felipe decida si son ingreso de NOM).
+- Las inspecciones IPC registran un valor de servicio de $99.000 con estado de pago (desde v2.5 entran a finanzas al pagarse).
 - Drive renovado a mano el 5-nov con la reclasificación de Carwash.hf.
+
+**v2.5.0 (5-nov) · inspecciones IPC en la app y como venta NOM:**
+- Decisión de Felipe: las inspecciones IPC son ingreso de NOM (servicio a terceros, se espera venderlo desde 2027). `core.sync_inspecciones_ipc()` corre cada hora con pg_cron (`nom_ipc_a_ventas`, minuto 23): toda inspección con `estado_pago` pagado/cobrado y `valor_servicio > 0` entra a `fin.ventas` (unidad nom, modalidad `inspeccion`, documento = folio, origen `ipc`), sin duplicar. Las «Exento (cliente NOM)» no entran. Catálogo NOM `inspeccion_ipc` $99.000.
+- `ventas_modalidad_check` ahora admite `inspeccion` y `compraventa`.
+- Catálogo → Herramientas muestra el resumen mensual (`public.nom_inspecciones_mensual`), el histórico completo con buscador y filtro por veredicto, y el detalle de cada inspección (datos del auto, precios, puntos observados por sección con costo, fotos bajo demanda). RPC de solo lectura: `app_inspecciones(limite, q)` → `{filas, mensual}`, `app_inspeccion(id)`, `app_inspeccion_fotos(id)`. Montos del servicio solo para quien ve finanzas. Migraciones `core_v11_inspecciones_ipc_como_venta_nom` y `core_v12_inspecciones_historico_y_modalidades`.
+- Los nombres de cada punto del checklist viven en el código de nom-inspeccion (no en la base); Core los muestra como «Sección N, punto M» con la nota del técnico. Si se sube ese código al repo, se pueden mostrar los nombres.
 
 **Pendiente:**
 - Netlify: conectar el sitio carclass-core al repositorio (base `app`) para publicar con cada push; desde la nube de Claude la red bloquea Netlify.
