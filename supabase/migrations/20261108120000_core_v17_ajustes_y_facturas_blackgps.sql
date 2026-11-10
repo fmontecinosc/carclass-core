@@ -326,7 +326,7 @@ from (values
 ('2026-11-02','TRANSPORTES NOVARUTA SPA','78115721-K','licencia',124792,'Factura 659 · 7 GPS FACTURAR MARTES','659','pendiente'),
 ('2026-11-02','SERVICIOS Y ARRIENDOS DE MAQUINARIAS IRAZABAL HERMANOS LIMITADA','77829605-5','licencia',106050,'Factura 660 · 9 GPS','660','pendiente'),
 ('2026-11-02','TRANSPORTES TREMAR SPA','77074729-5','licencia',132859,'Factura 661 · 5 GPS + 8 INACT','661','pendiente'),
-('2026-11-02','TRANSPORTES TREMAR SPA','77074729-5','otro',1129675,'Factura 662 · 5 GPS + 8 INACT · por clasificar (¿liquidación de equipos?)','662','pendiente'),
+('2026-11-02','TRANSPORTES TREMAR SPA','77074729-5','hardware',1129675,'Factura 662 · 2 sets cámaras ADAS + DMS y 2 FMC920','662','pendiente'),
 ('2026-08-26','Movitrack SpA','78085326-K','hardware',182066,'Factura 563 · FMC920 Refaccionado x6 (desde Control_Facturacion)','563','cobrado')
 ) x(f,c,r,m,mt,d,doc,e);
 update fin.costos set venta_id = (select id from fin.ventas where unidad='blackgps' and documento='629' and origen='control_global') where unidad='blackgps' and fecha='2026-10-08' and categoria='hardware_franquicia';
