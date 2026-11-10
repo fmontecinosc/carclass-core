@@ -57,7 +57,7 @@ El CRM y sistema de gestión propio del grupo empresarial **Carclass Group** (Fe
 
 ## 5. Estado de los datos (5-nov-2026)
 
-761 empresas · 575 prospectos BlackGPS por contactar · 27 leads abiertos en Asisma (importados de su CSV, con `asisma_id`) · ventas: BlackGPS hasta julio por facturas + 8 pedidos de hardware Asisma (sep–oct), Carclass hasta junio, NOM una comisión. **Faltan:** facturas de licencias BlackGPS desde agosto, costos BlackGPS desde junio, ventas Carclass desde julio. Los pedidos de hardware de Asisma se venden a costo y dos dan margen negativo (Bugueño PED-002420, Fundación El Teniente PED-002184): pendiente que Felipe explique.
+761 empresas (132 desde el 10-nov, ver v19) · 575 prospectos BlackGPS por contactar (eliminados en v19) · 27 leads abiertos en Asisma (importados de su CSV, con `asisma_id`) · ventas: BlackGPS hasta julio por facturas + 8 pedidos de hardware Asisma (sep–oct), Carclass hasta junio, NOM una comisión. **Faltan:** facturas de licencias BlackGPS desde agosto, costos BlackGPS desde junio, ventas Carclass desde julio. Los pedidos de hardware de Asisma se venden a costo y dos dan margen negativo (Bugueño PED-002420, Fundación El Teniente PED-002184): pendiente que Felipe explique.
 
 ## 6. Lo que hay que construir ahora (Fase 3, prioridad de Felipe)
 
@@ -174,6 +174,8 @@ Felipe guarda los documentos y la base del negocio en su Drive (fmontecinos@carc
 - Cuentas grandes BlackGPS (Cerebro): Naran Global (500, meta 500–1.000 en 2027), Melón (350), UNICON Chile / Grupo UNACEM (302), Verisure (300), Grúas M10 (300). Oro Verde perdida por competencia. Melón tiene la próxima acción vencida (31-oct).
 - Drive renovado el 10-nov (Ventas y Costos 2024–2026, EERR y Flujo 2025 y 2026).
 - **Recordar a Felipe:** cruzar Carclass 2025 (Cerebro ≈ $52,3 MM vs planilla $39,2 MM) con las facturas 2025.
+
+**v19 (10-nov) · limpieza de prospectos (Felipe):** se eliminaron de `crm.empresas` 631 prospectos de la base de prospección/CallHub (`origen = 'prospeccion_blackgps'`) sin ningún avance (por contactar, 0 intentos, sin reunión, sin Asisma, sin ventas, actividades ni cotizaciones; 575 abiertos y 56 descartados). Respaldo completo (empresa, oportunidades, contactos, análisis, tareas) en `archivo.prospectos_callhub`, sin acceso desde la app. Regla: en Clientes solo van clientes reales o empresas/personas con avance (respuesta, reunión, solicitud). Quedan 132 empresas. Pendiente de decisión: 24 empresas `factura_gps` sin RUT que duplican a clientes con contrato, 20 leads `lead_panel` descartados de prueba, y Aguas Andinas y Resiter en prospección sin actividad registrada (`core_v19_limpieza_prospectos_callhub`, por SQL).
 
 **Pendiente:**
 - Netlify: conectar el sitio carclass-core al repositorio (base `app`) para publicar con cada push; desde la nube de Claude la red bloquea Netlify.
