@@ -563,3 +563,9 @@ h2.sec .faint { font-weight: 500; font-size: 13px; }
   .bub { max-width: 88%; }
 }
 .chat-item, .chat-item * { text-decoration: none !important; }
+/* v2.7.0 · pestañas y modo del asesor en Conversaciones */
+.cv-modos { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.cv-modo { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; border: 1px solid var(--border); border-radius: 999px; padding: 3px 4px 3px 10px; background: var(--surface); }
+.cv-modo select { border: 0; background: var(--surface-2); border-radius: 999px; font: inherit; font-weight: 500; padding: 3px 6px; color: inherit; }
+.clasificar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+#cv-tabs .badge:empty { display: none; }

@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.6.0";
+const VERSION = "2.7.0";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -299,7 +299,22 @@ async function activarAvisos() {
   if (Notification.permission === "denied") { toast("Los avisos están bloqueados. Actívalos en la configuración del navegador para este sitio.", true); return; }
   const p = await Notification.requestPermission();
   pintarNotify();
-  if (p === "granted") { mostrarAviso({ id: "test", title: "Avisos activados", body: "Te avisaremos de leads nuevos y leads sin respuesta a los 5 minutos.", href: "#/bandeja" }); toast("Avisos activados en este dispositivo"); }
+  if (p === "granted") {
+    const push = await suscribirPush().catch(() => false);
+    mostrarAviso({ id: "test", title: "Avisos activados", body: push ? "Te llegarán aunque la app esté cerrada: lead nuevo, sin respuesta a los 5 min, cliente que pide hablar contigo, cotización vista y cita en 1 hora." : "Te avisaremos mientras la app esté abierta o en segundo plano.", href: "#/notificaciones" });
+    toast(push ? "Avisos activados, también con la app cerrada" : "Avisos activados en este dispositivo");
+  }
+}
+/* Web Push: avisos con la app cerrada (core-push). En iPhone requiere la app instalada en la pantalla de inicio. */
+const b64u = (s) => { const p = "=".repeat((4 - (s.length % 4)) % 4); const r = atob((s + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from([...r].map((c) => c.charCodeAt(0))); };
+async function suscribirPush() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || Notification.permission !== "granted") return false;
+  const reg = await navigator.serviceWorker.ready;
+  let s = await reg.pushManager.getSubscription();
+  if (!s) { const k = await rpc("app_push_clave"); if (!k) return false; s = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(k) }); }
+  await rpc("app_push_suscribir", { p: { ...s.toJSON(), dispositivo: navigator.userAgent.slice(0, 180) } });
+  lsSet("cc_push", "1");
+  return true;
 }
 async function mostrarAviso(a) {
   try {
@@ -313,6 +328,7 @@ async function cargarAvisos() {
   try {
     const [bandeja, tareas, cots, convs] = await Promise.all([rpc("app_bandeja", { p_tipo: "todas" }), rpc("app_tareas", { p_estado: "pendiente,en_curso" }), rpc("app_cotizaciones").catch(() => []), rpc("app_conversaciones").catch(() => [])]);
     const hoy = hoyISO(); const L = [];
+    for (const c of convs.filter((c) => c.traspaso)) L.push({ id: `persona:${c.id}:${c.traspaso}`, level: "bad", icon: "users", title: `Cliente pide hablar contigo · ${c.nombre || c.telefono}`, body: String(c.traspaso).replace(/^\[WhatsApp\]\s*/, ""), href: "#/conversaciones/" + c.id, at: c.ultima_entrada || c.orden });
     for (const c of convs.filter((c) => c.borradores > 0)) L.push({ id: `borrador:${c.id}:${c.ultima_entrada || ""}`, level: "brand", icon: "spark", title: `Borrador del asesor por revisar · ${c.nombre || c.telefono}`, body: `${c.unidad ? uName(c.unidad) + " · " : ""}${c.ultimo_mensaje || "nuevo mensaje"}`, href: "#/conversaciones/" + c.id, at: c.ultima_entrada || c.orden });
     const ncv = $("#nb-conv"); if (ncv) { const n = convs.filter((c) => c.sin_responder || c.borradores > 0).length; ncv.textContent = n || ""; ncv.className = "badge" + (convs.some((c) => c.borradores > 0) ? " brand" : ""); }
     for (const b of bandeja) {
@@ -335,7 +351,9 @@ async function cargarAvisos() {
     // avisos del sistema: lead nuevo y lead sin respuesta a los 5 minutos
     if ("Notification" in window && Notification.permission === "granted") {
       const nt = notificados(); const primera = !lsGet("cc_notif_init");
-      for (const a of L.filter((a) => /^(lead|sla|vista|borrador):/.test(a.id) && !nt.has(a.id))) { if (!primera) mostrarAviso(a); nt.add(a.id); }
+      // con push activo, el servidor ya avisa de leads, SLA, traspasos y cotizaciones vistas: aquí solo los borradores
+      const rx = lsGet("cc_push") === "1" ? /^borrador:/ : /^(lead|sla|vista|borrador|persona):/;
+      for (const a of L.filter((a) => rx.test(a.id) && !nt.has(a.id))) { if (!primera) mostrarAviso(a); nt.add(a.id); }
       guardarSet("cc_notificados", nt); lsSet("cc_notif_init", "1");
     }
   } catch {}
@@ -576,11 +594,11 @@ async function viewNotificaciones() {
     <div class="actions"><button class="btn" id="n-all">${ico("check", 16)} Marcar todo como leído</button></div></div><div id="nl">${loading(5)}</div>`;
   await cargarAvisos();
   const rd = leidos();
-  const tipos = [["Lead nuevo", "activo"], ["Lead sin respuesta a los 5 minutos", "activo"], ["Cliente pide hablar con una persona", "se activa con WhatsApp"], ["Cotización vista", "activo"], ["Reunión en 1 hora", "se activa con Google Calendar"]];
+  const tipos = [["Lead nuevo", "activo"], ["Lead sin respuesta a los 5 minutos", "activo"], ["Cliente pide hablar con una persona", "activo"], ["Cotización vista", "activo"], ["Cita en 1 hora (agendada por el asesor)", "activo"]];
   $("#nl").innerHTML = `<div class="grid-main"><section class="card">${AVISOS.length ? AVISOS.map((a) => `<a class="notif ${rd.has(a.id) ? "" : "unread"}" href="${a.href}" data-id="${esc(a.id)}"><span class="ic ${a.level === "bad" ? "bad" : a.level === "warn" ? "warn" : ""}">${ico(a.icon, 17)}</span><div><div class="t">${esc(a.title)}</div><div class="muted" style="font-size:12.5px">${esc(a.body)}</div><div class="d">${hace(a.at)}</div></div></a>`).join("") : empty("bell", "Sin avisos", "Cuando entre un lead o venza una tarea, aparecerá aquí.")}</section>
     <section class="card"><div class="card-h"><h3>Avisos al dispositivo</h3></div><div class="card-b" style="display:grid;gap:10px;font-size:13px">
       ${tipos.map(([t, s]) => `<div class="row" style="justify-content:space-between;align-items:center"><span>${t}</span><span class="pill ${s === "activo" ? "ok" : ""}">${s}</span></div>`).join("")}
-      <p class="faint" style="margin:6px 0 0;font-size:12px">Hoy los avisos llegan mientras la app está abierta o en segundo plano. El aviso con la app cerrada se activa al conectar el servidor de push.</p>
+      <p class="faint" style="margin:6px 0 0;font-size:12px">${lsGet("cc_push") === "1" ? "Este dispositivo recibe avisos también con la app cerrada." : "Activa los avisos en cada dispositivo (teléfono y computador) para recibirlos también con la app cerrada."} En iPhone, primero instala la app: Safari → Compartir → Agregar a pantalla de inicio.</p>
       <button class="btn primary" id="n-act">${ico("bell", 15)} ${"Notification" in window && Notification.permission === "granted" ? "Probar aviso" : "Activar avisos en este dispositivo"}</button></div></section></div>`;
   $$("#nl .notif").forEach((a) => a.addEventListener("click", () => { const s = leidos(); s.add(a.dataset.id); guardarSet("cc_leidos", s); }));
   $("#n-all").onclick = () => { const s = leidos(); AVISOS.forEach((a) => s.add(a.id)); guardarSet("cc_leidos", s); viewNotificaciones(); };
@@ -645,16 +663,36 @@ const borradorTxt = (b) => (Array.isArray(b.mensajes) ? b.mensajes : []).map((x)
 async function viewConversaciones(id) {
   setActive("conversaciones");
   const P = $("#page");
-  P.innerHTML = `<div class="page-head"><div><h1>Conversaciones</h1><p>Los chats del WhatsApp del grupo y quién atiende cada uno: el asesor IA o tú. Los chats personales no aparecen.</p></div></div>
+  let tab = lsGet("cc_conv_tab", "mios");
+  P.innerHTML = `<div class="page-head"><div><h1>Conversaciones</h1><p>Los chats del WhatsApp del grupo. El asesor IA atiende los leads de Carclass y NOM y los chats nuevos; BlackGPS, los que tomas y los que el asesor te traspasa son tuyos. Los chats personales no aparecen.</p></div></div>
+    <div class="filters"><div class="seg" id="cv-tabs">${[["mios", "Míos"], ["asesor", "Asesor IA"], ["todas", "Todas"]].map(([k, t]) => `<button class="${k === tab ? "on" : ""}" data-tab="${k}">${t} <span class="badge" id="cv-n-${k}"></span></button>`).join("")}</div><div id="cv-modos" class="cv-modos"></div></div>
     <div class="chat-layout ${id ? "con-chat" : ""}"><section class="card chat-list" id="cv-l">${loading(5)}</section><section class="card chat-pane" id="cv-c">${id ? loading(6) : `<div class="card-b">${empty("chat", "Elige una conversación")}</div>`}</section></div>`;
+  // el asesor atiende Carclass, NOM y los chats nuevos aún sin clasificar (él mismo los clasifica o los marca personales)
+  const esAsesor = (c) => (!c.unidad || ["carclass", "nom"].includes(c.unidad)) && !c.humano && !c.traspaso;
+  $$("#cv-tabs [data-tab]").forEach((b) => b.onclick = () => { tab = b.dataset.tab; lsSet("cc_conv_tab", tab); $$("#cv-tabs button").forEach((x) => x.classList.toggle("on", x === b)); pintarLista(); });
+  const MODO_OPC = [["activo", "responde solo"], ["borrador", "propone borradores"], ["observar", "solo observa"], ["apagado", "apagado"]];
+  const pintarModos = async () => {
+    try {
+      const m = await rpc("app_asesor_modos");
+      $("#cv-modos").innerHTML = `<span class="faint" style="font-size:12.5px">Asesor IA:</span>${["carclass", "nom", "blackgps"].map((u) => m.puede_editar
+        ? `<label class="cv-modo" style="--c:${UNIDADES[u].c}"><span class="ldot"></span>${uName(u)} <select data-modo="${u}" aria-label="Modo del asesor en ${uName(u)}">${MODO_OPC.map(([k, t]) => `<option value="${k}" ${m.modos[u] === k ? "selected" : ""}>${t}</option>`).join("")}</select></label>`
+        : `<span class="pill">${uName(u)} · ${esc(MODO_TXT[m.modos[u]] || m.modos[u])}</span>`).join("")}
+        ${m.programado ? "" : `<span class="pill warn" title="La ejecución automática del asesor (wa-agente) todavía no está encendida">aún no encendido</span>`}`;
+      $$("[data-modo]").forEach((s) => s.onchange = async () => { try { await rpc("app_asesor_modo", { p_unidad: s.dataset.modo, p_modo: s.value }); toast(`${uName(s.dataset.modo)}: el asesor ${MODO_TXT[s.value] || s.value}`); } catch (e) { toast(e.message, true); pintarModos(); } });
+    } catch { $("#cv-modos").innerHTML = ""; }
+  };
+  pintarModos();
   const pintarLista = async () => {
-    const l = (await rpc("app_conversaciones")).filter((c) => !c.unidad || enLinea(c.unidad));
+    const todas = (await rpc("app_conversaciones")).filter((c) => !c.unidad || enLinea(c.unidad));
+    const grupos = { asesor: todas.filter(esAsesor), mios: todas.filter((c) => !esAsesor(c)), todas };
+    Object.entries(grupos).forEach(([k, l]) => { const b = $(`#cv-n-${k}`); if (b) b.textContent = (k === "todas" ? l.length : l.filter((c) => c.sin_responder || c.borradores || c.traspaso).length) || ""; });
+    const l = grupos[tab] || todas;
     $("#cv-l").innerHTML = l.length ? l.map((c) => `<a class="chat-item ${c.id === id ? "on" : ""}" href="#/conversaciones/${c.id}">
       <span class="avatar" style="background:${c.unidad ? UNIDADES[c.unidad]?.c : "var(--muted)"}">${esc(initials(c.nombre))}</span>
       <div style="min-width:0"><div class="row" style="justify-content:space-between;gap:6px;flex-wrap:nowrap"><b class="ell">${esc(c.nombre || c.telefono)}</b><span class="faint" style="font-size:11.5px;flex:none">${hace(c.orden)}</span></div>
         <div class="ell muted" style="font-size:12.5px">${c.ultima_direccion && c.ultima_direccion !== "entrante" ? "Tú: " : ""}${esc(c.ultimo_mensaje || (c.ultimo_tipo ? `[${TIPO_MSG[c.ultimo_tipo] || c.ultimo_tipo}]` : ""))}</div>
-        <div class="row" style="gap:4px;margin-top:4px">${c.unidad ? unidadPill(c.unidad) : '<span class="pill">sin unidad</span>'}${c.sin_responder ? '<span class="pill bad">sin responder</span>' : ""}${c.borradores ? `<span class="pill gold">${c.borradores} borrador${c.borradores > 1 ? "es" : ""}</span>` : ""}<span class="pill ${c.humano ? "" : "info"}">${c.humano ? "Atiendes tú" : "Asesor IA"}</span></div></div></a>`).join("")
-      : `<div class="card-b">${empty("chat", "Sin conversaciones", "Los chats nuevos de clientes aparecerán aquí.")}</div>`;
+        <div class="row" style="gap:4px;margin-top:4px">${c.unidad ? unidadPill(c.unidad) : '<span class="pill">sin unidad</span>'}${c.sin_responder ? '<span class="pill bad">sin responder</span>' : ""}${c.traspaso ? '<span class="pill bad">te necesita</span>' : ""}${c.borradores ? `<span class="pill gold">${c.borradores} borrador${c.borradores > 1 ? "es" : ""}</span>` : ""}<span class="pill ${esAsesor(c) ? "info" : ""}">${esAsesor(c) ? "Asesor IA" : "Atiendes tú"}</span></div></div></a>`).join("")
+      : `<div class="card-b">${empty("chat", tab === "asesor" ? "El asesor no tiene chats abiertos" : "Sin conversaciones", tab === "mios" ? "Aquí llegan BlackGPS, los chats que tomas y los que el asesor te traspasa." : "")}</div>`;
     return l;
   };
   const pintarChat = async () => {
@@ -665,8 +703,11 @@ async function viewConversaciones(id) {
     $("#cv-c").innerHTML = `<div class="card-h chat-h"><a class="btn ghost sm icon solo-movil" href="#/conversaciones" aria-label="Volver">${ico("left", 16)}</a>
         <div style="min-width:0;flex:1"><b class="ell" style="display:block">${esc(c.nombre || c.telefono)}</b><span class="faint" style="font-size:12px">${esc(c.telefono || "")}${c.unidad ? " · " + esc(uName(c.unidad)) : ""}${c.etapa ? " · " + esc(etapaTxt(c.etapa)) : ""}</span></div>
         ${c.empresa_id ? `<a class="btn sm" href="#/cliente/${c.empresa_id}">${ico("users", 14)} Ficha</a>` : ""}</div>
-      <div class="chat-state"><span>${c.humano ? `<b>Atiendes tú.</b> El asesor está en pausa${c.agente_pausado_hasta ? " hasta " + fechaHora(c.agente_pausado_hasta) : ""}.` : `<b>Atiende el asesor IA</b> · ${esc(MODO_TXT[c.modo] || c.modo)}.`} ${ventana ? `<span class="faint">Ventana de 24 h abierta hasta ${fechaHora(c.ventana_hasta)}.</span>` : '<span class="faint">Ventana de 24 h cerrada: solo plantillas.</span>'}</span>
+      <div class="chat-state"><span>${c.humano ? `<b>Atiendes tú.</b> El asesor está en pausa${c.agente_pausado_hasta ? " hasta " + fechaHora(c.agente_pausado_hasta) : ""}.` : esAsesor(c) ? `<b>Atiende el asesor IA</b> · ${esc(MODO_TXT[c.modo] || c.modo)}.` : `<b>Atiendes tú.</b> El asesor ${esc(MODO_TXT[c.modo] || c.modo)} en esta línea.`} ${ventana ? `<span class="faint">Ventana de 24 h abierta hasta ${fechaHora(c.ventana_hasta)}.</span>` : '<span class="faint">Ventana de 24 h cerrada: solo plantillas.</span>'}</span>
         <button class="btn sm ${c.humano ? "" : "primary"}" id="cv-at">${c.humano ? "Devolver al asesor" : "Tomar conversación"}</button></div>
+      ${c.traspaso ? `<div class="alert" style="margin:10px 16px 0">${ico("alert", 16)}<div><b>El asesor te traspasó este chat.</b> ${esc(String(c.traspaso).replace(/^\[WhatsApp\]\s*/, ""))}</div></div>` : ""}
+      ${c.estado === "sin_unidad" ? `<div class="clasificar"><span class="faint" style="font-size:12.5px">¿De qué es este chat?</span>
+        <button class="btn sm" data-cls="carclass">Carclass</button><button class="btn sm" data-cls="nom" data-fl="consignante">NOM · vende</button><button class="btn sm" data-cls="nom" data-fl="comprador">NOM · compra</button><button class="btn sm" data-cls="blackgps">BlackGPS</button><button class="btn sm ghost" data-cls="personal">Personal</button></div>` : ""}
       <div class="chat-msgs" id="cv-m">${(d.mensajes || []).map((m) => `<div class="bub ${m.direccion === "entrante" ? "in" : "out"} ${m.direccion === "saliente_api" ? "ia" : ""}"><div>${esc(msgTxt(m))}</div><span class="bt">${m.direccion === "saliente_api" ? "Asesor IA · " : m.direccion === "saliente_app" ? "Tú · " : ""}${fechaHora(m.fecha)}</span></div>`).join("") || `<div class="muted" style="text-align:center;font-size:13px">Sin mensajes guardados.</div>`}</div>
       ${(d.borradores || []).map((b) => { const t = borradorTxt(b); return `<div class="borrador"><div class="row" style="justify-content:space-between;align-items:center"><b style="font-size:13px">${ico("spark", 14)} Borrador del asesor</b><span class="faint" style="font-size:12px">${hace(b.creado_en)}</span></div>
         ${t.map((x) => `<div class="bub out ia propuesta">${esc(x)}</div>`).join("") || '<div class="muted" style="font-size:13px">Sin texto.</div>'}
@@ -676,6 +717,14 @@ async function viewConversaciones(id) {
       <div class="chat-foot">${wa ? `<a class="btn primary" href="${wa}" target="_blank" rel="noopener">${ico("chat", 15)} Responder en WhatsApp</a>` : ""}</div>`;
     const box = $("#cv-m"); box.scrollTop = box.scrollHeight;
     $("#cv-at").onclick = async () => { try { await rpc("app_conversacion_atender", { p_id: id, p_accion: c.humano ? "devolver" : "tomar" }); toast(c.humano ? "El asesor vuelve a atender" : "Tomaste la conversación: el asesor queda en pausa"); refrescar(); } catch (e) { toast(e.message, true); } };
+    $$("[data-cls]").forEach((b) => b.onclick = async () => {
+      const dest = b.dataset.cls;
+      if (dest === "personal" && !confirm("¿Marcar como personal? Se borran los mensajes guardados en Core y el chat deja de aparecer aquí. En tu WhatsApp no cambia nada.")) return;
+      b.disabled = true;
+      try { await rpc("app_conversacion_clasificar", { p_id: id, p_destino: dest, p_flujo: b.dataset.fl || null }); toast(dest === "personal" ? "Marcado como personal" : `Clasificado como ${uName(dest)}: se creó el lead`);
+        if (dest === "personal") location.hash = "#/conversaciones"; else refrescar(); cargarAvisos(); }
+      catch (e) { toast(e.message, true); b.disabled = false; }
+    });
     $$("[data-desc]").forEach((b) => b.onclick = async () => { try { await rpc("app_borrador_descartar", { p_id: b.dataset.desc }); toast("Borrador descartado"); refrescar(); } catch (e) { toast(e.message, true); } });
     $$("[data-copiar]").forEach((a) => a.addEventListener("click", () => { try { navigator.clipboard.writeText(a.dataset.copiar); } catch {} }));
   };
@@ -1005,7 +1054,7 @@ async function viewCliente(id) {
     <div class="ficha-head"><div class="av">${esc(initials(e.nombre))}</div>
       <div class="info"><div class="faint" style="font-size:12.5px">${persona ? "Persona" : "Empresa"} · creada ${fecha(e.creado_en)}${e.origen ? ` · origen ${esc(CANAL_TXT[e.origen] || e.origen)}` : ""}</div><h1>${esc(e.nombre)}</h1>
         <div class="facts">${e.rut ? `<span>RUT <b>${esc(fmtRut(e.rut))}</b></span>` : ""}${e.rubro ? `<span>${esc(e.rubro)}</span>` : ""}${e.tamano_flota ? `<span><b>${int(e.tamano_flota)}</b> vehículos</span>` : ""}${e.comuna || e.region ? `<span>${esc([e.comuna, e.region].filter(Boolean).join(", "))}</span>` : ""}${tel ? `<a href="tel:${esc(tel)}">${esc(tel)}</a>` : ""}${e.email ? `<a href="mailto:${esc(e.email)}">${esc(e.email)}</a>` : ""}</div></div>
-      <div class="actions row" style="gap:8px">${wa ? `<a class="btn primary" href="${wa}" target="_blank" rel="noopener">${ico("chat", 16)} WhatsApp</a>` : ""}<button class="btn" id="f-tarea">${ico("tasks", 16)} Nueva tarea</button><button class="btn" id="f-lead">${ico("plus", 16)} Nueva oportunidad</button></div></div>
+      <div class="actions row" style="gap:8px">${wa ? `<a class="btn primary" href="${wa}" target="_blank" rel="noopener">${ico("chat", 16)} WhatsApp</a>` : ""}<button class="btn" id="f-edit">${ico("note", 16)} Editar</button><button class="btn" id="f-tarea">${ico("tasks", 16)} Nueva tarea</button><button class="btn" id="f-lead">${ico("plus", 16)} Nueva oportunidad</button></div></div>
     <div class="grid-main">
       <div class="stack">
         <section class="card"><div class="card-h"><h3>Oportunidades</h3><span class="badge">${d.oportunidades.length}</span></div>
@@ -1033,6 +1082,8 @@ async function viewCliente(id) {
       </div>
     </div>`;
     const again = () => viewCliente(id);
+    $("#f-edit").onclick = () => modalFicha(e, d.contactos[0], again);
+    $$("[data-editop]").forEach((b) => b.onclick = () => modalOportunidad(d.oportunidades.find((o) => o.id === b.dataset.editop), again));
     $("#f-tarea").onclick = () => modalTarea(again, { empresa_id: e.id, unidad: abiertas[0]?.unidad });
     $("#f-lead").onclick = () => modalLead({ nombre: c0?.nombre || (persona ? e.nombre : ""), empresa: persona ? "" : e.nombre, rut: e.rut, telefono: tel, email: c0?.email || e.email });
     $$("[data-ganar]").forEach((b) => b.onclick = () => modalCerrar(b.dataset.ganar, e.nombre, "ganada", again));
@@ -1067,7 +1118,7 @@ function oppCard(o) {
     ${abierta ? `<select class="input" style="width:auto;height:32px;font-size:12.5px" data-etapa="${o.id}" data-fecha="${o.proxima_fecha || ""}" aria-label="Etapa">${[...new Set([...et, o.etapa])].map((x) => `<option value="${esc(x)}" ${x === o.etapa ? "selected" : ""}>${esc(etapaTxt(x))}</option>`).join("")}</select>`
       : `<span class="pill ${o.estado === "ganada" ? "ok" : "bad"}">${esc(o.estado)}</span>`}
     ${o.asisma_id ? `<span class="pill gold">Asisma ${esc(o.asisma_id)}</span>` : ""}${o.canal ? `<span class="faint" style="font-size:12px">${esc(CANAL_TXT[o.canal] || o.canal)}${o.campana ? " · " + esc(o.campana) : ""}</span>` : ""}
-    <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">${abierta && COT_UNIDADES.includes(o.unidad) ? `<button class="btn sm primary" data-cotizar="${o.id}" data-u="${o.unidad}">${ico("doc", 14)} Cotizar</button>` : ""}${abierta && o.unidad === "nom" && o.flujo === "consignante" && ["calificando", "revision_agendada", "revisado"].includes(o.etapa) ? `<a class="btn sm" href="${TOOLS.ipc}" target="_blank" rel="noopener">${ico("link", 14)} Inspección IPC</a>` : ""}${abierta && o.unidad === "blackgps" && ["reunion_por_agendar", "en_prospeccion"].includes(o.etapa) ? `<button class="btn sm" data-traspaso="${o.id}">Pasar a Asisma</button>` : ""}${abierta ? `<button class="btn sm" data-ganar="${o.id}">${ico("trophy", 14)} Ganada</button><button class="btn sm ghost danger" data-perder="${o.id}">Perdida</button>` : ""}${abierta && ["blackgps", "somosb2b"].includes(o.unidad) ? `<button class="btn sm" data-asisma="${o.id}">Ficha Asisma</button>` : ""}</span></div>
+    <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">${abierta && COT_UNIDADES.includes(o.unidad) ? `<button class="btn sm primary" data-cotizar="${o.id}" data-u="${o.unidad}">${ico("doc", 14)} Cotizar</button>` : ""}${abierta && o.unidad === "nom" && o.flujo === "consignante" && ["calificando", "revision_agendada", "revisado"].includes(o.etapa) ? `<a class="btn sm" href="${TOOLS.ipc}" target="_blank" rel="noopener">${ico("link", 14)} Inspección IPC</a>` : ""}${abierta && o.unidad === "blackgps" && ["reunion_por_agendar", "en_prospeccion"].includes(o.etapa) ? `<button class="btn sm" data-traspaso="${o.id}">Pasar a Asisma</button>` : ""}<button class="btn sm ghost" data-editop="${o.id}">Editar</button>${abierta ? `<button class="btn sm" data-ganar="${o.id}">${ico("trophy", 14)} Ganada</button><button class="btn sm ghost danger" data-perder="${o.id}">Perdida</button>` : ""}${abierta && ["blackgps", "somosb2b"].includes(o.unidad) ? `<button class="btn sm" data-asisma="${o.id}">Ficha Asisma</button>` : ""}</span></div>
     ${idx >= 0 ? `<div class="steps" style="--c:${UNIDADES[o.unidad]?.c}" title="${esc(et.map(etapaTxt).join(" → "))}">${et.map((_, i) => `<i class="${i <= idx && abierta ? "done" : o.estado === "ganada" ? "done" : ""}"></i>`).join("")}</div>` : ""}
     <div class="muted" style="font-size:13px">${abierta ? `${o.proxima_fecha ? `<b style="color:${o.proxima_fecha < hoyISO() ? "var(--bad)" : "var(--fg)"}">${fecha(o.proxima_fecha)}</b> · ` : ""}${esc(o.proxima_accion || "Sin próxima acción definida")}` : esc([mot, o.motivo].filter(Boolean).join(" · "))}${o.monto ? ` · ${clp(o.monto)}` : ""}</div></div>`;
 }
@@ -1634,6 +1685,36 @@ function modalLead(pre = {}) {
   bindSeg(root, sync); sync();
 }
 
+function modalFicha(e, c0, after) {
+  const persona = e.tipo === "persona";
+  const f = (id, label, v, attrs = "", style = "") => `<div class="field" ${style ? `style="${style}"` : ""}><label for="${id}">${label}</label><input class="input" id="${id}" value="${esc(v ?? "")}" ${attrs}></div>`;
+  modal(`Editar · ${e.nombre}`, `
+    <div class="row">${f("fe-nom", persona ? "Nombre" : "Razón social o nombre", e.nombre)}${f("fe-rut", "RUT", e.rut ? fmtRut(e.rut) : "", 'placeholder="12.345.678-9"', "flex:0 1 160px")}</div>
+    <div class="row">${f("fe-tel", "Teléfono o WhatsApp", e.telefono, 'type="tel"')}${f("fe-mail", "Correo", e.email, 'type="email"')}</div>
+    <div class="row">${f("fe-com", "Comuna", e.comuna, 'list="dl-com2"')}<datalist id="dl-com2">${COMUNAS.map((x) => `<option value="${x}">`).join("")}</datalist>${f("fe-reg", "Región", e.region)}</div>
+    ${f("fe-dir", "Dirección", e.direccion)}
+    ${persona ? "" : `<div class="row">${f("fe-rub", "Rubro", e.rubro)}${f("fe-flota", "Flota", e.tamano_flota, 'type="number" min="0"', "flex:0 1 120px")}</div>
+      <div class="xbox"><div class="lbl">Contacto principal</div><div class="row">${f("fe-cn", "Nombre", c0?.nombre)}${f("fe-cc", "Cargo", c0?.cargo)}</div><div class="row">${f("fe-ct", "Teléfono", c0?.telefono, 'type="tel"')}${f("fe-ce", "Correo", c0?.email, 'type="email"')}</div></div>`}
+    <div class="field"><label for="fe-not">Notas</label><textarea class="input" id="fe-not" style="min-height:60px">${esc(e.notas || "")}</textarea></div>
+    <p class="faint" style="margin:0;font-size:12px">Queda en la auditoría con tu usuario. Un RUT o teléfono que ya tiene otra ficha no se puede repetir.</p>`, async () => {
+    const g = (id) => $("#" + id)?.value.trim() ?? "";
+    await rpc("app_ficha_guardar", { p: { id: e.id, nombre: g("fe-nom"), rut: g("fe-rut"), telefono: g("fe-tel"), email: g("fe-mail"), comuna: g("fe-com"), region: g("fe-reg"), direccion: g("fe-dir"),
+      rubro: persona ? e.rubro : g("fe-rub"), flota: persona ? e.tamano_flota : g("fe-flota"), notas: g("fe-not"),
+      contacto: persona ? null : { id: c0?.id || null, nombre: g("fe-cn"), cargo: g("fe-cc"), telefono: g("fe-ct"), email: g("fe-ce") } } });
+    toast("Ficha actualizada"); after && after();
+  }, "Guardar");
+}
+function modalOportunidad(o, after) {
+  if (!o) return;
+  modal(`Editar oportunidad · ${uName(o.unidad)}`, `
+    <div class="field"><label for="op-tit">Qué busca (título)</label><input class="input" id="op-tit" value="${esc(o.titulo || "")}" placeholder="Ej: Cerámico RAV4 2022"></div>
+    <div class="row"><div class="field"><label for="op-acc">Próxima acción</label><input class="input" id="op-acc" value="${esc(o.proxima_accion || "")}"></div><div class="field" style="flex:0 1 170px"><label for="op-f">Fecha</label><input class="input" id="op-f" type="date" value="${o.proxima_fecha || masDias(1)}"></div></div>
+    <div class="field" style="max-width:220px"><label for="op-m">Monto estimado con IVA</label><input class="input" id="op-m" type="number" min="0" step="5000" value="${o.monto ?? ""}"></div>
+    <p class="faint" style="margin:0;font-size:12px">La etapa se cambia con el selector de la tarjeta o registrando una gestión.</p>`, async () => {
+    await rpc("app_oportunidad_guardar", { p: { id: o.id, titulo: $("#op-tit").value, proxima_accion: $("#op-acc").value, proxima_fecha: $("#op-f").value, monto: $("#op-m").value } });
+    toast("Oportunidad actualizada"); after && after();
+  }, "Guardar");
+}
 function modalActividad(opId, nombre, after) {
   const root = modal(`Registrar gestión · ${nombre}`, `
     <div class="field"><span class="lbl">Tipo</span>${seg("tipo", [["whatsapp", "WhatsApp"], ["llamada", "Llamada"], ["correo", "Correo"], ["reunion", "Reunión"], ["nota", "Nota"]], "whatsapp")}</div>
@@ -1733,6 +1814,7 @@ async function render() {
     }
     const lg = lsGet("cc_linea", ""); UNI = unidadesMias().includes(lg) ? lg : ""; shell(); setLinea(UNI); cargarAvisos(); clearInterval(render._t); render._t = setInterval(cargarAvisos, 60000);
     setTimeout(() => onboarding(), 400);
+    if ("Notification" in window && Notification.permission === "granted") suscribirPush().catch(() => {});
   }
   const [path, qs] = (location.hash.slice(2) || "dashboard").split("?");
   const [r, a1, a2] = path.split("/");
