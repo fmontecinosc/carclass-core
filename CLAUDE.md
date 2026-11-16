@@ -186,6 +186,12 @@ Felipe guarda los documentos y la base del negocio en su Drive (fmontecinos@carc
 - Cotizador usable en el celular (modal sin desborde, totales fuera de la tabla). Embudo: botón «Mover» en cada tarjeta (el arrastre no funciona con el dedo); al mover, una fecha vencida pasa a +2 días.
 - Pendiente de la auditoría: Conversaciones aún no lee `wa.conversaciones`/`wa.mensajes` (la función `wa-webhook` ya está activa y su código no está en este repo); editar fichas, contactos y vehículos; registrar la venta al ganar y ligar costos a ventas; cuentas bancarias (0).
 
+**v2.6.0 (16-nov) · Conversaciones de WhatsApp (Fase 5, lado Core):**
+- La conexión a WhatsApp (Kapso, coexistencia, `wa-webhook`, `core.api_wa_ingesta`) y el agente (`wa.borradores`, `wa.cola_agente`, `wa.citas`, `wa.agente_log`, prompt en `wa.config`) se construyen en la carpeta `carclass-whatsapp` del PC de Felipe, no en este repo. Modo del agente: Carclass `borrador`, NOM y BlackGPS `observar`.
+- Migración `core_v23_app_conversaciones` (+ `core_v23b`): `app_conversaciones()`, `app_conversacion(id)` (mensajes, borradores pendientes, citas), `app_conversacion_atender(id, 'tomar'|'devolver')` y `app_borrador_descartar(id)`. Nunca exponen conversaciones `personal`/`ignorada`. «Tomar» = `agente_activo = false`, `agente_pausado_hasta = +30 días`, vacía la cola y descarta borradores; «Devolver» = `agente_activo = true`, pausa nula.
+- App: módulo Conversaciones con lista y chat (en el celular, uno a la vez), estado de la ventana de 24 h, borradores del asesor con «Enviar desde mi WhatsApp» (abre wa.me con el texto; al enviarlo desde el teléfono el webhook cierra el borrador y pausa al asesor 12 h) y «Descartar». Badge en el menú y aviso «Borrador del asesor por revisar». Se refresca cada 20 s.
+- Publicación: la app se publica desde la nube con el conector Netlify (entorno «carclass-core», que permite netlify-mcp.netlify.app y api.netlify.com; Node necesita `NODE_USE_ENV_PROXY=1 NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt`).
+
 **Pendiente:**
 - Netlify: conectar el sitio carclass-core al repositorio (base `app`) para publicar con cada push; desde la nube de Claude la red bloquea Netlify.
 - Push con la app cerrada: claves VAPID, tabla de suscripciones y envío desde core-api.

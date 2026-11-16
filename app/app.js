@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.5.2";
+const VERSION = "2.6.0";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -215,7 +215,7 @@ function viewLogin(msg = "") {
 /* ---------- shell ---------- */
 const NAV = [
   ["Análisis", [["dashboard", "Dashboard", "dash"], ["notificaciones", "Notificaciones", "bell", "avisos"]]],
-  ["Comercial", [["bandeja", "Bandeja", "inbox", "bandeja"], ["conversaciones", "Conversaciones", "chat", null, true], ["embudo", "Embudo", "kanban"], ["agenda", "Agenda", "cal"], ["cotizaciones", "Cotizaciones", "doc"], ["clientes", "Clientes", "users"]]],
+  ["Comercial", [["bandeja", "Bandeja", "inbox", "bandeja"], ["conversaciones", "Conversaciones", "chat", "conv"], ["embudo", "Embudo", "kanban"], ["agenda", "Agenda", "cal"], ["cotizaciones", "Cotizaciones", "doc"], ["clientes", "Clientes", "users"]]],
   ["Catálogo", [["vehiculos", "Vehículos", "car"], ["herramientas", "Herramientas", "link"]]],
   ["Post-venta", [["tareas", "Tareas y postventa", "tasks", "tareas"]]],
   ["Finanzas", [["finanzas", "Resultados", "chart"], ["flujo", "Flujo de caja", "money"], ["registro", "Registro", "doc"], ["importar", "Importar", "dl"]], "fin"],
@@ -311,8 +311,10 @@ async function mostrarAviso(a) {
 async function cargarAvisos() {
   if (!ME) return;
   try {
-    const [bandeja, tareas, cots] = await Promise.all([rpc("app_bandeja", { p_tipo: "todas" }), rpc("app_tareas", { p_estado: "pendiente,en_curso" }), rpc("app_cotizaciones").catch(() => [])]);
+    const [bandeja, tareas, cots, convs] = await Promise.all([rpc("app_bandeja", { p_tipo: "todas" }), rpc("app_tareas", { p_estado: "pendiente,en_curso" }), rpc("app_cotizaciones").catch(() => []), rpc("app_conversaciones").catch(() => [])]);
     const hoy = hoyISO(); const L = [];
+    for (const c of convs.filter((c) => c.borradores > 0)) L.push({ id: `borrador:${c.id}:${c.ultima_entrada || ""}`, level: "brand", icon: "spark", title: `Borrador del asesor por revisar · ${c.nombre || c.telefono}`, body: `${c.unidad ? uName(c.unidad) + " · " : ""}${c.ultimo_mensaje || "nuevo mensaje"}`, href: "#/conversaciones/" + c.id, at: c.ultima_entrada || c.orden });
+    const ncv = $("#nb-conv"); if (ncv) { const n = convs.filter((c) => c.sin_responder || c.borradores > 0).length; ncv.textContent = n || ""; ncv.className = "badge" + (convs.some((c) => c.borradores > 0) ? " brand" : ""); }
     for (const b of bandeja) {
       const nombre = b.contacto || b.empresa;
       if (b.bandeja === "pre_revision") L.push({ id: "pre:" + b.oportunidad_id, level: "info", icon: "spark", title: `Análisis por revisar · ${b.empresa}`, body: `${uName(b.unidad)} · el GPT lo dejó en pre-revisión`, href: "#/bandeja?t=pre_revision", at: b.creado });
@@ -333,7 +335,7 @@ async function cargarAvisos() {
     // avisos del sistema: lead nuevo y lead sin respuesta a los 5 minutos
     if ("Notification" in window && Notification.permission === "granted") {
       const nt = notificados(); const primera = !lsGet("cc_notif_init");
-      for (const a of L.filter((a) => /^(lead|sla|vista):/.test(a.id) && !nt.has(a.id))) { if (!primera) mostrarAviso(a); nt.add(a.id); }
+      for (const a of L.filter((a) => /^(lead|sla|vista|borrador):/.test(a.id) && !nt.has(a.id))) { if (!primera) mostrarAviso(a); nt.add(a.id); }
       guardarSet("cc_notificados", nt); lsSet("cc_notif_init", "1");
     }
   } catch {}
@@ -633,19 +635,54 @@ function modalDescartarPre(id, after) {
 }
 
 /* ---------- conversaciones ---------- */
-async function viewConversaciones() {
+/* Chats del WhatsApp del grupo (wa.*). Nunca muestra conversaciones personales.
+   El asesor IA trabaja en modo «borrador»: propone y Felipe envía desde su WhatsApp (coexistencia);
+   al responder desde el teléfono, el webhook descarta el borrador y pausa al asesor 12 h. */
+const MODO_TXT = { borrador: "propone borradores", observar: "solo observa", activo: "responde solo", auto: "responde solo" };
+const TIPO_MSG = { audio: "Audio", image: "Imagen", document: "Documento", video: "Video", sticker: "Sticker", location: "Ubicación", contacts: "Contacto", unsupported: "Mensaje no compatible" };
+const msgTxt = (m) => m.texto || `[${TIPO_MSG[m.tipo] || m.tipo || "mensaje"}]`;
+const borradorTxt = (b) => (Array.isArray(b.mensajes) ? b.mensajes : []).map((x) => typeof x === "string" ? x : x?.texto || x?.text || x?.body || "").filter(Boolean);
+async function viewConversaciones(id) {
   setActive("conversaciones");
   const P = $("#page");
-  P.innerHTML = `<div class="page-head"><div><h1>Conversaciones</h1><p>Los chats del WhatsApp único, con quién atiende cada uno: el asesor IA o una persona.</p></div></div>
-    <div class="alert info">${ico("info", 18)}<div><b>Se activa al conectar WhatsApp Cloud API.</b> Cuando el número quede conectado en modo coexistencia, cada mensaje llegará aquí y podrás usar «Tomar conversación» y «Devolver al asesor». Mientras tanto, abajo están los leads de WhatsApp con su último mensaje registrado.</div></div>
-    <div id="cv">${loading(4)}</div>`;
-  try {
-    const all = (await rpc("app_bandeja", { p_tipo: "entrantes" })).filter((b) => UNIDADES[b.unidad]?.b2c && enLinea(b.unidad));
-    $("#cv").innerHTML = `<section class="card"><div class="card-h"><h3>Leads B2C abiertos</h3><span class="badge">${all.length}</span><div class="r"><button class="btn sm" disabled>Tomar conversación</button><button class="btn sm" disabled>Devolver al asesor</button></div></div>
-      ${all.length ? all.map((b) => { const wa = waLink(b.telefono); return `<div class="lead"><span class="avatar" style="background:var(--brand)">${esc(initials(b.contacto || b.empresa))}</span>
-        <div><div class="t"><a href="#/cliente/${b.empresa_id}">${esc(b.contacto || b.empresa)}</a></div><div class="meta">${unidadPill(b.unidad)}<span>${hace(b.creado)}</span><span class="pill">Atiende: Felipe</span></div>${b.ultimo_mensaje ? `<div class="msg">${esc(b.ultimo_mensaje)}</div>` : ""}</div>
-        <div class="acts">${wa ? `<a class="btn sm primary" href="${wa}" target="_blank" rel="noopener">${ico("chat", 14)} Abrir en WhatsApp</a>` : ""}</div></div>`; }).join("") : empty("chat", "Sin conversaciones abiertas")}</section>`;
-  } catch (e) { $("#cv").innerHTML = fail(e); }
+  P.innerHTML = `<div class="page-head"><div><h1>Conversaciones</h1><p>Los chats del WhatsApp del grupo y quién atiende cada uno: el asesor IA o tú. Los chats personales no aparecen.</p></div></div>
+    <div class="chat-layout ${id ? "con-chat" : ""}"><section class="card chat-list" id="cv-l">${loading(5)}</section><section class="card chat-pane" id="cv-c">${id ? loading(6) : `<div class="card-b">${empty("chat", "Elige una conversación")}</div>`}</section></div>`;
+  const pintarLista = async () => {
+    const l = (await rpc("app_conversaciones")).filter((c) => !c.unidad || enLinea(c.unidad));
+    $("#cv-l").innerHTML = l.length ? l.map((c) => `<a class="chat-item ${c.id === id ? "on" : ""}" href="#/conversaciones/${c.id}">
+      <span class="avatar" style="background:${c.unidad ? UNIDADES[c.unidad]?.c : "var(--muted)"}">${esc(initials(c.nombre))}</span>
+      <div style="min-width:0"><div class="row" style="justify-content:space-between;gap:6px;flex-wrap:nowrap"><b class="ell">${esc(c.nombre || c.telefono)}</b><span class="faint" style="font-size:11.5px;flex:none">${hace(c.orden)}</span></div>
+        <div class="ell muted" style="font-size:12.5px">${c.ultima_direccion && c.ultima_direccion !== "entrante" ? "Tú: " : ""}${esc(c.ultimo_mensaje || (c.ultimo_tipo ? `[${TIPO_MSG[c.ultimo_tipo] || c.ultimo_tipo}]` : ""))}</div>
+        <div class="row" style="gap:4px;margin-top:4px">${c.unidad ? unidadPill(c.unidad) : '<span class="pill">sin unidad</span>'}${c.sin_responder ? '<span class="pill bad">sin responder</span>' : ""}${c.borradores ? `<span class="pill gold">${c.borradores} borrador${c.borradores > 1 ? "es" : ""}</span>` : ""}<span class="pill ${c.humano ? "" : "info"}">${c.humano ? "Atiendes tú" : "Asesor IA"}</span></div></div></a>`).join("")
+      : `<div class="card-b">${empty("chat", "Sin conversaciones", "Los chats nuevos de clientes aparecerán aquí.")}</div>`;
+    return l;
+  };
+  const pintarChat = async () => {
+    const d = await rpc("app_conversacion", { p_id: id });
+    if (!d) { $("#cv-c").innerHTML = `<div class="card-b">${empty("chat", "Conversación no disponible")}</div>`; return; }
+    const c = d.conversacion || {}; const wa = waLink(c.telefono);
+    const ventana = c.ventana_hasta && parseD(c.ventana_hasta) > new Date();
+    $("#cv-c").innerHTML = `<div class="card-h chat-h"><a class="btn ghost sm icon solo-movil" href="#/conversaciones" aria-label="Volver">${ico("left", 16)}</a>
+        <div style="min-width:0;flex:1"><b class="ell" style="display:block">${esc(c.nombre || c.telefono)}</b><span class="faint" style="font-size:12px">${esc(c.telefono || "")}${c.unidad ? " · " + esc(uName(c.unidad)) : ""}${c.etapa ? " · " + esc(etapaTxt(c.etapa)) : ""}</span></div>
+        ${c.empresa_id ? `<a class="btn sm" href="#/cliente/${c.empresa_id}">${ico("users", 14)} Ficha</a>` : ""}</div>
+      <div class="chat-state"><span>${c.humano ? `<b>Atiendes tú.</b> El asesor está en pausa${c.agente_pausado_hasta ? " hasta " + fechaHora(c.agente_pausado_hasta) : ""}.` : `<b>Atiende el asesor IA</b> · ${esc(MODO_TXT[c.modo] || c.modo)}.`} ${ventana ? `<span class="faint">Ventana de 24 h abierta hasta ${fechaHora(c.ventana_hasta)}.</span>` : '<span class="faint">Ventana de 24 h cerrada: solo plantillas.</span>'}</span>
+        <button class="btn sm ${c.humano ? "" : "primary"}" id="cv-at">${c.humano ? "Devolver al asesor" : "Tomar conversación"}</button></div>
+      <div class="chat-msgs" id="cv-m">${(d.mensajes || []).map((m) => `<div class="bub ${m.direccion === "entrante" ? "in" : "out"} ${m.direccion === "saliente_api" ? "ia" : ""}"><div>${esc(msgTxt(m))}</div><span class="bt">${m.direccion === "saliente_api" ? "Asesor IA · " : m.direccion === "saliente_app" ? "Tú · " : ""}${fechaHora(m.fecha)}</span></div>`).join("") || `<div class="muted" style="text-align:center;font-size:13px">Sin mensajes guardados.</div>`}</div>
+      ${(d.borradores || []).map((b) => { const t = borradorTxt(b); return `<div class="borrador"><div class="row" style="justify-content:space-between;align-items:center"><b style="font-size:13px">${ico("spark", 14)} Borrador del asesor</b><span class="faint" style="font-size:12px">${hace(b.creado_en)}</span></div>
+        ${t.map((x) => `<div class="bub out ia propuesta">${esc(x)}</div>`).join("") || '<div class="muted" style="font-size:13px">Sin texto.</div>'}
+        <div class="row" style="gap:8px">${wa && t.length ? `<a class="btn sm primary" href="${waLink(c.telefono, t.join("\n\n"))}" target="_blank" rel="noopener" data-copiar="${esc(t.join("\n\n"))}">${ico("chat", 14)} Enviar desde mi WhatsApp</a>` : ""}<button class="btn sm ghost danger" data-desc="${b.id}">Descartar</button></div>
+        <div class="faint" style="font-size:12px">Se abre tu WhatsApp con el texto listo para revisar y enviar. Al enviarlo, el borrador se cierra solo.</div></div>`; }).join("")}
+      ${(d.citas || []).length ? `<div class="borrador">${d.citas.map((ci) => `<div style="font-size:13px">${ico("cal", 14)} <b>${esc(ci.tipo)}</b> · ${fechaHora(ci.inicio)}${ci.lugar ? " · " + esc(ci.lugar) : ""} <span class="pill ${ci.reserva_validada ? "ok" : "warn"}">${ci.reserva_validada ? "reserva validada" : "reserva por validar"}</span></div>`).join("")}</div>` : ""}
+      <div class="chat-foot">${wa ? `<a class="btn primary" href="${wa}" target="_blank" rel="noopener">${ico("chat", 15)} Responder en WhatsApp</a>` : ""}</div>`;
+    const box = $("#cv-m"); box.scrollTop = box.scrollHeight;
+    $("#cv-at").onclick = async () => { try { await rpc("app_conversacion_atender", { p_id: id, p_accion: c.humano ? "devolver" : "tomar" }); toast(c.humano ? "El asesor vuelve a atender" : "Tomaste la conversación: el asesor queda en pausa"); refrescar(); } catch (e) { toast(e.message, true); } };
+    $$("[data-desc]").forEach((b) => b.onclick = async () => { try { await rpc("app_borrador_descartar", { p_id: b.dataset.desc }); toast("Borrador descartado"); refrescar(); } catch (e) { toast(e.message, true); } });
+    $$("[data-copiar]").forEach((a) => a.addEventListener("click", () => { try { navigator.clipboard.writeText(a.dataset.copiar); } catch {} }));
+  };
+  const refrescar = async () => { try { await pintarLista(); if (id) await pintarChat(); } catch (e) { $("#cv-l").innerHTML = fail(e); } };
+  await refrescar();
+  clearInterval(viewConversaciones._t);
+  viewConversaciones._t = setInterval(() => { if (!location.hash.startsWith("#/conversaciones")) return clearInterval(viewConversaciones._t); if (!document.hidden && !$("#modal-root").innerHTML) refrescar(); }, 20000);
 }
 
 /* ---------- embudo ---------- */
@@ -1701,7 +1738,7 @@ async function render() {
   const [r, a1, a2] = path.split("/");
   const params = new URLSearchParams(qs || "");
   window.scrollTo(0, 0);
-  const R = { dashboard: () => viewDashboard(params), notificaciones: viewNotificaciones, bandeja: () => viewBandeja(params), conversaciones: viewConversaciones,
+  const R = { dashboard: () => viewDashboard(params), notificaciones: viewNotificaciones, bandeja: () => viewBandeja(params), conversaciones: () => viewConversaciones(a1),
     embudo: () => viewEmbudo(a1 || UNI || undefined, a2), cot: () => viewCot(a1), herramientas: viewHerramientas, agenda: () => viewAgenda(params), cotizaciones: viewCotizaciones, clientes: () => viewClientes(params),
     cliente: () => a1 ? viewCliente(a1) : viewClientes(params), vehiculos: () => viewVehiculos(params), tareas: () => viewTareas(params),
     finanzas: () => viewFinanzas(params), flujo: () => viewFlujo(params), registro: () => viewRegistro(params), importar: viewImportar, equipo: viewEquipo, ayuda: () => viewAyuda(params) };

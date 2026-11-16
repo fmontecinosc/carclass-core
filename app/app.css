@@ -534,3 +534,32 @@ h2.sec .faint { font-weight: 500; font-size: 13px; }
   .qtbl input[data-f="cantidad"] { width: 46px !important; }
   .qtbl input[data-f="precio"] { width: 92px !important; }
 }
+/* v2.6.0 · Conversaciones de WhatsApp */
+.chat-layout { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.chat-list { max-height: calc(100vh - 210px); overflow-y: auto; }
+.chat-item { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); color: inherit; text-decoration: none; }
+.chat-item:hover { background: var(--surface-2); }
+.chat-item.on { background: var(--brand-50, var(--surface-2)); box-shadow: inset 3px 0 0 var(--brand); }
+.chat-item .avatar { width: 38px; height: 38px; color: #fff; }
+.ell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-pane { display: flex; flex-direction: column; min-height: 420px; }
+.chat-h { gap: 10px; align-items: center; }
+.chat-state { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 13px; background: var(--surface-2); }
+.chat-msgs { display: flex; flex-direction: column; gap: 8px; padding: 16px; max-height: 52vh; overflow-y: auto; }
+.bub { max-width: 78%; padding: 8px 12px; border-radius: 12px; font-size: 13.5px; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-2); align-self: flex-start; }
+.bub.out { align-self: flex-end; background: var(--brand-100); }
+.bub.ia { border: 1px dashed var(--brand); }
+.bub .bt { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; text-align: right; }
+.borrador { margin: 0 16px 12px; padding: 12px; border: 1px solid var(--gold); border-radius: 12px; display: grid; gap: 8px; background: color-mix(in srgb, var(--gold) 7%, var(--surface)); }
+.bub.propuesta { max-width: 100%; align-self: stretch; }
+.chat-foot { padding: 12px 16px; border-top: 1px solid var(--border); margin-top: auto; display: flex; justify-content: flex-end; }
+.solo-movil { display: none; }
+@media (max-width: 900px) {
+  .chat-layout { grid-template-columns: minmax(0, 1fr); }
+  .chat-layout.con-chat .chat-list { display: none; }
+  .chat-layout:not(.con-chat) .chat-pane { display: none; }
+  .solo-movil { display: inline-flex; }
+  .chat-list { max-height: none; }
+  .bub { max-width: 88%; }
+}
+.chat-item, .chat-item * { text-decoration: none !important; }
