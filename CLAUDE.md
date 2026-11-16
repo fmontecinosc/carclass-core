@@ -197,7 +197,12 @@ Felipe guarda los documentos y la base del negocio en su Drive (fmontecinos@carc
 - Pestañas en Conversaciones: Míos (BlackGPS, tomados, traspasados), Asesor IA (Carclass, NOM y chats nuevos), Todas.
 - `core_v25`: `app_ficha_guardar` (nombre, RUT, teléfono, correo, comuna, región, dirección, rubro, flota, notas y contacto principal; no repite RUT ni teléfono de persona) y `app_oportunidad_guardar` (título, próxima acción y fecha obligatorias, monto). Botones «Editar» en la ficha y en cada oportunidad.
 - `core_v26`: Web Push con la app cerrada. Claves en Vault (`push_vapid_publica`, `push_vapid_privada`, `push_secreto`), suscripciones en `core.push_suscripciones`, deduplicación en `core.push_log`, envío con `core.push(titulo, cuerpo, href, clave)` → pg_net → función `core-push` (en `supabase/functions/core-push`). Avisos: cliente pide hablar contigo (tarea «[WhatsApp]»), lead nuevo, sin respuesta a los 5 min y cita en 1 hora (cron `core_push_revisar` cada minuto), cotización vista. Un mensaje `saliente_api` del asesor marca `primera_respuesta_en`. Cada dispositivo se suscribe al pulsar «Activar avisos» (iPhone: app instalada en pantalla de inicio).
-- Pendiente del punto 6 de la auditoría: registrar la venta al marcar «Ganada» y ligar costos a ventas; contactos adicionales y vehículos editables.
+- Pendiente del punto 6 de la auditoría: contactos adicionales y vehículos editables.
+
+**v2.8.0 (16-nov) · enviar WhatsApp desde Core y venta al ganar:**
+- Conversaciones usa la función `wa-enviar` (de la sesión carclass-whatsapp; contrato en su `docs/contrato-core-whatsapp.md`): POST con `Authorization: Bearer <access_token>`; `{borrador_id}` envía el borrador, `{borrador_id, mensajes}` edita y envía, `{conversacion_id, mensajes}` responde a mano y pausa al asesor 12 h; 409 si la ventana de 24 h está cerrada. La app muestra las acciones del borrador (cotización, cita, traspaso, descarte diferido) y un campo para responder.
+- `core_v27`: `app_ganar_con_venta(p)` marca ganada y, si quien ve finanzas lo pide, crea la venta en `fin.ventas` ligada a cliente, oportunidad y cotización (origen `app`). BlackGPS no registra venta aquí (viene de Control_Facturacion). `app_fin_guardar` permite cambiar `venta_id` de un costo. `app_empresa` entrega por venta sus costos ligados y margen.
+- App: «Ganada» pide monto (prellenado con el de la oportunidad), tipo, detalle, cobro, documento e IVA. Ficha → Ventas muestra margen y botón «+ Costo» (costo directo ligado). En Registro, cada costo puede elegir su venta y las ventas muestran su margen.
 
 **Pendiente:**
 - Netlify: conectar el sitio carclass-core al repositorio (base `app`) para publicar con cada push; desde la nube de Claude la red bloquea Netlify.

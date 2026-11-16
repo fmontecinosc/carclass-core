@@ -569,3 +569,11 @@ h2.sec .faint { font-weight: 500; font-size: 13px; }
 .cv-modo select { border: 0; background: var(--surface-2); border-radius: 999px; font: inherit; font-weight: 500; padding: 3px 6px; color: inherit; }
 .clasificar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); }
 #cv-tabs .badge:empty { display: none; }
+/* v2.8.0 · enviar desde Core y ventas con margen */
+.chat-foot { flex-direction: column; align-items: stretch; gap: 6px; }
+.chat-compose { display: flex; gap: 8px; align-items: flex-end; }
+.chat-compose textarea { flex: 1; min-height: 44px; resize: vertical; }
+.bor-acc { display: flex; flex-wrap: wrap; gap: 6px; }
+.bor-ed { font-size: 13.5px; }
+.venta-row { display: grid; gap: 2px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.venta-row:last-child { border-bottom: 0; }
