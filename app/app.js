@@ -64,6 +64,10 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const clp = (n) => n == null ? "—" : (Number(n) < 0 ? "-$" : "$") + Math.abs(Math.round(Number(n))).toLocaleString("es-CL");
 const clpM = (n) => n == null ? "—" : Math.abs(n) >= 1e6 ? (n < 0 ? "-$" : "$") + (Math.abs(n) / 1e6).toLocaleString("es-CL", { maximumFractionDigits: 1 }) + " MM" : clp(n);
+// Campos de monto: texto con formato chileno (25.000), aceptan puntos, comas, $ y espacios
+const montoIn = (id, v, attrs = "") => `<input class="input clp-in" id="${id}" type="text" inputmode="numeric" autocomplete="off" placeholder="$0" value="${v != null && v !== "" ? Number(v).toLocaleString("es-CL") : ""}" ${attrs}>`;
+const montoVal = (el) => { const s = String(el?.value ?? "").replace(/,\d{1,2}$/, "").replace(/[^\d-]/g, ""); return s && s !== "-" ? Number(s) : null; };
+document.addEventListener("input", (e) => { const el = e.target; if (!el.classList?.contains("clp-in")) return; const n = montoVal(el); el.value = n == null ? (el.value.trim().startsWith("-") ? "-" : "") : n.toLocaleString("es-CL"); });
 const int = (n) => n == null ? "—" : Number(n).toLocaleString("es-CL");
 const iso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
 const hoyISO = () => iso(new Date());
@@ -1502,24 +1506,25 @@ function modalFin(t, r, after, preset = {}) {
   if (t === "ventas") body = `<div class="row"><div class="field"><label for="fn-f">Fecha de emisión</label><input class="input" id="fn-f" type="date" value="${r?.fecha || hoyISO()}"></div><div class="field"><label for="fn-u">Unidad</label>${uSel(r?.unidad, false)}</div><div class="field"><label for="fn-m">Tipo</label><select class="input" id="fn-m">${opt(MODALIDADES, r?.modalidad || "servicio")}</select></div></div>
     <div class="row"><div class="field"><label for="fn-c">Cliente</label><input class="input" id="fn-c" value="${esc(r?.cliente || "")}"></div><div class="field" style="flex:0 1 180px"><label for="fn-doc">N° factura o boleta</label><input class="input" id="fn-doc" value="${esc(r?.documento || "")}"></div></div>
     <div class="field"><label for="fn-d">Detalle</label><input class="input" id="fn-d" value="${esc(r?.descripcion || "")}" placeholder="Servicio, vehículo, período"></div>
-    <div class="row"><div class="field"><label for="fn-mo">Monto con IVA</label><input class="input" id="fn-mo" type="number" min="0" value="${r?.monto ?? ""}"></div><div class="field"><label for="fn-iva">IVA</label><select class="input" id="fn-iva">${opt([["true", "Afecto"], ["false", "Exento"]], String(r?.afecto_iva ?? true))}</select></div>
+    <div class="row"><div class="field"><label for="fn-mo">Monto con IVA</label>${montoIn("fn-mo", r?.monto)}</div><div class="field"><label for="fn-iva">IVA</label><select class="input" id="fn-iva">${opt([["true", "Afecto"], ["false", "Exento"]], String(r?.afecto_iva ?? true))}</select></div>
       <div class="field"><label for="fn-e">Cobro</label><select class="input" id="fn-e">${opt([["pendiente", "Pendiente"], ["cobrado", "Cobrado"]], r?.estado_cobro || "pendiente")}</select></div><div class="field"><label for="fn-fe">Fecha de cobro</label><input class="input" id="fn-fe" type="date" value="${r?.fecha_cobro || ""}"></div></div>`;
   if (t === "costos") body = `<div class="row"><div class="field"><label for="fn-f">Fecha</label><input class="input" id="fn-f" type="date" value="${r?.fecha || hoyISO()}"></div><div class="field"><label for="fn-u">Unidad</label>${uSel(r?.unidad || preset.unidad)}</div><div class="field"><label for="fn-tp">Tipo</label><select class="input" id="fn-tp">${opt(TIPO_COSTO, TIPO_COSTO.some((x) => x[0] === r?.tipo) ? r.tipo : preset.tipo || "fijo")}</select></div></div>
     <div class="row"><div class="field"><label for="fn-cat">Categoría</label><select class="input" id="fn-cat"></select></div><div class="field"><label for="fn-p">Proveedor</label><input class="input" id="fn-p" value="${esc(r?.proveedor || "")}"></div><div class="field" style="flex:0 1 160px"><label for="fn-doc">N° documento</label><input class="input" id="fn-doc" value="${esc(r?.documento || "")}"></div></div>
     <div class="field"><label for="fn-d">Detalle</label><input class="input" id="fn-d" value="${esc(r?.descripcion || "")}"></div>
-    <div class="row"><div class="field"><label for="fn-mo">Monto con IVA</label><input class="input" id="fn-mo" type="number" min="0" value="${r?.monto ?? ""}"></div><div class="field"><label for="fn-iva">IVA</label><select class="input" id="fn-iva">${opt([["true", "Con IVA (factura)"], ["false", "Sin IVA (boleta de honorarios, exento)"]], String(r?.afecto_iva ?? true))}</select></div>
+    <div class="row"><div class="field"><label for="fn-mo">Monto con IVA</label>${montoIn("fn-mo", r?.monto)}</div><div class="field"><label for="fn-iva">IVA</label><select class="input" id="fn-iva">${opt([["true", "Con IVA (factura)"], ["false", "Sin IVA (boleta de honorarios, exento)"]], String(r?.afecto_iva ?? true))}</select></div>
       <div class="field"><label for="fn-e">Pago</label><select class="input" id="fn-e">${opt([["pagado", "Pagado"], ["pendiente", "Pendiente"]], r?.estado_pago || "pagado")}</select></div><div class="field"><label for="fn-fe">Fecha de pago</label><input class="input" id="fn-fe" type="date" value="${r?.fecha_pago || ""}"></div></div>
     <div class="field" id="fn-vbox"><label for="fn-v">Venta asociada (para calcular su margen)</label><select class="input" id="fn-v"><option value="">Sin venta asociada (gasto general)</option>${(preset.venta_id || r?.venta_id) ? `<option value="${esc(preset.venta_id || r.venta_id)}" selected>${esc(preset.venta_txt || "Venta asociada")}</option>` : ""}</select></div>`;
   if (t === "movimientos") body = `<div class="row"><div class="field"><label for="fn-f">Fecha</label><input class="input" id="fn-f" type="date" value="${r?.fecha || hoyISO()}"></div><div class="field"><label for="fn-tp">Tipo</label><select class="input" id="fn-tp">${opt([["ingreso", "Ingreso"], ["egreso", "Egreso"]], r?.tipo || "egreso")}</select></div><div class="field"><label for="fn-cat">Categoría</label><select class="input" id="fn-cat"></select></div></div>
-    <div class="row"><div class="field"><label for="fn-u">Unidad</label>${uSel(r?.unidad || "grupo")}</div><div class="field"><label for="fn-mo">Monto</label><input class="input" id="fn-mo" type="number" min="1" value="${r?.monto ?? ""}"></div><div class="field" style="flex:0 1 160px"><label for="fn-doc">N° documento</label><input class="input" id="fn-doc" value="${esc(r?.documento || "")}"></div></div>
+    <div class="row"><div class="field"><label for="fn-u">Unidad</label>${uSel(r?.unidad || "grupo")}</div><div class="field"><label for="fn-mo">Monto</label>${montoIn("fn-mo", r?.monto)}</div><div class="field" style="flex:0 1 160px"><label for="fn-doc">N° documento</label><input class="input" id="fn-doc" value="${esc(r?.documento || "")}"></div></div>
     <div class="field"><label for="fn-d">Detalle</label><input class="input" id="fn-d" value="${esc(r?.descripcion || "")}" placeholder="Ej: aporte de socio, pago cuota préstamo, IVA de octubre"></div>`;
   const nombres = { ventas: "venta", costos: "costo o gasto", movimientos: "movimiento" };
   const g = (id) => $("#" + id)?.value ?? null;
   const root = modal(r ? `Editar ${nombres[t]}` : `Nuevo ${nombres[t]}`, body + `<p class="faint" style="margin:0;font-size:12px">Queda en la auditoría con tu usuario.</p>`, async () => {
-    if (!g("fn-mo") || Number(g("fn-mo")) <= 0) throw new Error("Escribe el monto.");
-    const datos = t === "ventas" ? { fecha: g("fn-f"), unidad: g("fn-u"), modalidad: g("fn-m"), cliente: g("fn-c"), documento: g("fn-doc"), descripcion: g("fn-d"), monto: g("fn-mo"), afecto_iva: g("fn-iva") === "true", estado_cobro: g("fn-e"), fecha_cobro: g("fn-fe") }
-      : t === "costos" ? { fecha: g("fn-f"), unidad: g("fn-u"), tipo: g("fn-tp"), categoria: g("fn-cat"), proveedor: g("fn-p"), documento: g("fn-doc"), descripcion: g("fn-d"), monto: g("fn-mo"), afecto_iva: g("fn-iva") === "true", estado_pago: g("fn-e"), fecha_pago: g("fn-fe"), venta_id: g("fn-v") || "" }
-      : { fecha: g("fn-f"), tipo: g("fn-tp"), categoria: g("fn-cat"), unidad: g("fn-u"), monto: g("fn-mo"), documento: g("fn-doc"), descripcion: g("fn-d") };
+    const monto = montoVal($("#fn-mo", root));
+    if (!monto || (t !== "ventas" && monto <= 0)) throw new Error("Escribe el monto.");
+    const datos = t === "ventas" ? { fecha: g("fn-f"), unidad: g("fn-u"), modalidad: g("fn-m"), cliente: g("fn-c"), documento: g("fn-doc"), descripcion: g("fn-d"), monto, afecto_iva: g("fn-iva") === "true", estado_cobro: g("fn-e"), fecha_cobro: g("fn-fe") }
+      : t === "costos" ? { fecha: g("fn-f"), unidad: g("fn-u"), tipo: g("fn-tp"), categoria: g("fn-cat"), proveedor: g("fn-p"), documento: g("fn-doc"), descripcion: g("fn-d"), monto, afecto_iva: g("fn-iva") === "true", estado_pago: g("fn-e"), fecha_pago: g("fn-fe"), venta_id: g("fn-v") || "" }
+      : { fecha: g("fn-f"), tipo: g("fn-tp"), categoria: g("fn-cat"), unidad: g("fn-u"), monto, documento: g("fn-doc"), descripcion: g("fn-d") };
     await rpc("app_fin_guardar", { p: { tabla: t, id: r?.id || null, datos } });
     toast("Guardado"); after && after();
   }, "Guardar", false, r ? { text: "Eliminar", fn: async () => { if (!confirm("¿Eliminar este registro? Queda en la auditoría.")) throw new Error("Cancelado"); await rpc("app_fin_guardar", { p: { tabla: t, id: r.id, eliminar: true } }); toast("Eliminado"); after && after(); } } : null);
@@ -1672,7 +1677,8 @@ function modal(title, body, onOk, okText = "Guardar", wide = false, alt = null) 
   document.addEventListener("keydown", k);
   $$("[data-x]", root).forEach((b) => b.onclick = close);
   if (alt) $("#m-alt", root).onclick = async () => { const b = $("#m-alt", root); b.disabled = true; $("#m-err").textContent = ""; try { await alt.fn(); close(); } catch (err) { $("#m-err").textContent = err.message; b.disabled = false; } };
-  $(".modal-bg", root).onmousedown = (e) => e.target.classList.contains("modal-bg") && close();
+  // ojo: un manejador on* que devuelve false cancela el clic (y el foco) en todo el modal; por eso va con llaves
+  $(".modal-bg", root).onmousedown = (e) => { if (e.target.classList.contains("modal-bg")) close(); };
   $("#m-form").onsubmit = async (e) => {
     e.preventDefault(); if (!onOk) return close();
     const ok = $("#m-ok"); ok.disabled = true; $("#m-err").textContent = "";
@@ -1759,9 +1765,9 @@ function modalOportunidad(o, after) {
   modal(`Editar oportunidad · ${uName(o.unidad)}`, `
     <div class="field"><label for="op-tit">Qué busca (título)</label><input class="input" id="op-tit" value="${esc(o.titulo || "")}" placeholder="Ej: Cerámico RAV4 2022"></div>
     <div class="row"><div class="field"><label for="op-acc">Próxima acción</label><input class="input" id="op-acc" value="${esc(o.proxima_accion || "")}"></div><div class="field" style="flex:0 1 170px"><label for="op-f">Fecha</label><input class="input" id="op-f" type="date" value="${o.proxima_fecha || masDias(1)}"></div></div>
-    <div class="field" style="max-width:220px"><label for="op-m">Monto estimado con IVA</label><input class="input" id="op-m" type="number" min="0" step="5000" value="${o.monto ?? ""}"></div>
+    <div class="field" style="max-width:220px"><label for="op-m">Monto estimado con IVA</label>${montoIn("op-m", o.monto)}</div>
     <p class="faint" style="margin:0;font-size:12px">La etapa se cambia con el selector de la tarjeta o registrando una gestión.</p>`, async () => {
-    await rpc("app_oportunidad_guardar", { p: { id: o.id, titulo: $("#op-tit").value, proxima_accion: $("#op-acc").value, proxima_fecha: $("#op-f").value, monto: $("#op-m").value } });
+    await rpc("app_oportunidad_guardar", { p: { id: o.id, titulo: $("#op-tit").value, proxima_accion: $("#op-acc").value, proxima_fecha: $("#op-f").value, monto: montoVal($("#op-m")) } });
     toast("Oportunidad actualizada"); after && after();
   }, "Guardar");
 }
@@ -1787,7 +1793,7 @@ function modalCerrar(opId, nombre, estado, after, ctx = {}) {
   const root = modal(ganar ? `Marcar como ganada · ${nombre}` : `Marcar como perdida · ${nombre}`, ganar
     ? `<p style="margin:0">La oportunidad queda <b>ganada</b>. En Carclass, Carwash.hf y NOM se crean solos los seguimientos de postventa.</p>
       ${conVenta ? `<label class="check-row"><input type="checkbox" id="c-v" checked> Registrar la venta ahora</label>
-      <div class="xbox" id="c-vbox"><div class="row"><div class="field"><label for="c-mo">Monto con IVA</label><input class="input" id="c-mo" type="number" min="0" step="1000" value="${ctx.monto || ""}"></div>
+      <div class="xbox" id="c-vbox"><div class="row"><div class="field"><label for="c-mo">Monto con IVA</label>${montoIn("c-mo", ctx.monto || "")}</div>
         <div class="field"><label for="c-mod">Tipo</label><select class="input" id="c-mod">${MODALIDADES.map(([k, t]) => `<option value="${k}" ${k === modDef ? "selected" : ""}>${t}</option>`).join("")}</select></div></div>
         <div class="field"><label for="c-d">Detalle</label><input class="input" id="c-d" value="${esc(ctx.titulo || "")}" placeholder="Servicio y vehículo"></div>
         <div class="row"><div class="field"><label for="c-e">Cobro</label><select class="input" id="c-e"><option value="pendiente">Pendiente</option><option value="cobrado">Cobrado</option></select></div>
@@ -1801,7 +1807,7 @@ function modalCerrar(opId, nombre, estado, after, ctx = {}) {
       const m = ganar ? null : $("#c-m").value; if (!ganar && !m) throw new Error("Elige un motivo de la lista.");
       const nota = $("#c-n").value.trim() || null;
       if (ganar) {
-        const venta = conVenta && $("#c-v").checked ? { monto: Number($("#c-mo").value) || 0, modalidad: $("#c-mod").value, descripcion: $("#c-d").value.trim(), estado_cobro: $("#c-e").value, documento: $("#c-doc").value.trim(), afecto_iva: $("#c-iva").value === "true" } : null;
+        const venta = conVenta && $("#c-v").checked ? { monto: montoVal($("#c-mo")) || 0, modalidad: $("#c-mod").value, descripcion: $("#c-d").value.trim(), estado_cobro: $("#c-e").value, documento: $("#c-doc").value.trim(), afecto_iva: $("#c-iva").value === "true" } : null;
         if (venta && venta.monto <= 0) throw new Error("Escribe el monto de la venta o desmarca «Registrar la venta ahora».");
         const r = await rpc("app_ganar_con_venta", { p: { oportunidad_id: opId, nota, venta } });
         toast(r.venta_id ? `¡Ganada! Venta de ${clp(venta.monto)} registrada` : "¡Ganada!");
