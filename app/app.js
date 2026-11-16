@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.5.1";
+const VERSION = "2.5.2";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -545,7 +545,7 @@ function comercialDash(d, u) {
         ${(d.por_campana || []).length ? `<div style="margin-top:14px"><div class="lbl" style="margin-bottom:8px">Campañas</div>${d.por_campana.map((x) => `<div class="row" style="justify-content:space-between;font-size:13px;padding:4px 0"><span>${esc(x.campana)}</span><span class="num"><b>${int(x.n)}</b> <span class="faint">· ${int(x.ganadas)} ganados</span></span></div>`).join("")}</div>` : ""}
         <div class="lbl" style="margin:14px 0 6px">SLA de primera respuesta</div>${d.con_respuesta ? `<div class="sla-bar"><i style="width:${slaPct}%;background:var(--ok)"></i><i style="width:${100 - slaPct}%;background:var(--warn)"></i></div>` : `<div class="muted" style="font-size:12.5px">Sin respuestas medidas en este rango.</div>`}</div></section>
     </div>
-    <p class="faint" style="font-size:12px;margin:0">Leads = oportunidades creadas en el rango. No incluye los 575 prospectos importados de la base BlackGPS.</p>`;
+    <p class="faint" style="font-size:12px;margin:0">Leads = oportunidades creadas en el rango.</p>`;
 }
 
 function chartEvolucion(rows) {
@@ -655,7 +655,7 @@ async function viewEmbudo(u, flujo) {
   if (u === "nom") flujo = flujo === "comprador" ? "comprador" : "consignante"; else flujo = null;
   setActive("embudo", `Embudo · ${uName(u)}${flujo ? (flujo === "consignante" ? " · Consignantes" : " · Compradores") : ""}`);
   const P = $("#page");
-  P.innerHTML = `<div class="page-head"><div><h1>Embudo</h1><p>Arrastra una tarjeta para cambiar su etapa, o suéltala en «Ganada» o «Perdida». Cada gestión registrada avanza la etapa sola; nunca retrocede sin que tú lo decidas.</p></div>
+  P.innerHTML = `<div class="page-head"><div><h1>Embudo</h1><p>Arrastra una tarjeta (o usa «Mover» en el celular) para cambiar su etapa, o suéltala en «Ganada» o «Perdida». Cada gestión registrada avanza la etapa sola; nunca retrocede sin que tú lo decidas.</p></div>
       <div class="actions"><button class="btn primary" id="e-new">${ico("plus", 16)} Nuevo lead</button></div></div>
     <div class="tabs">${unis.map((x) => `<a href="#/embudo/${x}" class="${x === u ? "on" : ""}">${uName(x)}</a>`).join("")}</div>
     ${u === "nom" ? `<div class="seg"><button class="${flujo === "consignante" ? "on" : ""}" data-f="consignante">Consignantes</button><button class="${flujo === "comprador" ? "on" : ""}" data-f="comprador">Compradores</button></div>` : ""}
@@ -672,22 +672,31 @@ async function viewEmbudo(u, flujo) {
         <div class="col-b">${(c.items || []).map((it) => `<article class="kcard" draggable="true" data-id="${it.id}" data-emp="${it.empresa_id}" data-fecha="${it.proxima_fecha || ""}" data-nom="${esc(it.empresa)}">
           <b>${esc(it.empresa)}</b>
           <div class="meta">${it.flota ? `<span>${int(it.flota)} veh.</span>` : ""}${it.comuna ? `<span>${esc(it.comuna)}</span>` : ""}${it.canal ? `<span>${esc(CANAL_TXT[it.canal] || it.canal)}</span>` : ""}${it.monto ? `<span class="num">${clpM(it.monto)}</span>` : ""}${it.sin_respuesta ? '<span class="pill bad">sin respuesta</span>' : ""}</div>
-          <div class="next">${it.proxima_fecha ? `<span class="pill ${it.proxima_fecha < hoyISO() ? "bad" : it.proxima_fecha === hoyISO() ? "warn" : ""}">${fecha(it.proxima_fecha)}</span>` : '<span class="pill">sin fecha</span>'}<span>${esc(it.proxima_accion || hace(it.ultima))}</span></div>
+          <div class="next">${it.proxima_fecha ? `<span class="pill ${it.proxima_fecha < hoyISO() ? "bad" : it.proxima_fecha === hoyISO() ? "warn" : ""}">${fecha(it.proxima_fecha)}</span>` : '<span class="pill">sin fecha</span>'}<span>${esc(it.proxima_accion || hace(it.ultima))}</span><button type="button" class="btn ghost sm kmove" data-mover aria-label="Mover de etapa">Mover</button></div>
         </article>`).join("")}${c.total > (c.items || []).length ? `<div class="col-more">y ${int(c.total - c.items.length)} más</div>` : ""}${!c.total ? '<div class="col-more">Sin oportunidades</div>' : ""}</div></section>`; }).join("")}</div>
       <div class="dropbar"><div class="dropzone win" data-cerrar="ganada">${ico("trophy", 16)} Soltar aquí: Ganada</div><div class="dropzone lose" data-cerrar="perdida">${ico("x", 16)} Soltar aquí: Perdida</div></div>`;
     let drag = null;
     $$(".kcard").forEach((k) => {
       k.ondragstart = (e) => { drag = k; k.classList.add("drag"); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", k.dataset.id); };
       k.ondragend = () => k.classList.remove("drag");
-      k.onclick = () => (location.hash = "#/cliente/" + k.dataset.emp);
+      k.onclick = (e) => { if (e.target.closest("[data-mover]")) return; location.hash = "#/cliente/" + k.dataset.emp; };
+      $("[data-mover]", k).onclick = (e) => { e.stopPropagation(); modalMover(k); };
     });
-    const zona = (el, onDrop) => { el.ondragover = (e) => { e.preventDefault(); el.classList.add("drop"); }; el.ondragleave = () => el.classList.remove("drop"); el.ondrop = (e) => { e.preventDefault(); el.classList.remove("drop"); if (drag) onDrop(drag); }; };
-    $$(".col").forEach((col) => zona(col, async (card) => {
-      if (card.closest(".col") === col) return;
-      const prev = card.parentElement; col.querySelector(".col-b").prepend(card);
-      try { await rpc("app_mover_etapa", { p: { oportunidad_id: card.dataset.id, etapa: col.dataset.etapa, proxima_fecha: card.dataset.fecha || masDias(2) } }); toast(`Movida a ${etapaTxt(col.dataset.etapa)}`); }
+    const moverA = async (card, etapa) => {
+      const prev = card.parentElement; const col = $(`.col[data-etapa="${CSS.escape(etapa)}"] .col-b`); if (col) col.prepend(card);
+      try { await rpc("app_mover_etapa", { p: { oportunidad_id: card.dataset.id, etapa, proxima_fecha: card.dataset.fecha && card.dataset.fecha >= hoyISO() ? card.dataset.fecha : masDias(2) } }); toast(`Movida a ${etapaTxt(etapa)}`); }
       catch (err) { prev.prepend(card); toast(err.message, true); }
-    }));
+    };
+    // «Mover»: alternativa al arrastre, que no funciona con el dedo en el celular
+    const modalMover = (card) => {
+      const actual = card.closest(".col").dataset.etapa;
+      const root = modal(`Mover · ${card.dataset.nom}`, `<div class="mover-list">${etapas.map((et) => `<button type="button" class="btn ${et === actual ? "primary" : ""}" data-et="${esc(et)}" ${et === actual ? "disabled" : ""}>${esc(etapaTxt(et))}</button>`).join("")}</div>
+        <div class="row"><button type="button" class="btn" data-fin="ganada">${ico("trophy", 15)} Ganada</button><button type="button" class="btn ghost danger" data-fin="perdida">Perdida</button></div>`, null);
+      $$("[data-et]", root).forEach((b) => b.onclick = () => { root.innerHTML = ""; moverA(card, b.dataset.et); });
+      $$("[data-fin]", root).forEach((b) => b.onclick = () => { root.innerHTML = ""; modalCerrar(card.dataset.id, card.dataset.nom, b.dataset.fin, () => viewEmbudo(u, flujo)); });
+    };
+    const zona = (el, onDrop) => { el.ondragover = (e) => { e.preventDefault(); el.classList.add("drop"); }; el.ondragleave = () => el.classList.remove("drop"); el.ondrop = (e) => { e.preventDefault(); el.classList.remove("drop"); if (drag) onDrop(drag); }; };
+    $$(".col").forEach((col) => zona(col, (card) => { if (card.closest(".col") !== col) moverA(card, col.dataset.etapa); }));
     $$("[data-cerrar]").forEach((z) => zona(z, (card) => modalCerrar(card.dataset.id, card.dataset.nom, z.dataset.cerrar, () => viewEmbudo(u, flujo))));
   } catch (e) { $("#kb").innerHTML = fail(e); }
 }
@@ -826,8 +835,9 @@ async function modalCotizador({ oportunidad_id, unidad, cliente, cot = null, aft
         <td class="num"><input class="input sm" type="number" min="1" data-f="cantidad" data-i="${i}" value="${l.cantidad}" style="width:62px" aria-label="Cantidad"></td>
         <td class="num"><input class="input sm" type="number" min="0" step="5000" data-f="precio" data-i="${i}" value="${l.precio}" style="width:118px" aria-label="Precio"></td>
         <td class="num"><b>${clp(l.precio * l.cantidad)}</b></td><td><button type="button" class="btn ghost sm icon" data-del="${i}" aria-label="Quitar">${ico("x", 14)}</button></td></tr>`; }).join("")}</tbody>
-      <tfoot><tr><td colspan="3" class="num">Neto ${clp(Math.round(total / 1.19))} · IVA ${clp(total - Math.round(total / 1.19))} · <b>Total</b></td><td class="num"><b style="font-size:15px">${clp(total)}</b></td><td></td></tr>
-      ${ME.ve_finanzas && conM.length ? `<tr><td colspan="3" class="num faint">Margen estimado (interno, según catálogo)</td><td class="num faint">${clp(margen)} · ${total ? Math.round((margen / total) * 100) : 0}%</td><td></td></tr>` : ""}</tfoot></table></div>`
+      </table></div>
+      <div class="qtot"><span>Neto ${clp(Math.round(total / 1.19))} · IVA ${clp(total - Math.round(total / 1.19))}</span><span>Total <b style="font-size:15px">${clp(total)}</b></span>
+      ${ME.ve_finanzas && conM.length ? `<span class="faint" style="flex-basis:100%;text-align:right">Margen estimado (interno, según catálogo): ${clp(margen)} · ${total ? Math.round((margen / total) * 100) : 0}%</span>` : ""}</div>`
       : '<div class="muted" style="font-size:13px">Agrega servicios del catálogo. Recomienda una solución y, como máximo, una alternativa.</div>';
     const cods = lineas.map((l) => l.codigo); const reglas = [];
     if (unidad === "carclass") {
@@ -836,7 +846,6 @@ async function modalCotizador({ oportunidad_id, unidad, cliente, cot = null, aft
       if (total >= 600000 && !cods.includes("retiro")) reglas.push("Venta de mayor valor: puedes ofrecer retiro y entrega a domicilio sin costo en Chicureo, Las Condes o Lo Barnechea.");
       if (lineas.some((l) => cat.find((c) => c.codigo === l.codigo)?.aproximado)) reglas.push("Incluye valores aproximados (cerámico, PPF total o desabolladura): se confirman con el cliente y el vehículo.");
       if (lineas.some((l) => cat.find((c) => c.codigo === l.codigo)?.requiere_humano)) reglas.push("Desabolladura y personalización las evalúa una persona con fotos y el especialista antes de enviar.");
-      if (false) reglas.push("Hay descuento: evítalo si puedes. Hasta 5% solo si el cliente lo exige para cerrar; más que eso requiere tu aprobación.");
     }
     if (unidad === "carclass" && lineas.some((l) => { const c = cat.find((x) => x.codigo === l.codigo); return c && l.precio < c.precio; })) reglas.push("Hay descuento: evítalo si puedes. Hasta 5% solo si el cliente lo exige para cerrar; más que eso requiere tu aprobación.");
     if (unidad === "carwash") {
@@ -1175,9 +1184,13 @@ async function viewTareas(params) {
 const FIN_TABS = [["finanzas", "Resultados"], ["flujo", "Flujo de caja"], ["registro", "Registro"], ["importar", "Importar"]];
 const FIN_U = ["carclass", "nom", "carwash", "blackgps", "somosb2b", "grupo"];
 const MODALIDADES = [["servicio", "Servicio"], ["licencia", "Mensualidad"], ["instalacion", "Instalación"], ["hardware", "Equipos"], ["consignacion", "Comisión"], ["compraventa", "Compraventa"], ["broker", "Servicio broker"], ["otro", "Otro"]];
-const CAT_COSTO = { directo: ["partner", "compra_equipos", "hardware_franquicia", "insumos", "retiro_domicilio", "comision_venta", "reparacion", "otro"],
-  operacional: ["arriendo", "sueldos_honorarios", "marketing", "software", "contabilidad", "combustible_transporte", "bancos_comisiones", "seguros", "servicios_basicos", "patentes_impuestos", "otro"] };
-const CAT_MOV = { ingreso: ["aporte_socios", "prestamo_recibido", "devolucion", "otro"], egreso: ["retiro_socios", "pago_prestamo", "impuesto_iva", "impuesto_renta", "inversion", "otro"] };
+// Tipos y categorías iguales a los de la base (fin.costos.tipo: directo, fijo, variable)
+const TIPO_COSTO = [["fijo", "Gasto fijo"], ["variable", "Gasto variable"], ["directo", "Costo directo de venta"]];
+const CAT_COSTO = { directo: ["partner", "insumos", "personal", "compra_equipos", "hardware_franquicia", "licencia_franquicia", "compra_vehiculo", "transferencia", "stock", "retiro_domicilio", "reparacion", "otro"],
+  fijo: ["arriendo", "software", "telefono", "internet", "web_hosting", "aceleradora", "capacitacion", "sueldos_honorarios", "contabilidad", "comisiones_bancarias", "seguros", "servicios_basicos", "patente", "otro"],
+  variable: ["publicidad", "transporte", "comisiones_venta", "combustible", "otro"] };
+const CAT_MOV = { ingreso: ["aporte_capital", "prestamo", "devolucion", "otro"], egreso: ["retiro_dueno", "impuestos", "compra_stock", "pago_prestamo", "inversion", "otro"] };
+const tipoCostoTxt = (t) => (TIPO_COSTO.find((x) => x[0] === t) || [0, t === "operacional" ? "Gasto fijo" : t || "—"])[1];
 const catTxt = (c) => (c || "otro").replace(/_/g, " ").replace(/^./, (x) => x.toUpperCase());
 const FIN_PRESETS = [["anio", "Este año"], ["12m", "Últimos 12 meses"], ["sem", "Semestre actual"], ["mes", "Mes actual"], ["anio_ant", "Año anterior"]];
 function finRango(k) {
@@ -1351,7 +1364,7 @@ async function viewRegistro(params) {
     const cols = t === "ventas" ? ["Fecha", "Unidad", "Cliente", "Detalle", "Tipo", "Monto", "Cobro"] : t === "costos" ? ["Fecha", "Unidad", "Tipo", "Categoría", "Proveedor y detalle", "Monto", "Pago"] : ["Fecha", "Tipo", "Categoría", "Detalle", "Cuenta", "Monto"];
     $("#fin").innerHTML = `<section class="card"><div class="card-h"><h3>${rows.length} registros</h3><span class="r"><b>${clp(tot)}</b></span></div>${rows.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr>${cols.map((c) => `<th class="${c === "Monto" ? "num" : ""}">${c}</th>`).join("")}</tr></thead><tbody>
       ${rows.map((r, i) => t === "ventas" ? `<tr class="click" data-i="${i}"><td>${fecha(r.fecha)}</td><td>${unidadPill(r.unidad)}</td><td class="name">${esc(r.cliente || "—")}</td><td><div>${esc((r.descripcion || "").slice(0, 80))}</div>${r.documento ? `<div class="sub">${esc(r.documento)}</div>` : ""}</td><td>${esc((MODALIDADES.find((m) => m[0] === r.modalidad) || [0, r.modalidad || "—"])[1])}</td><td class="num">${clp(r.monto)}</td><td><span class="pill ${r.estado_cobro === "cobrado" ? "ok" : "warn"}">${esc(r.estado_cobro)}</span>${r.fecha_cobro ? `<div class="sub">${fecha(r.fecha_cobro)}</div>` : ""}</td></tr>`
-        : t === "costos" ? `<tr class="click" data-i="${i}"><td>${fecha(r.fecha)}</td><td>${unidadPill(r.unidad)}</td><td>${r.tipo === "directo" ? "Costo directo" : "Gasto"}</td><td>${esc(catTxt(r.categoria))}</td><td><div>${esc(r.proveedor || "")}</div><div class="sub">${esc((r.descripcion || "").slice(0, 80))}</div></td><td class="num">${clp(r.monto)}</td><td><span class="pill ${r.estado_pago === "pagado" ? "ok" : "warn"}">${esc(r.estado_pago)}</span></td></tr>`
+        : t === "costos" ? `<tr class="click" data-i="${i}"><td>${fecha(r.fecha)}</td><td>${unidadPill(r.unidad)}</td><td>${esc(tipoCostoTxt(r.tipo))}</td><td>${esc(catTxt(r.categoria))}</td><td><div>${esc(r.proveedor || "")}</div><div class="sub">${esc((r.descripcion || "").slice(0, 80))}</div></td><td class="num">${clp(r.monto)}</td><td><span class="pill ${r.estado_pago === "pagado" ? "ok" : "warn"}">${esc(r.estado_pago)}</span></td></tr>`
         : `<tr class="click" data-i="${i}"><td>${fecha(r.fecha)}</td><td><span class="pill ${r.tipo === "ingreso" ? "ok" : "bad"}">${esc(r.tipo)}</span></td><td>${esc(catTxt(r.categoria))}</td><td>${esc(r.descripcion || "")}</td><td>${esc(r.cuenta || "—")}</td><td class="num">${clp(r.monto)}</td></tr>`).join("")}
       </tbody></table></div>` : empty("doc", "Sin registros en el rango", "Cambia el rango o crea uno nuevo.")}</section>`;
     $$("#fin tr[data-i]").forEach((tr) => tr.onclick = () => modalFin(t, rows[tr.dataset.i], recargar));
@@ -1367,7 +1380,7 @@ function modalFin(t, r, after) {
     <div class="field"><label for="fn-d">Detalle</label><input class="input" id="fn-d" value="${esc(r?.descripcion || "")}" placeholder="Servicio, vehículo, período"></div>
     <div class="row"><div class="field"><label for="fn-mo">Monto con IVA</label><input class="input" id="fn-mo" type="number" min="0" value="${r?.monto ?? ""}"></div><div class="field"><label for="fn-iva">IVA</label><select class="input" id="fn-iva">${opt([["true", "Afecto"], ["false", "Exento"]], String(r?.afecto_iva ?? true))}</select></div>
       <div class="field"><label for="fn-e">Cobro</label><select class="input" id="fn-e">${opt([["pendiente", "Pendiente"], ["cobrado", "Cobrado"]], r?.estado_cobro || "pendiente")}</select></div><div class="field"><label for="fn-fe">Fecha de cobro</label><input class="input" id="fn-fe" type="date" value="${r?.fecha_cobro || ""}"></div></div>`;
-  if (t === "costos") body = `<div class="row"><div class="field"><label for="fn-f">Fecha</label><input class="input" id="fn-f" type="date" value="${r?.fecha || hoyISO()}"></div><div class="field"><label for="fn-u">Unidad</label>${uSel(r?.unidad)}</div><div class="field"><label for="fn-tp">Tipo</label><select class="input" id="fn-tp">${opt([["operacional", "Gasto operacional"], ["directo", "Costo directo de venta"]], r?.tipo === "directo" ? "directo" : "operacional")}</select></div></div>
+  if (t === "costos") body = `<div class="row"><div class="field"><label for="fn-f">Fecha</label><input class="input" id="fn-f" type="date" value="${r?.fecha || hoyISO()}"></div><div class="field"><label for="fn-u">Unidad</label>${uSel(r?.unidad)}</div><div class="field"><label for="fn-tp">Tipo</label><select class="input" id="fn-tp">${opt(TIPO_COSTO, TIPO_COSTO.some((x) => x[0] === r?.tipo) ? r.tipo : "fijo")}</select></div></div>
     <div class="row"><div class="field"><label for="fn-cat">Categoría</label><select class="input" id="fn-cat"></select></div><div class="field"><label for="fn-p">Proveedor</label><input class="input" id="fn-p" value="${esc(r?.proveedor || "")}"></div><div class="field" style="flex:0 1 160px"><label for="fn-doc">N° documento</label><input class="input" id="fn-doc" value="${esc(r?.documento || "")}"></div></div>
     <div class="field"><label for="fn-d">Detalle</label><input class="input" id="fn-d" value="${esc(r?.descripcion || "")}"></div>
     <div class="row"><div class="field"><label for="fn-mo">Monto con IVA</label><input class="input" id="fn-mo" type="number" min="0" value="${r?.monto ?? ""}"></div><div class="field"><label for="fn-iva">IVA</label><select class="input" id="fn-iva">${opt([["true", "Con IVA (factura)"], ["false", "Sin IVA (boleta de honorarios, exento)"]], String(r?.afecto_iva ?? true))}</select></div>
@@ -1385,7 +1398,9 @@ function modalFin(t, r, after) {
     await rpc("app_fin_guardar", { p: { tabla: t, id: r?.id || null, datos } });
     toast("Guardado"); after && after();
   }, "Guardar", false, r ? { text: "Eliminar", fn: async () => { if (!confirm("¿Eliminar este registro? Queda en la auditoría.")) throw new Error("Cancelado"); await rpc("app_fin_guardar", { p: { tabla: t, id: r.id, eliminar: true } }); toast("Eliminado"); after && after(); } } : null);
-  const syncCat = () => { const sel = $("#fn-cat", root); if (!sel) return; const lista = t === "costos" ? CAT_COSTO[$("#fn-tp", root).value] : CAT_MOV[$("#fn-tp", root).value]; sel.innerHTML = opt(lista, r?.categoria || lista[0], catTxt); };
+  // conserva la categoría del registro aunque no esté en la lista, para no cambiarla al editar
+  const syncCat = () => { const sel = $("#fn-cat", root); if (!sel) return; const tp = $("#fn-tp", root).value; let lista = (t === "costos" ? CAT_COSTO[tp] : CAT_MOV[tp]) || ["otro"];
+    const actual = r && r.tipo === tp ? r.categoria : null; if (actual && !lista.includes(actual)) lista = [actual, ...lista]; sel.innerHTML = opt(lista, actual || lista[0], catTxt); };
   if ($("#fn-tp", root)) { $("#fn-tp", root).onchange = syncCat; syncCat(); }
 }
 
@@ -1429,14 +1444,14 @@ async function viewImportar() {
   };
   $("#im-plant").onclick = (e) => { e.preventDefault();
     downloadCSV("plantilla_ventas.csv", [{ fecha: "2026-11-05", unidad: "carclass", documento: "F-1234", cliente: "Nombre cliente", detalle: "Sellado cerámico · Audi A3", tipo: "servicio", monto: 280000, estado: "cobrado", fecha_cobro: "2026-11-05" }]);
-    setTimeout(() => downloadCSV("plantilla_costos_gastos.csv", [{ fecha: "2026-11-05", unidad: "grupo", tipo: "operacional", categoria: "arriendo", proveedor: "Proveedor", documento: "F-998", detalle: "Arriendo oficina noviembre", monto: 350000, estado: "pagado" }]), 400);
+    setTimeout(() => downloadCSV("plantilla_costos_gastos.csv", [{ fecha: "2026-11-05", unidad: "grupo", tipo: "fijo", categoria: "arriendo", proveedor: "Proveedor", documento: "F-998", detalle: "Arriendo oficina noviembre", monto: 350000, estado: "pagado" }]), 400);
   };
   $("#im-f").onchange = async () => { const f = $("#im-f").files[0]; if (f) $("#im-txt").value = await f.text(); };
   $("#im-leer").onclick = () => {
     const filas = parseCSV($("#im-txt").value || ""); if (filas.length < 2) { toast("No encontré filas: revisa que tenga encabezado y al menos una fila", true); return; }
     const head = filas[0].map((h) => h.trim()), datos = filas.slice(1), t = $("#im-t").value;
     const CAMPOS = t === "ventas" ? [["fecha", "Fecha *"], ["monto", "Monto con IVA *"], ["documento", "N° documento"], ["cliente", "Cliente"], ["descripcion", "Detalle"], ["modalidad", "Tipo"], ["estado_cobro", "Estado de cobro"], ["fecha_cobro", "Fecha de cobro"], ["unidad", "Unidad"]]
-      : [["fecha", "Fecha *"], ["monto", "Monto con IVA *"], ["documento", "N° documento"], ["proveedor", "Proveedor"], ["descripcion", "Detalle"], ["tipo", "Tipo (directo u operacional)"], ["categoria", "Categoría"], ["estado_pago", "Estado de pago"], ["unidad", "Unidad"]];
+      : [["fecha", "Fecha *"], ["monto", "Monto con IVA *"], ["documento", "N° documento"], ["proveedor", "Proveedor"], ["descripcion", "Detalle"], ["tipo", "Tipo (directo, fijo o variable)"], ["categoria", "Categoría"], ["estado_pago", "Estado de pago"], ["unidad", "Unidad"]];
     const adivina = (c) => { const k = c[0]; const rx = { fecha: /^fecha( de)? ?(emisi|doc|$)|^fecha$|fecha ing/i, monto: /monto|total|valor bruto|importe/i, documento: /folio|n[°º]|factura|documento|pedido|boleta/i, cliente: /cliente|raz[oó]n|empresa/i, proveedor: /proveedor|raz[oó]n/i, descripcion: /detalle|descrip|glosa|servicio|concepto/i, modalidad: /^tipo|modalidad/i, tipo: /^tipo/i, categoria: /categor/i, estado_cobro: /estado|pagad|cobr/i, estado_pago: /estado|pagad/i, fecha_cobro: /fecha (de )?(cobro|pago)/i, unidad: /unidad|negocio/i }[k];
       const i = head.findIndex((h) => rx && rx.test(h)); return i; };
     $("#im-map").innerHTML = `<section class="card"><div class="card-h"><h3>Columnas · ${datos.length} filas</h3></div><div class="card-b" style="display:grid;gap:12px">
@@ -1448,7 +1463,7 @@ async function viewImportar() {
         o.fecha = fechaCL(o.fecha); o.monto = numCL(o.monto); if (o.fecha_cobro) o.fecha_cobro = fechaCL(o.fecha_cobro);
         if (o.estado_cobro != null) o.estado_cobro = /cobr|pagad|ok|si|sí/i.test(o.estado_cobro) ? "cobrado" : "pendiente";
         if (o.estado_pago != null) o.estado_pago = /pend|no/i.test(o.estado_pago) ? "pendiente" : "pagado";
-        if (o.tipo != null) o.tipo = /direct|venta|partner/i.test(o.tipo) ? "directo" : "operacional";
+        if (o.tipo != null) o.tipo = /direct|venta|partner/i.test(o.tipo) ? "directo" : /variab/i.test(o.tipo) ? "variable" : "fijo";
         if (o.unidad) { const u = Object.keys(UNIDADES).find((k) => k === o.unidad.toLowerCase() || UNIDADES[k].n.toLowerCase() === o.unidad.toLowerCase()); o.unidad = u || null; }
         return o; }).filter((o) => o.fecha && o.monto);
     };
