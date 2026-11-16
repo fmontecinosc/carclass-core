@@ -87,7 +87,7 @@ const minTxt = (m) => m == null ? "—" : m < 60 ? `${Math.round(m)} min` : m < 
 const etapaTxt = (e) => ETAPA_TXT[e] || (e ? (e.charAt(0).toUpperCase() + e.slice(1)).replace(/_/g, " ") : "—");
 const uName = (u) => UNIDADES[u]?.n || u;
 const unidadPill = (u) => `<span class="pill u" style="--c:${UNIDADES[u]?.c || "var(--muted)"}">${esc(uName(u))}</span>`;
-const initials = (s) => (s || "?").split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((x) => x[0].toUpperCase()).join("");
+const initials = (s) => (s || "?").split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((x) => [...x][0].toUpperCase()).join("") || "?";
 const fmtRut = (r) => { if (!r) return ""; const b = r.slice(0, -1), dv = r.slice(-1); return b.replace(/\B(?=(\d{3})+(?!\d))/g, ".") + "-" + dv; };
 const waLink = (tel, txt = "") => { const d = String(tel || "").replace(/\D/g, ""); if (d.length < 8) return null; const n = d.length === 9 ? "56" + d : d.length === 8 ? "569" + d : d; return `https://wa.me/${n}${txt ? "?text=" + encodeURIComponent(txt) : ""}`; };
 const ORDEN_U = ["carclass", "nom", "carwash", "blackgps", "somosb2b"];
@@ -681,17 +681,19 @@ const borradorTxt = (b) => (Array.isArray(b.mensajes) ? b.mensajes : []).map((x)
 async function viewConversaciones(id) {
   setActive("conversaciones");
   const P = $("#page");
-  let tab = lsGet("cc_conv_tab", "mios");
+  let tab = lsGet("cc_conv_tab", "mios"); let MODOS = {};
   P.innerHTML = `<div class="page-head"><div><h1>Conversaciones</h1><p>Los chats del WhatsApp del grupo. El asesor IA atiende los leads de Carclass y NOM y los chats nuevos; BlackGPS, los que tomas y los que el asesor te traspasa son tuyos. Los chats personales no aparecen.</p></div></div>
     <div class="filters"><div class="seg" id="cv-tabs">${[["mios", "Míos"], ["asesor", "Asesor IA"], ["todas", "Todas"]].map(([k, t]) => `<button class="${k === tab ? "on" : ""}" data-tab="${k}">${t} <span class="badge" id="cv-n-${k}"></span></button>`).join("")}</div><div id="cv-modos" class="cv-modos"></div></div>
     <div class="chat-layout ${id ? "con-chat" : ""}"><section class="card chat-list" id="cv-l">${loading(5)}</section><section class="card chat-pane" id="cv-c">${id ? loading(6) : `<div class="card-b">${empty("chat", "Elige una conversación")}</div>`}</section></div>`;
   // el asesor atiende Carclass, NOM y los chats nuevos aún sin clasificar (él mismo los clasifica o los marca personales)
-  const esAsesor = (c) => (!c.unidad || ["carclass", "nom"].includes(c.unidad)) && !c.humano && !c.traspaso;
+  // wa-agente solo atiende chats «lead» o «sin_unidad» de sus líneas, sin pausa y con modo que responde o propone
+  const esAsesor = (c) => ["lead", "sin_unidad"].includes(c.estado) && (!c.unidad || ["carclass", "nom", "carwash"].includes(c.unidad))
+    && !c.humano && !c.traspaso && ["activo", "borrador"].includes(c.modo);
   $$("#cv-tabs [data-tab]").forEach((b) => b.onclick = () => { tab = b.dataset.tab; lsSet("cc_conv_tab", tab); $$("#cv-tabs button").forEach((x) => x.classList.toggle("on", x === b)); pintarLista(); });
   const MODO_OPC = [["activo", "responde solo"], ["borrador", "propone borradores"], ["observar", "solo observa"], ["apagado", "apagado"]];
   const pintarModos = async () => {
     try {
-      const m = await rpc("app_asesor_modos");
+      const m = await rpc("app_asesor_modos"); MODOS = m.modos || {};
       $("#cv-modos").innerHTML = `<span class="faint" style="font-size:12.5px">Asesor IA:</span>${["carclass", "nom", "blackgps"].map((u) => m.puede_editar
         ? `<label class="cv-modo" style="--c:${UNIDADES[u].c}"><span class="ldot"></span>${uName(u)} <select data-modo="${u}" aria-label="Modo del asesor en ${uName(u)}">${MODO_OPC.map(([k, t]) => `<option value="${k}" ${m.modos[u] === k ? "selected" : ""}>${t}</option>`).join("")}</select></label>`
         : `<span class="pill">${uName(u)} · ${esc(MODO_TXT[m.modos[u]] || m.modos[u])}</span>`).join("")}
@@ -724,8 +726,12 @@ async function viewConversaciones(id) {
       <div class="chat-state"><span>${c.humano ? `<b>Atiendes tú.</b> El asesor está en pausa${c.agente_pausado_hasta ? " hasta " + fechaHora(c.agente_pausado_hasta) : ""}.` : esAsesor(c) ? `<b>Atiende el asesor IA</b> · ${esc(MODO_TXT[c.modo] || c.modo)}.` : `<b>Atiendes tú.</b> El asesor ${esc(MODO_TXT[c.modo] || c.modo)} en esta línea.`} ${ventana ? `<span class="faint">Ventana de 24 h abierta hasta ${fechaHora(c.ventana_hasta)}.</span>` : '<span class="faint">Ventana de 24 h cerrada: solo plantillas.</span>'}</span>
         <button class="btn sm ${c.humano ? "" : "primary"}" id="cv-at">${c.humano ? "Devolver al asesor" : "Tomar conversación"}</button></div>
       ${c.traspaso ? `<div class="alert" style="margin:10px 16px 0">${ico("alert", 16)}<div><b>El asesor te traspasó este chat.</b> ${esc(String(c.traspaso).replace(/^\[WhatsApp\]\s*/, ""))}</div></div>` : ""}
-      ${c.estado === "sin_unidad" ? `<div class="clasificar"><span class="faint" style="font-size:12.5px">¿De qué es este chat?</span>
-        <button class="btn sm" data-cls="carclass">Carclass</button><button class="btn sm" data-cls="nom" data-fl="consignante">NOM · vende</button><button class="btn sm" data-cls="nom" data-fl="comprador">NOM · compra</button><button class="btn sm" data-cls="blackgps">BlackGPS</button><button class="btn sm ghost" data-cls="personal">Personal</button></div>` : ""}
+      ${(() => { const actual = (k, fl) => c.unidad === k && (!fl || c.flujo === fl) ? "primary" : "";
+        const botones = `<button class="btn sm ${actual("carclass")}" data-cls="carclass">Carclass</button><button class="btn sm ${actual("nom", "consignante")}" data-cls="nom" data-fl="consignante">NOM · vende su auto</button><button class="btn sm ${actual("nom", "comprador")}" data-cls="nom" data-fl="comprador">NOM · compra</button><button class="btn sm ${actual("carwash")}" data-cls="carwash">Carwash.hf</button><button class="btn sm ${actual("blackgps")}" data-cls="blackgps">BlackGPS</button><button class="btn sm ghost" data-cls="personal">Personal</button>
+          <label class="check-row" style="font-size:12.5px;margin-left:4px"><input type="checkbox" id="cv-der" checked> Que lo atienda el asesor</label>`;
+        return c.unidad
+          ? `<details class="clasificar-d"><summary>Cambiar línea o derivar al asesor · hoy: <b>${esc(uName(c.unidad))}${c.flujo ? " · " + (c.flujo === "consignante" ? "vende" : "compra") : ""}</b></summary><div class="clasificar">${botones}</div></details>`
+          : `<div class="clasificar"><span class="faint" style="font-size:12.5px">¿De qué es este chat?</span>${botones}</div>`; })()}
       <div class="chat-msgs" id="cv-m">${(d.mensajes || []).map((m) => `<div class="bub ${m.direccion === "entrante" ? "in" : "out"} ${m.direccion === "saliente_api" ? "ia" : ""}"><div>${esc(msgTxt(m))}</div><span class="bt">${m.direccion === "saliente_api" ? "Asesor IA · " : m.direccion === "saliente_app" ? "Tú · " : ""}${fechaHora(m.fecha)}</span></div>`).join("") || `<div class="muted" style="text-align:center;font-size:13px">Sin mensajes guardados.</div>`}</div>
       ${(d.borradores || []).map((b) => { const t = borradorTxt(b); const acc = accionesTxt(b.acciones); return `<div class="borrador" data-bor="${b.id}"><div class="row" style="justify-content:space-between;align-items:center"><b style="font-size:13px">${ico("spark", 14)} Borrador del asesor</b><span class="faint" style="font-size:12px">${hace(b.creado_en)}</span></div>
         <div class="bor-txt">${t.map((x) => `<div class="bub out ia propuesta">${esc(x)}</div>`).join("") || '<div class="muted" style="font-size:13px">Sin texto.</div>'}</div>
@@ -742,7 +748,14 @@ async function viewConversaciones(id) {
       const dest = b.dataset.cls;
       if (dest === "personal" && !confirm("¿Marcar como personal? Se borran los mensajes guardados en Core y el chat deja de aparecer aquí. En tu WhatsApp no cambia nada.")) return;
       b.disabled = true;
-      try { await rpc("app_conversacion_clasificar", { p_id: id, p_destino: dest, p_flujo: b.dataset.fl || null }); toast(dest === "personal" ? "Marcado como personal" : `Clasificado como ${uName(dest)}: se creó el lead`);
+      // BlackGPS lo atiendes tú; el asesor solo atiende Carclass, NOM y Carwash.hf
+      const derivar = !!$("#cv-der")?.checked && ["carclass", "nom", "carwash"].includes(dest);
+      try {
+        await rpc("app_conversacion_clasificar", { p_id: id, p_destino: dest, p_flujo: b.dataset.fl || null, p_derivar: derivar });
+        const modo = MODOS[dest];
+        toast(dest === "personal" ? "Marcado como personal" : derivar
+          ? (["observar", "apagado"].includes(modo) ? `Clasificado como ${uName(dest)}. Ojo: en ${uName(dest)} el asesor está en «${MODO_TXT[modo] || modo}», cámbialo arriba para que responda.` : `Clasificado como ${uName(dest)} y derivado al asesor`)
+          : `Clasificado como ${uName(dest)}: lo atiendes tú`);
         if (dest === "personal") location.hash = "#/conversaciones"; else refrescar(); cargarAvisos(); }
       catch (e) { toast(e.message, true); b.disabled = false; }
     });
