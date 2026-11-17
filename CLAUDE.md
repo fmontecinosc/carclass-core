@@ -32,9 +32,9 @@ El CRM y sistema de gestión propio del grupo empresarial **Carclass Group** (Fe
 | Esquemas | `core` (usuarios, claves API, eventos de auditoría, SOPs/vistas), `crm` (empresas, contactos, analisis, oportunidades, actividades, cotizaciones), `fin` (ventas, costos), `ops` (contratos_gps, cierres_mensuales, vehiculos, proyectos, tareas, sops) | |
 | Lógica de negocio | Funciones SQL `core.api_*` (para la API) y `public.app_*` (para la app web, con RLS por rol) | |
 | API | Edge Function **core-api** (Deno). REST para ChatGPT y formularios, MCP para Claude, endpoint `/lead-web` para formularios públicos | v1.1.0 en producción |
-| App web | Netlify, sitio **carclass-core** (`deb7fddb-d934-4858-88eb-58428e9b3b1a`) → carclass-core.netlify.app | v2.3 publicada por Felipe (zip manual, 5-nov); v2.5 en el repo. v1 respaldada en `app-v1/` |
+| App web | Netlify, sitio **carclass-core** (`deb7fddb-d934-4858-88eb-58428e9b3b1a`) → **https://app.carclass.cl** (dominio principal desde el 17-nov; carclass-core.netlify.app sigue funcionando) | v2.8.3 publicada desde la nube con el conector Netlify. v1 respaldada en `app-v1/` |
 | Herramientas externas | Netlify: **cotizador-carclass** (`e5290aca-…`, PDF cotización → ingreso → acta, no guarda datos) y **nom-inspeccion** (`c71b83a5-…`, inspección IPC; guarda en `public.nom_inspecciones`) | Enlazadas desde Core (Catálogo → Herramientas). Subidas a mano, sin repositorio |
-| Dominio | `app.carclass.cl` hoy apunta al panel antiguo en el hosting de la web (**Premium Hosting**, LiteSpeed). Falta CNAME `app` → `carclass-core.netlify.app` | Pendiente |
+| Dominio | `app.carclass.cl` → CNAME `carclass-core.netlify.app` (DNS en Premium Hosting/cPanel, TXT `subdomain-owner-verification` para Netlify). El panel antiguo se retiró sin respaldo (Felipe 17-nov); su playbook comercial quedó en Core (`core_v30`) | Hecho 17-nov |
 | Proyecto antiguo | Supabase `blackgps-comercial` (`jacsosgucokqwmwqqjij`): ya migrado a Core, queda de solo lectura | |
 | Tablas antiguas | `public.*` de carclass-group (car_ventas, gps_contratos, leads, movimientos, nom_*…): intactas, fuente histórica. La app nueva NO las usa | |
 
