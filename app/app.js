@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.8.0";
+const VERSION = "2.8.3";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -1672,7 +1672,10 @@ async function viewAyuda(params) {
     const u = params.get("u") || pr[0]?.unidad;
     const unis = [...new Set(pr.map((p) => p.unidad))];
     $("#pr").innerHTML = `<div class="tabs">${unis.map((x) => `<a href="#/ayuda?u=${x}" class="${x === u ? "on" : ""}">${esc(uName(x))}</a>`).join("")}</div>
-      ${pr.filter((p) => p.unidad === u).map((p) => `<section class="card"><div class="card-h"><h3>${esc(p.titulo)}</h3></div><div class="card-b" style="font-size:13.5px;line-height:1.6">${md(p.contenido || "")}</div></section>`).join("") || `<div class="card">${empty("help", "Sin procesos")}</div>`}
+      ${pr.filter((p) => p.unidad === u && p.tipo !== "playbook").map((p) => `<section class="card"><div class="card-h"><h3>${esc(p.titulo)}</h3></div><div class="card-b" style="font-size:13.5px;line-height:1.6">${md(p.contenido || "")}</div></section>`).join("") || `<div class="card">${empty("help", "Sin procesos")}</div>`}
+      ${(() => { const pb = pr.filter((p) => p.unidad === u && p.tipo === "playbook"); return pb.length ? `<section class="card"><div class="card-h"><h3>Playbook comercial</h3><span class="badge">${pb.length}</span></div>
+        <div class="card-b" style="display:grid;gap:8px"><p class="faint" style="margin:0;font-size:12.5px">Traído del panel anterior (app.carclass.cl): perfiles, guiones, objeciones, cierre y postventa. Es referencia: algunos datos son de antes (Kommo, ManyChat, plazos o precios). Lo que manda es el proceso de arriba.</p>
+        ${pb.map((p) => `<details class="pb"><summary>${esc(p.titulo.replace(/^Playbook · /, ""))}</summary><div style="font-size:13.5px;line-height:1.6;padding:6px 2px 4px">${md(p.contenido || "")}</div></details>`).join("")}</div></section>` : ""; })()}
       <section class="card"><div class="card-h"><h3>Atajos</h3></div><div class="card-b" style="font-size:13px;display:grid;gap:6px"><div>Versión ${VERSION} · <a href="#" id="re-onb">Ver de nuevo la bienvenida</a></div></div></section>`;
     $("#re-onb").onclick = (e) => { e.preventDefault(); onboarding(true); };
   } catch (e) { $("#pr").innerHTML = fail(e); }
