@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.8.3";
+const VERSION = "2.9.0";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -219,7 +219,7 @@ function viewLogin(msg = "") {
 /* ---------- shell ---------- */
 const NAV = [
   ["Análisis", [["dashboard", "Dashboard", "dash"], ["notificaciones", "Notificaciones", "bell", "avisos"]]],
-  ["Comercial", [["bandeja", "Bandeja", "inbox", "bandeja"], ["conversaciones", "Conversaciones", "chat", "conv"], ["embudo", "Embudo", "kanban"], ["agenda", "Agenda", "cal"], ["cotizaciones", "Cotizaciones", "doc"], ["clientes", "Clientes", "users"]]],
+  ["Comercial", [["bandeja", "Bandeja", "inbox", "bandeja"], ["conversaciones", "Conversaciones", "chat", "conv"], ["embudo", "Embudo", "kanban"], ["agenda", "Agenda", "cal"], ["cotizaciones", "Cotizaciones", "doc"], ["tasaciones", "Tasaciones NOM", "car"], ["clientes", "Clientes", "users"]]],
   ["Catálogo", [["vehiculos", "Vehículos", "car"], ["herramientas", "Herramientas", "link"]]],
   ["Post-venta", [["tareas", "Tareas y postventa", "tasks", "tareas"]]],
   ["Finanzas", [["finanzas", "Resultados", "chart"], ["flujo", "Flujo de caja", "money"], ["registro", "Registro", "doc"], ["importar", "Importar", "dl"]], "fin"],
@@ -228,6 +228,7 @@ const NAV = [
 ];
 const TITULOS = Object.fromEntries(NAV.flatMap(([g, items]) => items.map(([r, t]) => [r, [g, t]])));
 TITULOS.cliente = ["Comercial", "Ficha del cliente"];
+TITULOS.tasacion = ["Comercial", "Tasación NOM"];
 
 function shell() {
   const nav = NAV.filter(([, , f]) => f !== "fin" || ME.ve_finanzas).map(([g, items]) =>
@@ -1060,6 +1061,278 @@ async function viewPublica(token) {
   } catch (e) { $("#app").innerHTML = `<div class="pub"><div class="card">${empty("doc", "Cotización no disponible", esc(e.message))}</div></div>`; }
 }
 
+/* ---------- NOM · tasador trazable (v2.9, core_v31) ----------
+ * Ficha → avisos reales (agente investigador por MCP o carga manual) → cálculo en la base → ajuste motivado →
+ * aprobación humana → informe cliente (payload de lista blanca) → envío registrado.
+ * La app nunca arma el informe con datos internos: usa d.informe = nom.payload_cliente(id). */
+const TAS_EST = { borrador: ["Borrador", ""], calculada: ["Por aprobar", "warn"], aprobada: ["Aprobada", "ok"], enviada: ["Enviada", "info"], reemplazada: ["Reemplazada", ""], anulada: ["Anulada", "bad"] };
+const TAS_CONF = { alto: ["Confianza alta", "ok"], medio: ["Confianza media", "gold"], bajo: ["Confianza baja", "bad"] };
+const TAS_VM = [["misma", "Misma versión"], ["equivalente", "Equivalente"], ["distinta", "Otra versión"], ["indeterminada", "No dice versión"]];
+const TAS_COND = [["contado", "Contado"], ["financiamiento", "Con financiamiento"], ["bono_0km", "Bono 0 km"], ["liquidacion", "Liquidación"], ["remate", "Remate"], ["siniestro", "Siniestro / recuperado"], ["otro", "Otro"]];
+const TAS_VERIF = [["verificado_activo", "Verificado activo"], ["no_verificado", "No verificado"], ["caido", "Caído"]];
+const TAS_FUENTE = [["declarado_por_cliente", "Declarado por el cliente"], ["extraido_de_documento", "Extraído de documento (padrón, ficha)"], ["validado_por_ejecutivo", "Validado por ejecutivo NOM"], ["observado_en_inspeccion", "Observado en inspección"]];
+const TAS_CAMPOS_AJ = [["precio_publicacion", "Precio de publicación"], ["valor_comercial", "Valor comercial"], ["cierre_min", "Cierre estimado mínimo"], ["cierre_max", "Cierre estimado máximo"], ["rango_oferta_min", "Rango de oferta mínimo"], ["rango_oferta_max", "Rango de oferta máximo"]];
+const TAS_MODALIDAD = [["", "Sin definir"], ["consignacion_virtual", "Consignación virtual"], ["consignacion_custodia", "Consignación con custodia"], ["compra_directa", "Compra directa"], ["no_recomendable", "No recomendable"]];
+const linkInforme = (t) => `${location.origin}${location.pathname}#/t/${t}`;
+const opt = (list, v) => list.map(([k, t]) => `<option value="${esc(k)}" ${String(v ?? "") === k ? "selected" : ""}>${esc(t)}</option>`).join("");
+const pillE = (e) => `<span class="pill ${TAS_EST[e]?.[1] || ""}">${esc(TAS_EST[e]?.[0] || e)}</span>`;
+function informeHTML(d, borrador = false) {
+  if (!window.NOMInforme) return `<div class="alert">${ico("alert", 16)}<div>No se cargó la plantilla del informe.</div></div>`;
+  if (!$("#nomr-css")) { const s = document.createElement("style"); s.id = "nomr-css"; s.textContent = NOMInforme.FONTS("") + NOMInforme.CSS; document.head.appendChild(s); }
+  return NOMInforme.html(d, { logo: "img/nom-logo.png", borrador });
+}
+
+async function viewTasaciones(params) {
+  setActive("tasaciones");
+  const P = $("#page"), est = params.get("e") || "", q = params.get("q") || "";
+  P.innerHTML = `<div class="page-head"><div><h1>Tasaciones NOM</h1><p>Valorización con avisos reales y verificables, aprobación de NOM y un informe para el cliente que nunca muestra datos internos.</p></div>
+    <div class="actions"><button class="btn primary" id="tz-new">${ico("plus", 15)} Nueva tasación</button></div></div>
+    <div class="filters"><div class="seg">${[["", "Vigentes"], ["borrador", "Borrador"], ["calculada", "Por aprobar"], ["aprobada", "Aprobadas"], ["enviada", "Enviadas"]].map(([k, t]) => `<button class="${k === est ? "on" : ""}" data-e="${k}">${t}</button>`).join("")}</div>
+      <form id="tz-f" class="row" style="gap:6px"><input class="input" id="tz-q" placeholder="Folio, auto, patente o cliente" value="${esc(q)}" style="width:240px"><button class="btn">Buscar</button></form></div>
+    <div id="tz-l">${loading(5)}</div>`;
+  $$("[data-e]").forEach((b) => b.onclick = () => (location.hash = `#/tasaciones?e=${b.dataset.e}${q ? "&q=" + encodeURIComponent(q) : ""}`));
+  $("#tz-f").onsubmit = (e) => { e.preventDefault(); location.hash = `#/tasaciones?e=${est}&q=${encodeURIComponent($("#tz-q").value.trim())}`; };
+  $("#tz-new").onclick = () => modalTasacion(null, { oportunidad_id: params.get("op") });
+  if (params.get("op")) modalTasacion(null, { oportunidad_id: params.get("op") });
+  try {
+    const l = await rpc("app_nom_tasaciones", { p_estado: est || null, p_q: q || null });
+    $("#tz-l").innerHTML = l.length ? `<div class="card"><div class="tbl-wrap"><table class="tbl click"><thead><tr><th>Folio</th><th>Vehículo</th><th>Propietario</th><th>Estado</th><th class="num">Comparables</th><th class="num">Publicación</th><th>Vigencia</th></tr></thead><tbody>
+      ${l.map((t) => `<tr data-id="${t.id}" tabindex="0"><td><b>${esc(t.folio)}</b>${t.version_n > 1 ? ` <span class="faint">v${t.version_n}</span>` : ""}<div class="sub">${fecha(t.creado_en)}</div></td>
+        <td>${esc(t.vehiculo)}<div class="sub">${t.km != null ? int(t.km) + " km" : "km sin informar"}</div></td><td>${esc(t.propietario || "—")}</td>
+        <td>${pillE(t.estado)} ${t.tipo === "pre_estimacion" && t.estado !== "borrador" ? '<span class="pill warn">Pre-estimación</span>' : ""}${t.confianza ? ` <span class="pill ${TAS_CONF[t.confianza][1]}">${TAS_CONF[t.confianza][0]}</span>` : ""}</td>
+        <td class="num">${t.validos ?? "—"}</td><td class="num">${clp(t.precio_publicacion)}</td><td>${t.vigencia_hasta ? `<span class="${t.vencida ? "bad-t" : ""}">${fecha(t.vigencia_hasta)}${t.vencida ? " · vencida" : ""}</span>` : "—"}</td></tr>`).join("")}</tbody></table></div></div>`
+      : `<div class="card">${empty("car", "Sin tasaciones", "Crea la primera con «Nueva tasación» o pídesela a tu agente: él busca avisos reales y los registra aquí.")}</div>`;
+    $$("#tz-l tr[data-id]").forEach((tr) => { tr.onclick = () => (location.hash = "#/tasacion/" + tr.dataset.id); tr.onkeydown = (e) => e.key === "Enter" && tr.onclick(); });
+  } catch (e) { $("#tz-l").innerHTML = fail(e); }
+}
+
+function modalTasacion(t, pre = {}) {
+  const v = t || pre || {}, nueva = !t;
+  const fuente = Object.values(v.fuentes || {})[0] || "declarado_por_cliente";
+  const sel = (id, list, val) => `<select class="input" id="${id}">${opt(list, val)}</select>`;
+  const f = (id, label, val, attrs = "") => `<div class="field"><label for="${id}">${label}</label><input class="input" id="${id}" value="${esc(val ?? "")}" ${attrs}></div>`;
+  return modal(nueva ? "Nueva tasación NOM" : `Editar ficha · ${t.folio}`, `
+    <p class="faint" style="margin:0;font-size:12.5px">Solo datos reales. La versión exacta decide qué avisos son comparables: si no está validada, el resultado sale como pre-estimación.</p>
+    <div class="grid2">${f("tf-marca", "Marca *", v.marca, "required")}${f("tf-modelo", "Modelo *", v.modelo, "required")}</div>
+    <div class="grid2">${f("tf-version", "Versión exacta", v.version, 'placeholder="Ej: Comfortline 1.0 TSI AT 4x2"')}<div class="field"><label>&nbsp;</label><label class="row" style="gap:8px;font-weight:600"><input type="checkbox" id="tf-vc" ${v.version_confirmada ? "checked" : ""}> Versión validada (padrón, ficha o ejecutivo)</label></div></div>
+    <div class="grid2">${f("tf-anio", "Año *", v.anio, 'inputmode="numeric" required')}${f("tf-km", "Kilometraje", v.km, 'inputmode="numeric"')}</div>
+    <div class="grid2"><div class="field"><label for="tf-tr">Transmisión</label>${sel("tf-tr", [["", "—"], ["Automática", "Automática"], ["Manual", "Manual"], ["CVT", "CVT"], ["Automática DSG", "DSG / doble embrague"]], v.transmision)}</div>
+      <div class="field"><label for="tf-comb">Combustible</label>${sel("tf-comb", [["", "—"], ["Bencina", "Bencina"], ["Diésel", "Diésel"], ["Híbrido", "Híbrido"], ["Híbrido enchufable", "Híbrido enchufable"], ["Eléctrico", "Eléctrico"]], v.combustible)}</div></div>
+    <div class="grid2">${f("tf-trac", "Tracción", v.traccion, 'placeholder="4x2, 4x4, AWD"')}${f("tf-carr", "Carrocería", v.carroceria, 'placeholder="SUV, sedán, camioneta…"')}</div>
+    <div class="grid2">${f("tf-motor", "Motor", v.motor)}${f("tf-color", "Color", v.color)}</div>
+    <div class="grid2">${f("tf-pat", "Patente (uso interno)", v.patente)}<div class="field"><label>&nbsp;</label><label class="row" style="gap:8px"><input type="checkbox" id="tf-mp" ${v.mostrar_patente !== false ? "checked" : ""}> Mostrar patente en el informe</label></div></div>
+    <div class="grid2">${f("tf-duenos", "Propietarios (informado)", v.duenos, 'placeholder="Único dueño"')}${f("tf-llaves", "Llaves", v.llaves, 'placeholder="2 llaves"')}</div>
+    ${f("tf-eq", "Equipamiento distintivo", v.equipamiento)}
+    <div class="field"><label for="tf-fu">¿De dónde salen estos datos?</label>${sel("tf-fu", TAS_FUENTE, fuente)}</div>
+    <div class="field"><label for="tf-obs">Observaciones internas del vehículo</label><textarea class="input" id="tf-obs">${esc(v.observaciones || "")}</textarea></div>
+    <h4 style="margin:8px 0 0">Textos del informe</h4>
+    <div class="field"><label for="tf-res">Resumen comercial (2–4 líneas, obligatorio para aprobar)</label><textarea class="input" id="tf-res" placeholder="Fortalezas, demanda y factores de valor">${esc(v.resumen_comercial || "")}</textarea></div>
+    <div class="grid2"><div class="field"><label for="tf-com">Comercialidad (solo con fundamento)</label>${sel("tf-com", [["", "No mostrar"], ["5", "5 · Muy alta"], ["4", "4 · Buena"], ["3", "3 · Media"], ["2", "2 · Acotada"], ["1", "1 · Baja"]], v.comercialidad != null ? String(v.comercialidad) : "")}</div>
+      ${f("tf-comt", "Etiqueta (opcional)", v.comercialidad_txt, 'placeholder="BUENA COMERCIALIDAD"')}</div>
+    <div class="field"><label for="tf-cri">Criterios de tasación</label><textarea class="input" id="tf-cri" placeholder="Si lo dejas vacío se usa el texto estándar NOM">${esc(v.criterios || "")}</textarea></div>
+    <div class="field"><label for="tf-ana">Análisis de las referencias</label><textarea class="input" id="tf-ana" placeholder="Por qué estos comparables respaldan la recomendación">${esc(v.analisis_comparables || "")}</textarea></div>
+    <div class="field"><label for="tf-alc">Alcance y supuestos</label><textarea class="input" id="tf-alc" placeholder="Si lo dejas vacío se usa el texto estándar NOM">${esc(v.alcance || "")}</textarea></div>`,
+  async () => {
+    const val = (id) => $("#" + id).value.trim();
+    if (!val("tf-marca") || !val("tf-modelo") || !/^\d{4}$/.test(val("tf-anio"))) throw new Error("Marca, modelo y año (4 dígitos) son obligatorios.");
+    const fu = val("tf-fu"), fuentes = {}; ["marca", "modelo", "version", "anio", "km", "transmision", "duenos", "llaves"].forEach((k) => (fuentes[k] = fu));
+    const p = { id: t?.id || null, oportunidad_id: pre.oportunidad_id || undefined, marca: val("tf-marca"), modelo: val("tf-modelo"), version: val("tf-version"), version_confirmada: $("#tf-vc").checked,
+      anio: val("tf-anio"), km: val("tf-km").replace(/\D/g, ""), transmision: val("tf-tr"), combustible: val("tf-comb"), traccion: val("tf-trac"), carroceria: val("tf-carr"), motor: val("tf-motor"),
+      color: val("tf-color"), patente: val("tf-pat"), mostrar_patente: $("#tf-mp").checked, duenos: val("tf-duenos"), llaves: val("tf-llaves"), equipamiento: val("tf-eq"), observaciones: val("tf-obs"),
+      fuentes, resumen_comercial: val("tf-res"), comercialidad: val("tf-com"), comercialidad_txt: val("tf-comt"), criterios: val("tf-cri"), analisis_comparables: val("tf-ana"), alcance: val("tf-alc") };
+    if (!p.oportunidad_id) delete p.oportunidad_id;
+    const r = await rpc("app_nom_tasacion_guardar", { p });
+    toast(nueva ? "Tasación creada" : "Ficha guardada");
+    if (nueva) location.hash = "#/tasacion/" + r.id; else viewTasacion(t.id);
+  }, nueva ? "Crear" : "Guardar", true);
+}
+
+async function viewTasacion(id, tab = "comparables") {
+  setActive("tasaciones", "Tasación");
+  const P = $("#page"); P.innerHTML = loading(6);
+  let d;
+  try { d = await rpc("app_nom_tasacion", { p_id: id }); } catch (e) { P.innerHTML = fail(e); return; }
+  if (!d || !d.id) { P.innerHTML = `<div class="card">${empty("car", "Tasación no encontrada")}</div>`; return; }
+  setActive("tasaciones", d.folio);
+  const editable = ["borrador", "calculada"].includes(d.estado), st = d.estadisticas || {}, av = d.avisos || [];
+  const veh = [d.marca, d.modelo, d.version, d.anio].filter(Boolean).join(" ");
+  const kpi = (l, v, s = "") => `<div class="kpi"><span class="l">${l}</span><span class="v" style="font-size:22px">${v}</span>${s ? `<span class="s">${s}</span>` : ""}</div>`;
+  const rng = (a, b) => a == null ? "—" : a === b || b == null ? clpM(a) : `${clpM(a)} – ${clpM(b)}`;
+  const aj = d.ajustes_manuales || {};
+  const marcaAj = (k) => aj[k] != null ? ' <span class="pill gold" title="Ajustado a mano; ver historial">ajustado</span>' : "";
+  P.innerHTML = `<div class="page-head"><div><h1>${esc(veh)}</h1><p>${esc(d.folio)}${d.version_n > 1 ? ` · versión ${d.version_n}` : ""} · ${pillE(d.estado)} ${d.tipo === "pre_estimacion" ? '<span class="pill warn">Pre-estimación</span>' : '<span class="pill ok">Tasación respaldada</span>'}
+      ${d.confianza ? `<span class="pill ${TAS_CONF[d.confianza][1]}">${TAS_CONF[d.confianza][0]}</span>` : ""} ${d.km != null ? "· " + int(d.km) + " km" : ""}${d.propietario ? ` · <a href="#/cliente/${d.propietario.id}">${esc(d.propietario.nombre)}</a>` : ""}</p></div>
+    <div class="actions">${editable ? `<button class="btn" id="tz-edit">Editar ficha</button><button class="btn primary" id="tz-calc">${ico("spark", 15)} Calcular</button>` : ""}
+      ${d.estado === "calculada" ? `<button class="btn" id="tz-aj">Ajustar cifra</button>${d.puede_aprobar ? `<button class="btn primary" id="tz-apr">${ico("check", 15)} Revisar y aprobar</button>` : ""}` : ""}
+      ${["aprobada", "enviada"].includes(d.estado) ? `<button class="btn primary" id="tz-env">${ico("chat", 15)} Enviar al cliente</button>` : ""}
+      ${["calculada", "aprobada", "enviada"].includes(d.estado) ? `<button class="btn ghost" id="tz-ver">Nueva versión</button>` : ""}
+      ${d.puede_aprobar && !["anulada", "reemplazada"].includes(d.estado) ? `<button class="btn ghost danger" id="tz-anu">Anular</button>` : ""}</div></div>
+    ${(d.advertencias || []).length ? `<div class="alert" style="margin-bottom:14px">${ico("alert", 16)}<div>${d.advertencias.map((a) => `<div>${esc(a)}</div>`).join("")}</div></div>` : ""}
+    ${d.estado === "borrador" && !av.length ? `<div class="alert" style="margin-bottom:14px">${ico("spark", 16)}<div><b>Siguiente paso: investigar el mercado.</b> Pídele a tu agente de Claude «investiga el mercado para la tasación ${esc(d.folio)}» (usa las herramientas nom_* de Core y registra cada aviso con su URL y evidencia), o agrega avisos a mano.</div></div>` : ""}
+    <div class="kpis" style="margin-bottom:16px">${kpi("Rango de oferta comparable" + marcaAj("rango_oferta_min"), rng(d.rango_oferta_min, d.rango_oferta_max), st.precio_min ? `Avisos válidos: ${clpM(st.precio_min)} a ${clpM(st.precio_max)}` : "")}
+      ${kpi("Valor comercial" + marcaAj("valor_comercial"), clp(d.valor_comercial), st.mediana_ajustada ? `Mediana ajustada ${clp(st.mediana_ajustada)}` : "")}
+      ${kpi("Publicación sugerida" + marcaAj("precio_publicacion"), clp(d.precio_publicacion), st.publicacion_calculada && st.publicacion_calculada !== d.precio_publicacion ? `Cálculo: ${clp(st.publicacion_calculada)}` : "")}
+      ${kpi("Venta esperada" + marcaAj("cierre_min"), rng(d.cierre_min, d.cierre_max), `${int(st.validos ?? 0)} válidos de ${int(st.universo ?? av.length)} · dispersión ${st.dispersion_pct ?? "—"}%`)}</div>
+    <div class="filters"><div class="seg" id="tz-tabs">${[["comparables", `Comparables (${av.length})`], ["informe", "Informe del cliente"], ...(d.ve_interna ? [["interno", "Interno NOM"]] : []), ["historial", "Historial"]].map(([k, t]) => `<button class="${k === tab ? "on" : ""}" data-tab="${k}">${t}</button>`).join("")}</div></div>
+    <div id="tz-body"></div>`;
+  const again = (t = tab) => viewTasacion(id, t);
+  $$("#tz-tabs [data-tab]").forEach((b) => b.onclick = () => again(b.dataset.tab));
+  if ($("#tz-edit")) $("#tz-edit").onclick = () => modalTasacion(d);
+  if ($("#tz-calc")) $("#tz-calc").onclick = async () => { try { await rpc("app_nom_tasacion_calcular", { p_id: id }); toast("Tasación calculada"); again(); } catch (e) { toast(e.message, true); } };
+  if ($("#tz-aj")) $("#tz-aj").onclick = () => modalAjuste(d, again);
+  if ($("#tz-apr")) $("#tz-apr").onclick = () => modalAprobar(d, again);
+  if ($("#tz-env")) $("#tz-env").onclick = () => modalEnviarTasacion(d, again);
+  if ($("#tz-ver")) $("#tz-ver").onclick = () => modal("Nueva versión", `<p style="margin:0">La versión ${d.version_n} queda guardada tal cual${["aprobada", "enviada"].includes(d.estado) ? " (y pasa a «reemplazada»)" : ""}. La nueva copia la ficha, los avisos y la parte interna para que la corrijas y la recalcules.</p>
+      <div class="field"><label for="nv-m">Motivo *</label><input class="input" id="nv-m" placeholder="Ej: inspección detectó repintado en puerta trasera"></div>`, async () => {
+      const r = await rpc("app_nom_tasacion_version", { p_id: id, p_motivo: $("#nv-m").value.trim() }); toast("Nueva versión creada"); location.hash = "#/tasacion/" + r.id; }, "Crear versión");
+  if ($("#tz-anu")) $("#tz-anu").onclick = () => modal("Anular tasación", `<div class="field"><label for="an-m">Motivo *</label><input class="input" id="an-m"></div>`, async () => {
+      await rpc("app_nom_tasacion_anular", { p_id: id, p_motivo: $("#an-m").value.trim() }); toast("Tasación anulada"); again(); }, "Anular");
+  const B = $("#tz-body");
+  if (tab === "informe") {
+    B.innerHTML = `<div class="row no-print" style="margin-bottom:10px;gap:8px">${["aprobada", "enviada"].includes(d.estado) ? `<a class="btn" href="#/t/${esc(d.token)}" target="_blank" rel="noopener">${ico("dl", 15)} Abrir informe para descargar PDF</a>` : `<span class="pill warn">Vista previa · se habilita para el cliente cuando apruebes</span>`}
+      <span class="faint" style="font-size:12.5px">Esto es exactamente lo que verá el cliente: la base arma el contenido desde una lista blanca, sin datos internos.</span></div>
+      <div style="overflow:auto;background:var(--surface-2);padding:16px;border-radius:12px">${informeHTML(d.informe, !["aprobada", "enviada"].includes(d.estado))}</div>`;
+  } else if (tab === "interno") {
+    const i = d.interna || {};
+    B.innerHTML = `<div class="card card-b" style="display:grid;gap:12px;max-width:760px"><p class="faint" style="margin:0;font-size:12.5px">Solo NOM. Nada de esto entra al informe, al link público ni a la API sin permiso «nom_interno». Comisiones y condiciones son propuestas hasta que estén en un contrato aprobado.</p>
+      <div class="grid2"><div class="field"><label for="ti-pp">Precio pretendido por el cliente</label>${montoIn("ti-pp", i.precio_pretendido_cliente)}</div><div class="field"><label for="ti-urg">Urgencia de venta</label><input class="input" id="ti-urg" value="${esc(i.urgencia || "")}"></div></div>
+      <div class="grid2"><div class="field"><label for="ti-toma">Precio de toma (compra directa)</label>${montoIn("ti-toma", i.precio_toma)}</div><div class="field"><label for="ti-mod">Modalidad recomendada</label><select class="input" id="ti-mod">${opt(TAS_MODALIDAD, i.modalidad_recomendada)}</select></div></div>
+      <div class="grid2"><div class="field"><label for="ti-aco">Acondicionamiento</label>${montoIn("ti-aco", i.costo_acondicionamiento)}</div><div class="field"><label for="ti-cc">Costos de comercialización</label>${montoIn("ti-cc", i.costos_comercializacion)}</div></div>
+      <div class="grid2"><div class="field"><label for="ti-cp">Comisión propuesta %</label><input class="input" id="ti-cp" inputmode="decimal" value="${esc(i.comision_pct ?? "")}"></div><div class="field"><label for="ti-cm">Comisión propuesta $</label>${montoIn("ti-cm", i.comision_monto)}</div></div>
+      <div class="grid2"><div class="field"><label for="ti-rot">Rotación estimada (días)</label><input class="input" id="ti-rot" inputmode="numeric" value="${esc(i.rotacion_dias_est ?? "")}"></div><div class="field"><label for="ti-rie">Riesgo</label><input class="input" id="ti-rie" value="${esc(i.riesgo || "")}"></div></div>
+      <div class="field"><label for="ti-neg">Notas de negociación</label><textarea class="input" id="ti-neg">${esc(i.notas_negociacion || "")}</textarea></div>
+      ${i.precio_pretendido_cliente && d.precio_publicacion ? `<div class="alert">${ico("alert", 16)}<div>El cliente espera ${clp(i.precio_pretendido_cliente)}: ${i.precio_pretendido_cliente > d.precio_publicacion ? `${Math.round((i.precio_pretendido_cliente / d.precio_publicacion - 1) * 100)}% sobre la publicación sugerida` : "dentro de la publicación sugerida"}.</div></div>` : ""}
+      <div><button class="btn primary" id="ti-save">Guardar interno</button></div></div>`;
+    $("#ti-save").onclick = async () => { try {
+      await rpc("app_nom_tasacion_guardar", { p: { id, interna: { precio_pretendido_cliente: montoVal($("#ti-pp")), urgencia: $("#ti-urg").value, precio_toma: montoVal($("#ti-toma")), modalidad_recomendada: $("#ti-mod").value,
+        costo_acondicionamiento: montoVal($("#ti-aco")), costos_comercializacion: montoVal($("#ti-cc")), comision_pct: $("#ti-cp").value.replace(",", "."), comision_monto: montoVal($("#ti-cm")),
+        rotacion_dias_est: $("#ti-rot").value, riesgo: $("#ti-rie").value, notas_negociacion: $("#ti-neg").value } } });
+      toast("Guardado"); again("interno"); } catch (e) { toast(e.message, true); } };
+  } else if (tab === "historial") {
+    const li = (arr, f) => arr?.length ? arr.map(f).join("") : `<div class="faint" style="font-size:13px">Sin registros.</div>`;
+    B.innerHTML = `<div class="grid2"><div class="card card-b"><h4 style="margin-top:0">Búsquedas de mercado</h4>${li(d.busquedas, (b) => `<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:13px"><b>${esc(b.portal)}</b> · ${fechaHora(b.ejecutada_en)} · ${esc(b.ejecutor)}<div class="faint">${esc(b.consulta || "")}${b.url_busqueda ? ` · <a href="${esc(b.url_busqueda)}" target="_blank" rel="noopener">ver búsqueda</a>` : ""}${b.resultados_n != null ? ` · ${int(b.resultados_n)} resultados` : ""}</div></div>`)}</div>
+      <div class="card card-b"><h4 style="margin-top:0">Aprobaciones y envíos</h4>${li([...(d.aprobaciones || []).map((a) => ({ ...a, k: "a" })), ...(d.envios || []).map((x) => ({ ...x, k: "e" }))].sort((a, b) => a.en < b.en ? -1 : 1), (x) => x.k === "a"
+        ? `<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:13px"><span class="pill ${x.decision === "aprobada" ? "ok" : "bad"}">${esc(x.decision)}</span> v${x.version_n} · ${esc(x.aprobador)} · ${fechaHora(x.en)}${x.excepcion_comparables ? ' · <span class="pill warn">con excepción</span>' : ""}${x.comentario ? `<div class="faint">${esc(x.comentario)}</div>` : ""}</div>`
+        : `<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:13px"><span class="pill info">enviada</span> v${x.version_n} · ${esc(x.canal)} → ${esc(x.destinatario || "—")} · ${esc(x.enviado_por)} · ${fechaHora(x.en)}</div>`)}</div>
+      <div class="card card-b"><h4 style="margin-top:0">Ajustes manuales</h4>${li(d.ajustes, (a) => `<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:13px"><b>${esc(a.campo.replace(/_/g, " "))}</b>: ${/^\d+$/.test(a.de || "") ? clp(a.de) : esc(a.de || "—")} → ${/^\d+$/.test(a.a || "") ? clp(a.a) : esc(a.a || "—")} · ${esc(a.autor)} · ${fechaHora(a.en)}<div class="faint">${esc(a.motivo)}</div></div>`)}</div>
+      <div class="card card-b"><h4 style="margin-top:0">Versiones</h4>${li(d.versiones, (x) => `<div style="padding:6px 0;font-size:13px"><a href="#/tasacion/${x.id}">${esc(x.folio)}</a> ${pillE(x.estado)}${x.id === d.id ? ' <span class="faint">(esta)</span>' : ""}</div>`)}
+        ${d.parametros ? `<h4>Parámetros usados</h4><div class="faint" style="font-size:12px">Año ${d.parametros.ajuste_anio_pct}%/año · km ${d.parametros.ajuste_10mil_km_pct}% c/10.000 · tope ${d.parametros.tope_ajuste_pct}% · publicación +${d.parametros.premio_publicacion_pct}% · cierre −${d.parametros.cierre_desc_min_pct}% a −${d.parametros.cierre_desc_max_pct}% · mínimo ${d.parametros.min_comparables} comparables · vigencia ${d.parametros.vigencia_dias} días</div>` : ""}</div></div>`;
+  } else {
+    const okV = av.filter((a) => a.valido), noV = av.filter((a) => a.valido === false), sinCalc = av.filter((a) => a.valido == null);
+    const fila = (a) => `<tr class="${a.valido ? "" : "tz-off"}"><td style="min-width:230px"><a href="${esc(a.url)}" target="_blank" rel="noopener"><b>${esc(a.titulo || a.version_txt || "Aviso")}</b></a>
+        <div class="sub">${esc(a.portal)} · ${esc([a.vendedor_nombre, a.comuna, a.region].filter(Boolean).join(" · "))}</div>
+        ${a.valido === false ? `<div class="sub" style="color:var(--bad)">${esc(a.motivo_exclusion)}</div>` : a.valido ? `<div class="sub" style="color:var(--ok)">Comparable válido · peso ${a.peso}</div>` : `<div class="sub">Sin calcular</div>`}
+        ${editable && a.valido ? `<input class="input sm" data-dif="${a.id}" value="${esc(a.diferencias || "")}" placeholder="Diferencia para el cliente" style="margin-top:6px;width:100%">` : a.diferencias ? `<div class="sub">${esc(a.diferencias)}</div>` : ""}</td>
+      <td>${esc(a.version_txt || "—")}<br>${editable ? `<select class="input sm" data-f="version_match" data-id="${a.id}">${opt(TAS_VM, a.version_match)}</select>` : esc(TAS_VM.find((x) => x[0] === a.version_match)?.[1])}</td>
+      <td class="num">${a.anio ?? "—"}</td><td class="num">${a.km != null ? int(a.km) : "—"}</td>
+      <td class="num"><b>${clp(a.precio)}</b>${a.precio_ajustado ? `<div class="sub">${a.ajuste_pct > 0 ? "+" : ""}${a.ajuste_pct}% → ${clp(a.precio_ajustado)}</div>` : ""}</td>
+      <td>${editable ? `<select class="input sm" data-f="verificacion" data-id="${a.id}">${opt(TAS_VERIF, a.verificacion)}</select><select class="input sm" data-f="condicion" data-id="${a.id}" style="margin-top:4px">${opt(TAS_COND, a.condicion)}</select>` : `${esc(TAS_VERIF.find((x) => x[0] === a.verificacion)?.[1])}<div class="sub">${esc(TAS_COND.find((x) => x[0] === a.condicion)?.[1])}</div>`}
+        ${a.verificado_en ? `<div class="sub">${fechaHora(a.verificado_en)}</div>` : ""}</td>
+      <td style="text-align:center"><input type="checkbox" data-inc="${a.id}" ${a.incluido ? "checked" : ""} ${editable ? "" : "disabled"} aria-label="Incluir en el cálculo"></td>
+      <td style="text-align:center"><input type="checkbox" data-pdf="${a.id}" ${a.seleccionado_informe ? "checked" : ""} ${editable && a.valido ? "" : "disabled"} aria-label="Mostrar en el informe"></td>
+      <td>${a.evidencia ? `<details><summary class="faint" style="cursor:pointer;font-size:12px">Ver</summary><div style="font-size:12px;max-width:280px;white-space:pre-wrap">${esc(a.evidencia)}</div></details>` : '<span class="faint">—</span>'}</td></tr>`;
+    B.innerHTML = `${editable ? `<div class="row" style="gap:8px;margin-bottom:10px"><button class="btn" id="tz-add">${ico("plus", 15)} Agregar aviso</button><button class="btn" id="tz-json">Pegar avisos del investigador (JSON)</button>
+        <span class="faint" style="font-size:12.5px">Cada cambio vuelve la tasación a borrador: recalcula antes de aprobar.</span></div>` : ""}
+      ${av.length ? `<div class="card"><div class="tbl-wrap"><table class="tbl tz-tbl"><thead><tr><th>Aviso</th><th>Versión</th><th class="num">Año</th><th class="num">Km</th><th class="num">Precio · ajustado</th><th>Verificación · condición</th><th>Cálculo</th><th>Informe</th><th>Evidencia</th></tr></thead>
+        <tbody>${[...okV, ...sinCalc, ...noV].map(fila).join("")}</tbody></table></div></div>` : `<div class="card">${empty("search", "Sin avisos registrados", "Los avisos deben ser reales, con URL directa, y verificados en el momento de tasar.")}</div>`}`;
+    const edit = async (aid, p) => { try { await rpc("app_nom_aviso_editar", { p_aviso: aid, p }); again(); } catch (e) { toast(e.message, true); again(); } };
+    $$("[data-f]", B).forEach((s) => s.onchange = () => edit(s.dataset.id, { [s.dataset.f]: s.value }));
+    $$("[data-inc]", B).forEach((c) => c.onchange = () => edit(c.dataset.inc, { incluido: c.checked, motivo_tasador: c.checked ? "" : prompt("¿Por qué lo excluyes?") || "criterio del tasador" }));
+    $$("[data-pdf]", B).forEach((c) => c.onchange = () => edit(c.dataset.pdf, { seleccionado_informe: c.checked }));
+    $$("[data-dif]", B).forEach((x) => x.onchange = () => rpc("app_nom_aviso_editar", { p_aviso: x.dataset.dif, p: { diferencias: x.value } }).then(() => toast("Guardado")).catch((e) => toast(e.message, true)));
+    if ($("#tz-add")) $("#tz-add").onclick = () => modalAviso(d, again);
+    if ($("#tz-json")) $("#tz-json").onclick = () => modal("Pegar avisos del investigador", `<p class="faint" style="margin:0;font-size:12.5px">Formato de la herramienta nom_registrar_mercado: <code>{"portal":"chileautos","consulta":"…","avisos":[{"url":"…","precio":…}]}</code> o solo la lista de avisos. Se guardan tal cual; nada se inventa ni se completa.</p>
+        <textarea class="input" id="pj" style="min-height:220px;font-family:monospace;font-size:12px"></textarea>`, async () => {
+        let j; try { j = JSON.parse($("#pj").value); } catch { throw new Error("El texto no es JSON válido."); }
+        const p = Array.isArray(j) ? { portal: "otro", consulta: "carga manual", avisos: j } : j;
+        if (!Array.isArray(p.avisos) || !p.avisos.length) throw new Error("No hay avisos en el JSON.");
+        if (p.avisos.some((a) => !/^https?:\/\//.test(a.url || ""))) throw new Error("Cada aviso necesita su URL directa (https://…).");
+        const r = await rpc("app_nom_tasacion_avisos", { p_id: id, p }); toast(`${r.avisos} avisos registrados`); again(); }, "Registrar", true);
+  }
+}
+
+function modalAviso(d, after) {
+  const sel = (id, list, v) => `<select class="input" id="${id}">${opt(list, v)}</select>`;
+  modal("Agregar aviso comparable", `<p class="faint" style="margin:0;font-size:12.5px">Abre el aviso, revisa que siga publicado y copia los datos tal como aparecen. «Verificado activo» solo si lo acabas de ver.</p>
+    <div class="field"><label for="av-url">URL directa del aviso *</label><input class="input" id="av-url" placeholder="https://www.chileautos.cl/vehiculos/detalles/…"></div>
+    <div class="grid2"><div class="field"><label for="av-por">Portal</label>${sel("av-por", [["chileautos", "Chileautos"], ["mercadolibre", "Mercado Libre"], ["yapo", "Yapo"], ["automotora", "Sitio de automotora"], ["otro", "Otro"]], "chileautos")}</div><div class="field"><label for="av-tit">Título</label><input class="input" id="av-tit" placeholder="${esc(d.modelo)} ${esc(d.version || "")} ${d.anio}"></div></div>
+    <div class="grid2"><div class="field"><label for="av-ver">Versión según el aviso</label><input class="input" id="av-ver"></div><div class="field"><label for="av-vm">¿Es la misma versión?</label>${sel("av-vm", TAS_VM, "misma")}</div></div>
+    <div class="grid2"><div class="field"><label for="av-anio">Año</label><input class="input" id="av-anio" inputmode="numeric"></div><div class="field"><label for="av-km">Km</label><input class="input" id="av-km" inputmode="numeric"></div></div>
+    <div class="grid2"><div class="field"><label for="av-pre">Precio publicado *</label>${montoIn("av-pre", null)}</div><div class="field"><label for="av-tr">Transmisión</label><input class="input" id="av-tr" value="${esc(d.transmision || "")}"></div></div>
+    <div class="grid2"><div class="field"><label for="av-com">Comuna</label><input class="input" id="av-com"></div><div class="field"><label for="av-reg">Región</label><input class="input" id="av-reg" value="Metropolitana de Santiago"></div></div>
+    <div class="grid2"><div class="field"><label for="av-vend">Vendedor</label><input class="input" id="av-vend" placeholder="Nombre automotora o «Particular»"></div><div class="field"><label for="av-vt">Tipo</label>${sel("av-vt", [["automotora", "Automotora"], ["particular", "Particular"], ["rent_a_car", "Rent a car"], ["concesionario", "Concesionario"], ["otro", "Otro"]], "automotora")}</div></div>
+    <div class="grid2"><div class="field"><label for="av-ve">Verificación</label>${sel("av-ve", TAS_VERIF, "verificado_activo")}</div><div class="field"><label for="av-co">Condición del precio</label>${sel("av-co", TAS_COND, "contado")}</div></div>
+    <div class="field"><label for="av-dif">Diferencia principal (va al informe)</label><input class="input" id="av-dif" placeholder="Un año más nuevo y 20.000 km menos"></div>
+    <div class="field"><label for="av-ev">Evidencia (extracto del aviso)</label><textarea class="input" id="av-ev" placeholder="Título, precio, km y versión tal como aparecen"></textarea></div>`,
+  async () => {
+    const url = $("#av-url").value.trim(), precio = montoVal($("#av-pre"));
+    if (!/^https?:\/\//.test(url)) throw new Error("Falta la URL directa del aviso.");
+    if (!precio) throw new Error("Falta el precio publicado.");
+    const a = { url, portal: $("#av-por").value, titulo: $("#av-tit").value.trim(), version_txt: $("#av-ver").value.trim(), version_match: $("#av-vm").value, anio: $("#av-anio").value.replace(/\D/g, ""),
+      km: $("#av-km").value.replace(/\D/g, ""), precio, transmision: $("#av-tr").value.trim(), comuna: $("#av-com").value.trim(), region: $("#av-reg").value.trim(), vendedor_nombre: $("#av-vend").value.trim(),
+      vendedor_tipo: $("#av-vt").value, verificacion: $("#av-ve").value, condicion: $("#av-co").value, diferencias: $("#av-dif").value.trim(), evidencia: $("#av-ev").value.trim() };
+    await rpc("app_nom_tasacion_avisos", { p_id: d.id, p: { portal: a.portal, consulta: "carga manual", avisos: [a] } });
+    toast("Aviso agregado"); after();
+  }, "Agregar", true);
+}
+
+function modalAjuste(d, after) {
+  modal("Ajustar una cifra", `<p class="faint" style="margin:0;font-size:12.5px">Queda registrado quién la cambió, de cuánto a cuánto y por qué. Deja el valor vacío para volver al cálculo.</p>
+    <div class="field"><label for="aj-c">Cifra</label><select class="input" id="aj-c">${opt(TAS_CAMPOS_AJ, "precio_publicacion")}</select></div>
+    <div class="field"><label for="aj-v">Nuevo valor</label>${montoIn("aj-v", d.precio_publicacion)}</div>
+    <div class="field"><label for="aj-m">Motivo *</label><textarea class="input" id="aj-m" placeholder="Ej: dejar la publicación bajo $12 MM por posicionamiento en buscadores"></textarea></div>`,
+  async () => { await rpc("app_nom_tasacion_ajustar", { p_id: d.id, p_campo: $("#aj-c").value, p_valor: montoVal($("#aj-v")), p_motivo: $("#aj-m").value.trim() }); toast("Ajuste aplicado"); after(); }, "Aplicar");
+  $("#aj-c").onchange = () => { const v = d[$("#aj-c").value]; $("#aj-v").value = v != null ? Number(v).toLocaleString("es-CL") : ""; };
+}
+
+function modalAprobar(d, after) {
+  const pre = d.tipo === "pre_estimacion", n = (d.informe?.comparables || []).length;
+  return modal(`Revisar ${d.folio}`, `<dl class="kv"><dt>Publicación sugerida</dt><dd><b>${clp(d.precio_publicacion)}</b></dd><dt>Venta esperada</dt><dd>${clp(d.cierre_min)} – ${clp(d.cierre_max)}</dd>
+      <dt>Comparables válidos</dt><dd>${int(d.estadisticas?.validos ?? 0)} (${n} en el informe)</dd><dt>Confianza</dt><dd>${esc(TAS_CONF[d.confianza]?.[0] || "—")}</dd></dl>
+    ${pre ? `<div class="alert">${ico("alert", 16)}<div><b>Es una pre-estimación.</b> Para aprobarla igual, marca la excepción y explica por qué. El informe saldrá rotulado «pre-estimación sujeta a estudio».</div></div>
+      <label class="row" style="gap:8px"><input type="checkbox" id="ap-x"> Apruebo con excepción</label>` : ""}
+    <div class="field"><label for="ap-c">Comentario${pre ? " *" : ""}</label><textarea class="input" id="ap-c"></textarea></div>
+    <p class="faint" style="margin:0;font-size:12.5px">Al aprobar, la tasación queda congelada (cualquier cambio exige nueva versión) y se habilita el link del informe. Nada se envía solo.</p>`,
+  async () => { await rpc("app_nom_tasacion_aprobar", { p_id: d.id, p_decision: "aprobada", p_comentario: $("#ap-c").value.trim(), p_excepcion: !!$("#ap-x")?.checked }); toast("Tasación aprobada"); after("informe"); },
+  "Aprobar", false, { text: "Rechazar (volver a borrador)", fn: async () => { await rpc("app_nom_tasacion_aprobar", { p_id: d.id, p_decision: "rechazada", p_comentario: $("#ap-c").value.trim() || "Rechazada en revisión" }); toast("Devuelta a borrador"); after(); } });
+}
+
+function modalEnviarTasacion(d, after) {
+  const url = linkInforme(d.token), nombre = (d.propietario?.nombre || "").split(" ")[0];
+  const veh = [d.marca, d.modelo, d.anio].filter(Boolean).join(" ");
+  const txt = `Hola${nombre ? " " + nombre : ""}, ya tenemos la evaluación de tu ${veh}. Te comparto el informe NOM con el precio sugerido de publicación y enlaces de autos similares: ${url}\nEs una valorización inicial; la confirmamos cuando revisemos el vehículo.`;
+  modal("Enviar informe al cliente", `<p style="margin:0">Versión ${d.version_n} aprobada. El envío queda registrado con aprobador, versión y destinatario.</p>
+    <div class="field"><label for="en-url">Link del informe</label><input class="input" id="en-url" value="${esc(url)}" readonly></div>
+    <div class="field"><label for="en-tel">WhatsApp del cliente</label><input class="input" id="en-tel" value="${esc(d.propietario?.telefono || "")}" placeholder="+56 9 …"></div>
+    <div class="field"><label for="en-txt">Mensaje</label><textarea class="input" id="en-txt" style="min-height:110px">${esc(txt)}</textarea></div>
+    <p class="faint" style="margin:0;font-size:12.5px">El envío automático por la API de WhatsApp llega en la Fase 2. Por ahora se abre tu WhatsApp con el mensaje listo.</p>
+    <div class="row" style="gap:8px"><button type="button" class="btn" id="en-copy">${ico("link", 15)} Copiar link</button><button type="button" class="btn primary" id="en-wa">${ico("chat", 15)} Abrir WhatsApp y registrar envío</button></div>`, null);
+  $("#en-copy").onclick = () => copiar(url, "Link copiado");
+  $("#en-wa").onclick = async () => {
+    const tel = $("#en-tel").value.trim();
+    try { await rpc("app_nom_tasacion_envio", { p_id: d.id, p_canal: "whatsapp_manual", p_destinatario: tel || "sin teléfono", p_detalle: $("#en-txt").value });
+      window.open(waLink(tel, $("#en-txt").value) || `https://wa.me/?text=${encodeURIComponent($("#en-txt").value)}`, "_blank", "noopener");
+      $("#modal-root").innerHTML = ""; toast("Envío registrado"); after("historial");
+    } catch (e) { toast(e.message, true); }
+  };
+}
+
+async function viewInformePublico(token) {
+  document.documentElement.dataset.theme = "light";
+  $("#app").innerHTML = `<div class="pub">${loading(6)}</div>`;
+  try {
+    const { data, error } = await sb.rpc("tasacion_publica", { p_token: token });
+    if (error || !data) throw new Error("Este informe no existe o ya no está disponible.");
+    document.title = `Informe de tasación ${data.folio} · NOM Nor-Oriente Motors`;
+    const veh = [data.vehiculo?.marca, data.vehiculo?.modelo, data.vehiculo?.anio].filter(Boolean).join(" ");
+    $("#app").innerHTML = `<div class="pub" style="max-width:none;background:#e9eae8"><div class="pub-bar no-print"><span>Informe ${esc(data.folio)}</span><button class="btn primary sm" id="pp">${ico("dl", 14)} Descargar PDF</button></div>
+      ${informeHTML(data, false)}
+      <div class="pub-cta no-print" style="max-width:794px;margin:0 auto 30px"><p>¿Te hace sentido avanzar? Coordinemos una visita en Chicureo para revisar el auto, tomar fotografías y definir la estrategia de venta.</p>
+        <a class="btn primary" href="${waLink(WA_UNIDAD.nom, `Hola, revisé el informe ${data.folio} de mi ${veh} y quiero avanzar.`)}" target="_blank" rel="noopener">${ico("chat", 15)} Responder por WhatsApp</a></div></div>`;
+    $("#pp").onclick = () => window.print();
+  } catch (e) { $("#app").innerHTML = `<div class="pub"><div class="card">${empty("doc", "Informe no disponible", esc(e.message))}</div></div>`; }
+}
+
 
 /* ---------- clientes ---------- */
 async function viewClientes(params) {
@@ -1171,7 +1444,7 @@ function oppCard(o) {
     ${abierta ? `<select class="input" style="width:auto;height:32px;font-size:12.5px" data-etapa="${o.id}" data-fecha="${o.proxima_fecha || ""}" aria-label="Etapa">${[...new Set([...et, o.etapa])].map((x) => `<option value="${esc(x)}" ${x === o.etapa ? "selected" : ""}>${esc(etapaTxt(x))}</option>`).join("")}</select>`
       : `<span class="pill ${o.estado === "ganada" ? "ok" : "bad"}">${esc(o.estado)}</span>`}
     ${o.asisma_id ? `<span class="pill gold">Asisma ${esc(o.asisma_id)}</span>` : ""}${o.canal ? `<span class="faint" style="font-size:12px">${esc(CANAL_TXT[o.canal] || o.canal)}${o.campana ? " · " + esc(o.campana) : ""}</span>` : ""}
-    <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">${abierta && COT_UNIDADES.includes(o.unidad) ? `<button class="btn sm primary" data-cotizar="${o.id}" data-u="${o.unidad}">${ico("doc", 14)} Cotizar</button>` : ""}${abierta && o.unidad === "nom" && o.flujo === "consignante" && ["calificando", "revision_agendada", "revisado"].includes(o.etapa) ? `<a class="btn sm" href="${TOOLS.ipc}" target="_blank" rel="noopener">${ico("link", 14)} Inspección IPC</a>` : ""}${abierta && o.unidad === "blackgps" && ["reunion_por_agendar", "en_prospeccion"].includes(o.etapa) ? `<button class="btn sm" data-traspaso="${o.id}">Pasar a Asisma</button>` : ""}<button class="btn sm ghost" data-editop="${o.id}">Editar</button>${abierta ? `<button class="btn sm" data-ganar="${o.id}">${ico("trophy", 14)} Ganada</button><button class="btn sm ghost danger" data-perder="${o.id}">Perdida</button>` : ""}${abierta && ["blackgps", "somosb2b"].includes(o.unidad) ? `<button class="btn sm" data-asisma="${o.id}">Ficha Asisma</button>` : ""}</span></div>
+    <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">${abierta && COT_UNIDADES.includes(o.unidad) ? `<button class="btn sm primary" data-cotizar="${o.id}" data-u="${o.unidad}">${ico("doc", 14)} Cotizar</button>` : ""}${abierta && o.unidad === "nom" && o.flujo === "consignante" && ["calificando", "revision_agendada", "revisado"].includes(o.etapa) ? `<a class="btn sm" href="${TOOLS.ipc}" target="_blank" rel="noopener">${ico("link", 14)} Inspección IPC</a>` : ""}${abierta && o.unidad === "nom" && o.flujo === "consignante" ? `<a class="btn sm primary" href="#/tasaciones?op=${o.id}">${ico("car", 14)} Tasar</a>` : ""}${abierta && o.unidad === "blackgps" && ["reunion_por_agendar", "en_prospeccion"].includes(o.etapa) ? `<button class="btn sm" data-traspaso="${o.id}">Pasar a Asisma</button>` : ""}<button class="btn sm ghost" data-editop="${o.id}">Editar</button>${abierta ? `<button class="btn sm" data-ganar="${o.id}">${ico("trophy", 14)} Ganada</button><button class="btn sm ghost danger" data-perder="${o.id}">Perdida</button>` : ""}${abierta && ["blackgps", "somosb2b"].includes(o.unidad) ? `<button class="btn sm" data-asisma="${o.id}">Ficha Asisma</button>` : ""}</span></div>
     ${idx >= 0 ? `<div class="steps" style="--c:${UNIDADES[o.unidad]?.c}" title="${esc(et.map(etapaTxt).join(" → "))}">${et.map((_, i) => `<i class="${i <= idx && abierta ? "done" : o.estado === "ganada" ? "done" : ""}"></i>`).join("")}</div>` : ""}
     <div class="muted" style="font-size:13px">${abierta ? `${o.proxima_fecha ? `<b style="color:${o.proxima_fecha < hoyISO() ? "var(--bad)" : "var(--fg)"}">${fecha(o.proxima_fecha)}</b> · ` : ""}${esc(o.proxima_accion || "Sin próxima acción definida")}` : esc([mot, o.motivo].filter(Boolean).join(" · "))}${o.monto ? ` · ${clp(o.monto)}` : ""}</div></div>`;
 }
@@ -1899,6 +2172,7 @@ function onboarding(force = false) {
 /* ---------- router ---------- */
 async function render() {
   if (location.hash.startsWith("#/c/")) return viewPublica(location.hash.slice(4).split(/[?/]/)[0]);
+  if (location.hash.startsWith("#/t/")) return viewInformePublico(location.hash.slice(4).split(/[?/]/)[0]);
   const { data: { session } } = await sb.auth.getSession();
   if (!session) { ME = null; viewLogin(); return; }
   if (!ME) {
@@ -1916,12 +2190,12 @@ async function render() {
   const params = new URLSearchParams(qs || "");
   window.scrollTo(0, 0);
   const R = { dashboard: () => viewDashboard(params), notificaciones: viewNotificaciones, bandeja: () => viewBandeja(params), conversaciones: () => viewConversaciones(a1),
-    embudo: () => viewEmbudo(a1 || UNI || undefined, a2), cot: () => viewCot(a1), herramientas: viewHerramientas, agenda: () => viewAgenda(params), cotizaciones: viewCotizaciones, clientes: () => viewClientes(params),
+    embudo: () => viewEmbudo(a1 || UNI || undefined, a2), cot: () => viewCot(a1), tasaciones: () => viewTasaciones(params), tasacion: () => a1 ? viewTasacion(a1) : viewTasaciones(params), herramientas: viewHerramientas, agenda: () => viewAgenda(params), cotizaciones: viewCotizaciones, clientes: () => viewClientes(params),
     cliente: () => a1 ? viewCliente(a1) : viewClientes(params), vehiculos: () => viewVehiculos(params), tareas: () => viewTareas(params),
     finanzas: () => viewFinanzas(params), flujo: () => viewFlujo(params), registro: () => viewRegistro(params), importar: viewImportar, equipo: viewEquipo, ayuda: () => viewAyuda(params) };
   return (R[r] || R.dashboard)();
 }
-window.addEventListener("hashchange", () => (ME || location.hash.startsWith("#/c/")) && render());
+window.addEventListener("hashchange", () => (ME || /^#\/[ct]\//.test(location.hash)) && render());
 document.addEventListener("visibilitychange", () => { if (!document.hidden && ME) cargarAvisos(); });
 sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_OUT") ME = null; if (ev === "PASSWORD_RECOVERY") recoverPassword(); });
 function recoverPassword() {

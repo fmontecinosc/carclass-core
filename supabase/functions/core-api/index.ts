@@ -3,7 +3,7 @@
 import postgres from "npm:postgres@3.4.4";
 
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { prepare: false, max: 3, idle_timeout: 20 });
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 
 type Tool = {
   name: string;
@@ -188,8 +188,81 @@ const TOOLS: Tool[] = [
     inputSchema: s({ mes: str("Cualquier día del mes, AAAA-MM-DD"), equipos_alta: int(""), clientes_activos: int(""), mrr: int("MRR con IVA"), unidad: str("Por defecto blackgps"), notas: str("") }, ["mes"]),
     run: (a, autor) => callJson("api_cierre_mensual", [a, "jsonb"], [autor, "text"]),
   },
+  // ───────── NOM · tasador trazable (v31/v32) ─────────
+  // La aprobación y el envío al cliente NO están en la API: los decide una persona en la app.
+  {
+    name: "nom_tasaciones",
+    description: "Lista las tasaciones NOM recientes (folio, vehículo, estado, precio de publicación, confianza, comparables válidos). Búscala antes de crear una nueva para el mismo auto.",
+    inputSchema: s({ q: str("Texto: folio, marca, modelo, patente o propietario") }),
+    run: (a) => callJson("api_nom_tasaciones", [a.q ?? null, "text"]),
+  },
+  {
+    name: "nom_tasacion_crear",
+    description: "Crea la ficha de una tasación NOM (queda en borrador). Marca, modelo y año obligatorios. Indica version_confirmada=true solo si la versión exacta está validada (padrón, ficha o ejecutivo); si no, la tasación saldrá como pre-estimación. 'fuentes' indica de dónde salió cada dato: declarado_por_cliente | extraido_de_documento | validado_por_ejecutivo | verificado_en_fuente | observado_en_inspeccion. No inventes datos.",
+    inputSchema: s({
+      marca: str(""), modelo: str(""), version: str("Variante comercial exacta, p. ej. 'Comfortline 1.0 TSI AT 4x2'"), version_confirmada: { type: "boolean" },
+      anio: int("Año modelo"), motor: str(""), transmision: str("Automática / Manual / CVT…"), traccion: str("4x2 / 4x4 / AWD"), carroceria: str(""),
+      combustible: str(""), km: int("Kilometraje"), color: str(""), patente: str("Uso interno; se muestra en el informe solo si mostrar_patente"),
+      duenos: str("Informado, p. ej. 'Único dueño (informado)'"), llaves: str(""), equipamiento: str(""), observaciones: str("Notas internas del vehículo"),
+      oportunidad_id: str("Oportunidad NOM consignante en Core"), empresa_id: str("Ficha del propietario en Core"), conversacion_id: str("wa.conversaciones.id"),
+      origen: { type: "string", enum: ["panel", "whatsapp", "mcp", "web", "derivacion"] },
+      fuentes: { type: "object", description: "campo → fuente" },
+      resumen_comercial: str("2–4 líneas para el informe: fortalezas, demanda y factores de valor"), criterios: str("Criterios de tasación para el informe"),
+      comercialidad: int("1–5, solo con fundamento"), comercialidad_txt: str("Etiqueta, p. ej. 'BUENA COMERCIALIDAD'"), alcance: str("Alcance y supuestos"),
+    }, ["marca", "modelo", "anio"]),
+    run: (a, autor) => callJson("api_nom_tasacion_crear", [a, "jsonb"], [autor, "text"]),
+  },
+  {
+    name: "nom_tasacion_actualizar",
+    description: "Actualiza la ficha o los textos de una tasación en borrador/calculada (incluye analisis_comparables). Cambiar datos del auto la devuelve a borrador hasta recalcular. Una tasación aprobada o enviada no se modifica: se pide nueva versión en la app.",
+    inputSchema: s({ id: str("ID de la tasación"), cambios: { type: "object", description: "Mismos campos que nom_tasacion_crear + analisis_comparables, cobertura, mostrar_patente" } }, ["id", "cambios"]),
+    run: (a, autor) => callJson("api_nom_tasacion_actualizar", [a.id, "uuid"], [a.cambios ?? {}, "jsonb"], [autor, "text"]),
+  },
+  {
+    name: "nom_registrar_mercado",
+    description: "Registra UNA búsqueda de mercado ejecutada AHORA y los avisos encontrados (idealmente 8–15 por tasación). Solo avisos reales con URL directa que hayas abierto: nunca inventes URL, precio, km ni versión. verificacion='verificado_activo' solo si abriste el aviso y muestra el precio y que sigue publicado; si no, 'no_verificado'; 'caido' si ya no existe. version_match: 'misma' (misma variante), 'equivalente' (misma variante con otro nombre comercial), 'distinta' u 'indeterminada' (el aviso no dice la versión). condicion: contado | financiamiento (precio sujeto a crédito) | bono_0km | liquidacion | remate | siniestro | otro. En 'evidencia' pega el extracto de la página (título, precio, km, versión) tal como lo viste. 'diferencias' es una línea para el cliente (p. ej. 'Un año más nuevo y 20.000 km menos').",
+    inputSchema: s({
+      tasacion_id: str("ID de la tasación"),
+      portal: str("chileautos | mercadolibre | yapo | automotora | otro"), consulta: str("Consulta o filtros usados"), url_busqueda: str("URL de la búsqueda"),
+      resultados_n: int("Resultados que mostró el portal"), notas: str(""),
+      avisos: { type: "array", items: s({
+        url: str("URL directa del aviso"), titulo: str(""), portal: str(""), marca: str(""), modelo: str(""), version_txt: str("Versión tal como la dice el aviso"),
+        version_match: { type: "string", enum: ["misma", "equivalente", "distinta", "indeterminada"] },
+        anio: int(""), km: int(""), precio: int("CLP publicado"), transmision: str(""), traccion: str(""), combustible: str(""), carroceria: str(""),
+        region: str(""), comuna: str(""), vendedor_tipo: { type: "string", enum: ["particular", "automotora", "rent_a_car", "concesionario", "otro"] }, vendedor_nombre: str(""),
+        condicion: { type: "string", enum: ["contado", "financiamiento", "bono_0km", "liquidacion", "remate", "siniestro", "otro"] },
+        verificacion: { type: "string", enum: ["verificado_activo", "no_verificado", "caido"] }, evidencia: str("Extracto del aviso"),
+        diferencias: str("Diferencia principal vs. el auto tasado, para el informe"), incluido: { type: "boolean" }, motivo_tasador: str(""),
+      }, ["url"]) },
+    }, ["tasacion_id", "portal", "avisos"]),
+    run: (a, autor) => callJson("api_nom_registrar_mercado", [a.tasacion_id, "uuid"], [a, "jsonb"], [autor, "text"]),
+  },
+  {
+    name: "nom_tasacion_calcular",
+    description: "Calcula la tasación con los avisos registrados: depura (versión, transmisión, tracción, combustible, año, siniestro/remate/caído/no verificado, atípicos), ajusta por año y km con parámetros configurables, y entrega rango de oferta, valor comercial, precio de publicación, rango de cierre, confianza y advertencias. Con menos de 3 comparables válidos o versión sin confirmar queda como pre-estimación. No aprueba ni envía nada.",
+    inputSchema: s({ id: str("ID de la tasación") }, ["id"]),
+    run: (a, autor) => callJson("api_nom_tasacion_calcular", [a.id, "uuid"], [autor, "text"]),
+  },
+  {
+    name: "nom_tasacion_ver",
+    description: "Ficha completa de una tasación: vehículo, búsquedas, avisos con motivo de inclusión/exclusión, resultado, ajustes, aprobaciones, envíos y el payload exacto que verá el cliente ('informe'). La parte interna (precio pretendido, toma, comisión) solo aparece con permiso nom_interno.",
+    inputSchema: s({ id: str("ID de la tasación") }, ["id"]),
+    run: (a) => callJson("api_nom_tasacion", [a.id, "uuid"], [a.__interna === true, "boolean"]),
+  },
+  {
+    name: "nom_interna_guardar",
+    description: "Guarda la parte INTERNA de NOM de una tasación (nunca llega al cliente): precio pretendido por el cliente, urgencia, precio de toma, costos, comisión propuesta, riesgo, rotación estimada, modalidad recomendada y notas de negociación. Requiere permiso nom_interno.",
+    inputSchema: s({ id: str("ID de la tasación"), interna: s({
+      precio_pretendido_cliente: int(""), urgencia: str(""), precio_toma: int(""), costo_acondicionamiento: int(""), costos_comercializacion: int(""),
+      comision_pct: { type: "number" }, comision_monto: int(""), riesgo: str(""), rotacion_dias_est: int(""),
+      modalidad_recomendada: { type: "string", enum: ["consignacion_virtual", "consignacion_custodia", "compra_directa", "no_recomendable"] }, notas_negociacion: str(""),
+    }) }, ["id", "interna"]),
+    run: (a, autor) => callJson("api_nom_interna_guardar", [a.id, "uuid"], [a.interna ?? {}, "jsonb"], [autor, "text"]),
+  },
 ];
 const byName = new Map(TOOLS.map((t) => [t.name, t]));
+// Herramientas que además exigen el permiso «nom_interno» (o «*»)
+const REQUIERE_INTERNO = new Set(["nom_interna_guardar"]);
 
 // ---------- auth ----------
 async function sha256(t: string) {
@@ -201,7 +274,11 @@ async function auth(key: string | null) {
   const rows = await sql`update core.api_claves set ultimo_uso = now() where hash = ${await sha256(key)} and activo returning nombre, permisos`;
   return rows[0] ? { autor: rows[0].nombre as string, permisos: rows[0].permisos as string[] } : null;
 }
-const allowed = (perms: string[], tool: string) => perms.includes("*") || perms.includes(tool);
+const allowed = (perms: string[], tool: string) =>
+  (perms.includes("*") || perms.includes(tool) || (tool.startsWith("nom_") && perms.includes("nom_tasador"))) &&
+  (!REQUIERE_INTERNO.has(tool) || perms.includes("*") || perms.includes("nom_interno"));
+const conPermisos = (tool: string, args: any, perms: string[]) =>
+  tool === "nom_tasacion_ver" ? { ...args, __interna: perms.includes("*") || perms.includes("nom_interno") } : args;
 
 const cors = {
   "access-control-allow-origin": "*",
@@ -240,7 +317,7 @@ async function mcp(req: Request, ident: { autor: string; permisos: string[] }) {
           const t = byName.get(m.params?.name);
           if (!t || !allowed(ident.permisos, t.name)) return { jsonrpc: "2.0", id, error: { code: -32602, message: "Herramienta no disponible" } };
           try {
-            const out = await t.run(m.params?.arguments ?? {}, ident.autor);
+            const out = await t.run(conPermisos(t.name, m.params?.arguments ?? {}, ident.permisos), ident.autor);
             return { jsonrpc: "2.0", id, result: { content: [{ type: "text", text: JSON.stringify(out) }] } };
           } catch (e) {
             return { jsonrpc: "2.0", id, result: { isError: true, content: [{ type: "text", text: errMsg(e) }] } };
@@ -319,7 +396,7 @@ Deno.serve(async (req) => {
     if (route[0] === "herramientas" && route[1] && req.method === "POST") {
       const t = byName.get(route[1]);
       if (!t || !allowed(ident.permisos, t.name)) return json({ error: "Herramienta no disponible" }, 404);
-      return json(await t.run(await req.json(), ident.autor));
+      return json(await t.run(conPermisos(t.name, await req.json(), ident.permisos), ident.autor));
     }
     return json({ error: "Ruta no encontrada" }, 404);
   } catch (e) {
