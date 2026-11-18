@@ -115,5 +115,11 @@ begin
     raise exception 'T11: falta la alerta de posicionamiento'; end if;
   ok := ok || 'T11 alerta de posicionamiento frente a avisos con menos km'::text;
 
+  -- T12 · (v34) modo conservador: nunca sobre un comparable igual o más nuevo con menos km, y bajo la mediana
+  if (select precio_publicacion from nom.tasaciones where id = c) >= 11690000 then raise exception 'T12: publicó sobre un comparable mejor'; end if;
+  if (select valor_comercial from nom.tasaciones where id = c) > (select (estadisticas->>'valor_mediana_ponderada')::bigint from nom.tasaciones where id = c) then
+    raise exception 'T12: el valor conservador quedó sobre la mediana'; end if;
+  ok := ok || 'T12 modo conservador bajo el mejor comparable y bajo la mediana'::text;
+
   raise exception 'PRUEBAS OK (%) → %', array_length(ok, 1), array_to_string(ok, ' ║ ');
 end $$;
