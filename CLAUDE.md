@@ -210,6 +210,8 @@ Felipe guarda los documentos y la base del negocio en su Drive (fmontecinos@carc
 
 **WhatsApp · saludo automático (18-nov):** el «Mensaje de bienvenida» de WhatsApp Business del celular de Felipe llega como eco (`smb_message_echoes`) y se registraba como respuesta humana: sacaba el chat de la cola, pausaba al asesor 12 h y el asesor quedaba sin «nada que responder» (6 casos en 7 días). Parche en `core.api_wa_ingesta`: los ecos cuyo texto está en `wa.config['mensajes_automaticos_app']` (lista editable, comparación con `wa.norm_txt`, función `wa.es_mensaje_automatico`) solo actualizan `ultima_salida` y no se guardan ni pausan. Avisar a la sesión carclass-whatsapp (dueña del backend) para que lo incorpore a su repo (`wa_ignorar_saludo_automatico_app`, por SQL).
 
+**Asesor · detailing interior (Felipe, 18-nov):** no se vende el detailing interior solo; forma parte de tratamientos completos con pulido y sellado cerámico. Regla agregada al prompt del asesor (`wa.config['agente_prompt']`) y Detailing Deluxe inactivo en `crm.catalogo`. El prompt nace en el repo carclass-whatsapp (`prompts/asesor-sistema.md` → `sync-prompt.ps1`): hay que llevar este cambio allá o un próximo sync lo borra.
+
 **Pendiente:**
 - Netlify: conectar el sitio carclass-core al repositorio (base `app`) para publicar con cada push; desde la nube de Claude la red bloquea Netlify.
 - Push con la app cerrada: claves VAPID, tabla de suscripciones y envío desde core-api.
