@@ -77,3 +77,10 @@ pip install playwright pypdf && python3 scripts/test_informe_pdf.py tests/fixtur
 python3 scripts/informe_pdf.py tests/fixtures/informe_nivus_real_2026-11-18.json informe.pdf
 ```
 En la app: Comercial → Tasaciones NOM → `NOM-TAS-2026-11-18-0001` (prueba real con mercado vigente, sin cliente).
+
+## 6. Cambios del 18-nov (mañana) · `core_v34`
+
+- **Modo conservador** (Felipe: «más a la baja que hacia arriba, para vender más rápido»): valor = percentil 35 ponderado de los precios ajustados; publicación = valor +1 %; nunca sobre un aviso válido igual o más nuevo con menos km; cierre = publicación −2 % a −5 %. Nivus de prueba: $12.290.000 → **$11.590.000** (la tasación manual previa decía $11.790.000).
+- **Oficina** en `core.parametros['nom.oficina']`: Avenida Puerto Oriente 361, oficina 409P, Chicureo (Colina). Lunes a viernes, 9:00 a 18:00, previa coordinación.
+- **Patente visible** en el informe (confirmado). **Logo oficial** con fondo transparente en `app/img/nom-logo.png`.
+- Prueba T12 (modo conservador). 12/12.
