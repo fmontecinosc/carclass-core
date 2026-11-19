@@ -212,6 +212,8 @@ Felipe guarda los documentos y la base del negocio en su Drive (fmontecinos@carc
 
 **Asesor · detailing interior (Felipe, 18-nov):** no se vende el detailing interior solo; forma parte de tratamientos completos con pulido y sellado cerámico. Regla agregada al prompt del asesor (`wa.config['agente_prompt']`) y Detailing Deluxe inactivo en `crm.catalogo`. El prompt nace en el repo carclass-whatsapp (`prompts/asesor-sistema.md` → `sync-prompt.ps1`): hay que llevar este cambio allá o un próximo sync lo borra.
 
+**Pruebas del asesor (19-nov):** función `wa-simular` (Edge Function, `--no-verify-jwt`, cabecera `x-agente-secret`): corre conversaciones simuladas con el mismo prompt, herramientas (modo simulación: solo leen Core, no escriben ni envían) y cerebro que `wa-agente`; resultados en `qa.simulaciones` (lote, escenario, transcripción, acciones, costo). Importa una copia fija de los módulos del asesor en `supabase/functions/wa-simular/agente/` (commit beade9f; actualizar la copia y el import si cambia `wa-agente`). Se dispara con `net.http_post` desde SQL, máximo 12 escenarios por llamada. Primer lote: 24 casos, 3 reglas corregidas en el prompt (cerámico siempre 1/4/8, solo-interior solo si el cliente lo pide, láminas fuera de norma con aviso escrito). Informe: doc «Pruebas del asesor de WhatsApp» (https://claude.ai/artifact/Jf2yafSJdprrtWLBTJpmFa).
+
 **Pendiente:**
 - Netlify: conectar el sitio carclass-core al repositorio (base `app`) para publicar con cada push; desde la nube de Claude la red bloquea Netlify.
 - Push con la app cerrada: claves VAPID, tabla de suscripciones y envío desde core-api.
