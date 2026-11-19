@@ -214,6 +214,8 @@ Felipe guarda los documentos y la base del negocio en su Drive (fmontecinos@carc
 
 **Pruebas del asesor (19-nov):** función `wa-simular` (Edge Function, `--no-verify-jwt`, cabecera `x-agente-secret`): corre conversaciones simuladas con el mismo prompt, herramientas (modo simulación: solo leen Core, no escriben ni envían) y cerebro que `wa-agente`; resultados en `qa.simulaciones` (lote, escenario, transcripción, acciones, costo). Importa una copia fija de los módulos del asesor en `supabase/functions/wa-simular/agente/` (commit beade9f; actualizar la copia y el import si cambia `wa-agente`). Se dispara con `net.http_post` desde SQL, máximo 12 escenarios por llamada. Primer lote: 24 casos, 3 reglas corregidas en el prompt (cerámico siempre 1/4/8, solo-interior solo si el cliente lo pide, láminas fuera de norma con aviso escrito). Informe: doc «Pruebas del asesor de WhatsApp» (https://claude.ai/artifact/Jf2yafSJdprrtWLBTJpmFa).
 
+**v2.8.4 y v2.9.0 (19-nov) · estética (Felipe):** login inmersivo verde profundo con tarjeta de vidrio y acentos dorados (2.8.4). En 2.9.0 el resto de la app sigue esa línea: menú lateral oscuro en degradado verde con cuadrícula y activo dorado, barra superior de vidrio con filete dorado, botones primarios en degradado, tarjetas más redondeadas (`--r: 16px`) con realce al pasar el mouse, foco dorado en campos y modo oscuro más profundo. Todo vive en el bloque «Refresh 2.9» al final de `app/app.css` (solo estilos).
+
 **Pendiente:**
 - Netlify: conectar el sitio carclass-core al repositorio (base `app`) para publicar con cada push; desde la nube de Claude la red bloquea Netlify.
 - Push con la app cerrada: claves VAPID, tabla de suscripciones y envío desde core-api.
