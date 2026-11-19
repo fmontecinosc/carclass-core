@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.8.3";
+const VERSION = "2.8.4";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -170,9 +170,10 @@ function setTema(t) { document.documentElement.dataset.theme = t; lsSet("cc_tema
 function viewLogin(msg = "") {
   $("#app").innerHTML = `
   <div class="login">
+    <div class="login-scene" aria-hidden="true"><span class="grid"></span><span class="ring r1"></span><span class="ring r2"></span><span class="beam"></span></div>
     <section class="login-brand">
       <div class="logo-row">${logoDisc()}<div><b>Carclass Core</b><small>Carclass Group</small></div></div>
-      <div style="position:relative;z-index:1">
+      <div>
         <h1>Todo el grupo, <em>en un solo lugar</em>.</h1>
         <p class="lead">El CRM de Carclass, Carwash.hf, NOM, BlackGPS y somosB2B. Leads, clientes, agenda y resultados conectados a tus agentes.</p>
         <ul class="benefits">
@@ -184,19 +185,20 @@ function viewLogin(msg = "") {
       <div class="foot">© ${new Date().getFullYear()} Carclass Group · Huertos Familiares, Tiltil</div>
     </section>
     <section class="login-form">
-      <form id="f-login" autocomplete="on" novalidate>
-        <div><h2>Bienvenido de nuevo</h2></div>
-        <p class="sub">Ingresa con tu correo y contraseña.</p>
+      <form id="f-login" class="login-card" autocomplete="on" novalidate>
+        <div class="login-head">${logoDisc()}<div class="name">Carclass Core</div><div class="bar"></div><div class="tag">Gestión integral de Carclass Group</div></div>
+        <h2>Iniciar sesión</h2>
+        <p class="sub">Accede a tu espacio de trabajo.</p>
         <div class="field"><label for="l-email">Correo electrónico</label><input class="input" id="l-email" type="email" autocomplete="email" placeholder="nombre@carclass.cl" required></div>
-        <div class="field"><label for="l-pass">Contraseña</label><div class="pass-wrap"><input class="input" id="l-pass" type="password" autocomplete="current-password" required><button type="button" class="btn ghost sm icon" id="l-eye" aria-label="Mostrar contraseña">${ico("eye", 16)}</button></div></div>
+        <div class="field"><label for="l-pass">Contraseña</label><div class="pass-wrap"><input class="input" id="l-pass" type="password" autocomplete="current-password" required><button type="button" class="btn ghost sm icon" id="l-eye" aria-label="Mostrar contraseña">${ico("eye", 18)}</button></div></div>
         <div class="login-opts"><label class="check-row"><input type="checkbox" id="l-rec" ${recordar() ? "checked" : ""}> Recordar dispositivo</label><a href="#" id="l-reset">¿Olvidaste tu contraseña?</a></div>
         <div class="err" id="l-err">${esc(msg)}</div>
         <button class="btn primary" type="submit" id="l-btn">Ingresar</button>
-        <p class="login-note">Acceso solo para el equipo de Carclass Group.</p>
+        <p class="login-note">Acceso privado · Carclass Core ${VERSION}</p>
       </form>
     </section>
   </div>`;
-  $("#l-eye").onclick = () => { const p = $("#l-pass"); const show = p.type === "password"; p.type = show ? "text" : "password"; $("#l-eye").innerHTML = ico(show ? "eyeoff" : "eye", 16); };
+  $("#l-eye").onclick = () => { const p = $("#l-pass"); const show = p.type === "password"; p.type = show ? "text" : "password"; $("#l-eye").innerHTML = ico(show ? "eyeoff" : "eye", 18); };
   $("#f-login").onsubmit = async (e) => {
     e.preventDefault();
     const email = $("#l-email").value.trim(), pass = $("#l-pass").value;
