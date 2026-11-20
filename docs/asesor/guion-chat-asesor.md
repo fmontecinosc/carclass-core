@@ -47,6 +47,7 @@ Regla: **ninguna cifra vive en el prompt si puede vivir en la base.** El prompt 
 - **La ejecución automática (pg_cron → `wa-agente`) sigue apagada** hasta que Felipe la apruebe. Core muestra «aún no encendido» mientras no exista un job activo cuyo comando contenga `wa-agente`.
 - `wa-enviar` (Edge Function): envía borradores aprobados, editados o mensajes manuales desde Core (requiere ventana de 24 h abierta; si no, solo plantillas).
 - `wa-eval`: banco de pruebas del agente en modo simulación.
+- `wa-simular` (en el repositorio `carclass-core`, `supabase/functions/wa-simular/`): **copia** de los módulos del asesor para pruebas simuladas desde Core. Si cambias `herramientas.ts`, `cerebro.ts` o `prompt.ts` en `carclass-whatsapp`, avisa para actualizar esa copia (o propón que ambos lean un solo origen).
 
 **Core (app.carclass.cl, v2.8.3)**
 - Conversaciones con pestañas Míos / Asesor IA / Todas; clasificar o derivar cualquier chat (`app_conversacion_clasificar(id, destino, flujo, derivar)`); «Tomar conversación» = `agente_activo=false` y `agente_pausado_hasta=+30 días`; «Devolver» = activo y sin pausa. **El agente debe respetar `agente_pausado_hasta`** (ya lo hace) y conviene que respete también `agente_activo = false`.
