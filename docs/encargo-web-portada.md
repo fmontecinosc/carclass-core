@@ -12,8 +12,8 @@ Reemplaza las bajadas de las tarjetas:
 - «Vidrios más seguros · Láminas de seguridad · desde $225.000» → «Vidrios más seguros · Láminas que resisten golpes e intentos de robo»
 - «Brillo y fácil lavado · Sellado cerámico de 1, 4 u 8 años» → se mantiene (no tiene precio).
 
-**2. Direcciones: nunca «Quilicura».**
-En el pie de la portada, «PPF, cerámico y láminas: El Juncal 240, Quilicura» → «Taller de PPF, cerámico y láminas: complejo industrial Alto Portezuelo, con seguridad 24/7» (igual que en las páginas de PPF, cerámico y láminas).
+**2. Taller: nombrar el complejo.**
+En el pie de la portada, «PPF, cerámico y láminas: El Juncal 240, Quilicura» → «Taller de PPF, cerámico y láminas: complejo industrial Alto Portezuelo, Quilicura, con seguridad 24/7». En las páginas de PPF, cerámico y láminas, agregar «, Quilicura» después de «complejo industrial Alto Portezuelo».
 La oficina queda como está: «Av. Puerta Oriente 361, of. 409B, Chicureo».
 
 **3. Retiro a domicilio: sin hablar de costo.**
