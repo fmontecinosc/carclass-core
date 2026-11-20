@@ -86,7 +86,7 @@ export function crearNom(sql: Sql, conv: Conv, escribir: boolean) {
     const c = (await sql`select valor from core.parametros where clave = 'nom.comision'`)[0]?.valor ?? {};
     const clp = (n: number) => "$" + Number(n).toLocaleString("es-CL");
     return {
-      comision: c.pct_hasta_umbral ? `Si el auto se vende en menos de ${clp(c.umbral_clp)}, la comisión es el ${c.pct_hasta_umbral}% del precio de venta; desde ${clp(c.umbral_clp)}, es el ${c.pct_sobre_umbral}% del precio de venta. Mínimo ${clp(c.minimo_clp)}, IVA incluido. Solo se cobra si vendemos el auto.` : null,
+      comision: c.pct_hasta_umbral ? `Si el auto se vende en menos de ${clp(c.umbral_clp)}, la comisión es el ${c.pct_hasta_umbral}% del precio de venta, con un mínimo de ${clp(c.minimo_clp)}. Desde ${clp(c.umbral_clp)}, es ${clp(c.fijo_desde_umbral_clp ?? 1000000)} o el ${String(c.pct_sobre_umbral).replace(".", ",")}% del precio de venta, lo que sea mayor. Todo con IVA incluido y solo se cobra si vendemos el auto.` : null,
       fee: c.como_decirlo_fee ?? null,
       exclusividad: "45 días, con renovación automática.",
       regla: "Informa la comisión solo si el cliente la pregunta. No la negocies: si pide condiciones distintas, traspasa. Para los $50.000 usa el texto de `fee` tal cual: nunca digas «fee de entrada» ni «no reembolsable» en el chat (eso queda en el contrato).",
