@@ -24,8 +24,12 @@ Cómo trabajas
 1. Busca con web_search en Chileautos, Mercado Libre (autos.mercadolibre.cl / auto.mercadolibre.cl), Yapo y Kavak. Prioriza la Región Metropolitana.
    Comparable = misma marca y modelo, año ±2, idealmente misma versión, transmisión y combustible.
    Haz búsquedas que devuelvan avisos individuales, no solo listados: por ejemplo «<marca> <modelo> <año> <versión> automática chileautos», «<modelo> <año> mercadolibre Santiago», «<modelo> <año> kavak».
-2. Abre con web_fetch las páginas de avisos individuales que aparezcan en los resultados (Mercado Libre y Kavak suelen abrir bien; Chileautos a veces no).
-   Solo puedes abrir URLs que aparecieron en resultados de búsqueda. Si una falla, sigue con otra: usa el presupuesto de lecturas, apunta a abrir al menos 8 avisos.
+2. Abre con web_fetch las páginas de avisos individuales de Chileautos, Kavak y Yapo que aparezcan en los resultados.
+   Mercado Libre NO se puede abrir: sus avisos regístralos directo desde el resultado de búsqueda (URL del aviso, "no_verificado").
+   NUNCA uses web_fetch en listados ni páginas de búsqueda (URLs con /vehiculos?, /autos/, /buscar, filtros o varios autos): gastan lecturas y no verifican nada.
+   Cada lectura va a UN aviso individual (por ejemplo chileautos.cl/vehiculos/detalles/…, yapo.cl/autos-usados/…/<número>, kavak.com/cl/…/<id>).
+   Orden: primero haz las búsquedas y junta las URL individuales; después abre las 6 a 10 más parecidas al auto tasado (mismo año y versión, km cercano).
+   Solo puedes abrir URLs que aparecieron en resultados de búsqueda. Si una falla, sigue con otra.
 3. Registra TODOS los avisos comparables que encontraste, cada uno con la URL de su aviso individual (nunca la URL de un listado):
    - verificacion: "verificado_activo" solo si abriste la página del aviso, cargó, muestra precio y no dice vendido/pausado/finalizado;
      "caido" si dice vendido o ya no existe; "no_verificado" si solo lo viste en un listado o en el resultado de búsqueda (igual regístralo con lo que viste: Felipe lo revisa).
@@ -34,7 +38,7 @@ Cómo trabajas
    - evidencia: copia breve (máximo 300 caracteres) del texto donde aparecen precio, año y km, e indica si viene de la página del aviso o de un listado.
    - diferencias: en pocas palabras, en qué se diferencia del auto tasado (año, km, versión, equipamiento).
    - No registres avisos de otra versión de motor, otra tracción, otro combustible ni otra transmisión: no son comparables.
-4. Apunta a 6–12 avisos, idealmente la mitad o más verificados. Si hay pocos, amplía a año ±2 y a otras regiones (indica la región). Nunca inventes un aviso, una URL ni una cifra.
+4. Apunta a 8–12 avisos registrados y al menos 3 verificados. Un aviso visto en un listado o en una búsqueda con su URL individual SÍ se registra (como "no_verificado"); no lo dejes solo en notas_internas. Si hay pocos, amplía a año ±2 y a otras regiones (indica la región). Nunca inventes un aviso, una URL ni una cifra.
 5. Precios en pesos chilenos, enteros, sin puntos. Km enteros.
 
 Al terminar, responde SOLO con un bloque \`\`\`json con esta forma:
@@ -66,9 +70,12 @@ export async function investigar(client: Anthropic, modelo: string, v: Vehiculo,
   ].filter(Boolean).join("\n");
 
   const tools: any[] = [
-    { type: "web_search_20250305", name: "web_search", max_uses: opts.maxBusquedas,
+    // Variantes con filtrado dinámico: el modelo filtra la página antes de que entre al contexto (menos tokens por lectura)
+    { type: "web_search_20260209", name: "web_search", max_uses: opts.maxBusquedas,
       user_location: { type: "approximate", city: "Santiago", region: "Región Metropolitana", country: "CL", timezone: "America/Santiago" } },
-    { type: "web_fetch_20250910", name: "web_fetch", max_uses: opts.maxLecturas, max_content_tokens: 6000 },
+    // Mercado Libre bloquea la lectura automática: no se gastan lecturas ahí (sus avisos se registran desde la búsqueda)
+    { type: "web_fetch_20260209", name: "web_fetch", max_uses: opts.maxLecturas, max_content_tokens: 6000,
+      blocked_domains: ["mercadolibre.cl"] },
   ];
   const mensajes: any[] = [{ role: "user", content: pedido }];
   const uso = { input: 0, output: 0, cache_read: 0, cache_write: 0, busquedas: 0, lecturas: 0 };
@@ -78,8 +85,9 @@ export async function investigar(client: Anthropic, modelo: string, v: Vehiculo,
     const r: any = await client.beta.messages.create({
       model: modelo,
       max_tokens: 12000,
-      betas: ["web-fetch-2025-09-10"],
       output_config: { effort: "medium" },
+      // Caché automática del último bloque: cada vuelta (pause_turn) relee lo ya visto a precio de caché
+      cache_control: { type: "ephemeral" },
       system: SISTEMA,
       tools,
       messages: mensajes,

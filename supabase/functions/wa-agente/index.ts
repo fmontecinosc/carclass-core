@@ -90,6 +90,8 @@ async function procesar(convId: string, desde: Date, cfg: Record<string, string>
   // Reglas de actuación
   if (!["sin_unidad", "lead"].includes(c.estado)) return quitar(`estado ${c.estado}`);
   if (c.unidad && !UNIDADES_AGENTE.has(c.unidad)) return quitar(`unidad ${c.unidad}`);
+  // «Tomar conversación» en Core deja agente_activo = false: el asesor no responde aunque la pausa se borre o venza
+  if (c.agente_activo === false) return quitar("tomada por humano");
   if (c.agente_pausado_hasta && new Date(c.agente_pausado_hasta) > new Date()) return quitar("pausado");
   if (!c.ventana_hasta || new Date(c.ventana_hasta) <= new Date()) return quitar("ventana de 24 h cerrada");
   const modo: string = (await sql`select wa.modo_agente(${c.unidad ?? "carclass"}) as m`)[0].m;

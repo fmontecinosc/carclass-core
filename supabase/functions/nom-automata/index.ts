@@ -13,7 +13,7 @@ import { investigar, limpiarAviso } from "./investigador.ts";
 
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { prepare: false, max: 3, idle_timeout: 20 });
 const AUTOR = "Agente IA";
-const VERSION = "1.0.1";
+const VERSION = "1.0.3";
 
 function seguroIgual(a: string, b: string) {
   if (!a || a.length !== b.length) return false;
