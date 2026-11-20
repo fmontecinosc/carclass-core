@@ -86,10 +86,10 @@ export function crearNom(sql: Sql, conv: Conv, escribir: boolean) {
     const c = (await sql`select valor from core.parametros where clave = 'nom.comision'`)[0]?.valor ?? {};
     const clp = (n: number) => "$" + Number(n).toLocaleString("es-CL");
     return {
-      comision: c.pct_hasta_umbral ? `${c.pct_hasta_umbral}% sobre los primeros ${clp(c.umbral_clp)} del precio de venta y ${c.pct_sobre_umbral}% sobre lo que exceda, con un mínimo de ${clp(c.minimo_clp)}, IVA incluido. Solo se cobra si se vende.` : null,
-      fee: c.fee_entrada_clp ? `${clp(c.fee_entrada_clp)} de entrada (inspección, fotos y publicación), no reembolsable, se descuenta de la comisión si se vende.` : null,
+      comision: c.pct_hasta_umbral ? `Si el auto se vende en menos de ${clp(c.umbral_clp)}, la comisión es el ${c.pct_hasta_umbral}% del precio de venta; desde ${clp(c.umbral_clp)}, es el ${c.pct_sobre_umbral}% del precio de venta. Mínimo ${clp(c.minimo_clp)}, IVA incluido. Solo se cobra si vendemos el auto.` : null,
+      fee: c.como_decirlo_fee ?? null,
       exclusividad: "45 días, con renovación automática.",
-      regla: "Informa la comisión solo si el cliente la pregunta. No la negocies: si pide condiciones distintas, traspasa.",
+      regla: "Informa la comisión solo si el cliente la pregunta. No la negocies: si pide condiciones distintas, traspasa. Para los $50.000 usa el texto de `fee` tal cual: nunca digas «fee de entrada» ni «no reembolsable» en el chat (eso queda en el contrato).",
     };
   };
 
@@ -147,8 +147,8 @@ export function crearNom(sql: Sql, conv: Conv, escribir: boolean) {
           que_hacemos: "inspección completa (estética, mecánica y documentos) y fotos profesionales para la publicación",
           fee: { monto: a.fee_monto ?? 50000, momento: alAgendar ? "al_agendar" : "en_visita",
                  como_decirlo: alAgendar
-                   ? `Para reservar la hora se transfiere el fee de $${Number(a.fee_monto ?? 50000).toLocaleString("es-CL")}; no es reembolsable y se descuenta de la comisión si se vende.`
-                   : `El fee de $${Number(a.fee_monto ?? 50000).toLocaleString("es-CL")} se paga el día de la visita, por transferencia; no es reembolsable y se descuenta de la comisión si se vende.` },
+                   ? `Para reservar la hora se transfieren $${Number(a.fee_monto ?? 50000).toLocaleString("es-CL")} por el servicio de inicio: inspección completa, fotos profesionales y publicación en los portales. Ese monto se descuenta de la comisión cuando vendemos tu auto.`
+                   : `El día de la visita se paga $${Number(a.fee_monto ?? 50000).toLocaleString("es-CL")} por el servicio de inicio, por transferencia: inspección completa, fotos profesionales y publicación en los portales. Ese monto se descuenta de la comisión cuando vendemos tu auto.` },
           datos_transferencia: alAgendar ? tr[0]?.v ?? null : null,
           preparacion: o.preparacion_cliente ?? [],
         },
