@@ -6,7 +6,8 @@ import { gcalConectado, ocupados, libres } from "./gcal.ts";
 
 type Sql = ReturnType<typeof postgres>;
 type Resultado = { ok: boolean; data?: unknown; error?: string };
-interface Conv { id: string; unidad: string | null; nombre: string | null; ficha: Record<string, unknown> }
+// sim_nom: solo en wa-simular. Estado NOM ficticio (tasación enviada, etc.) que reemplaza a la base desde un turno dado.
+interface Conv { id: string; unidad: string | null; nombre: string | null; ficha: Record<string, unknown>; sim_nom?: { desde_turno: number; estado: any }; sim_turno?: number }
 
 const AUTOR = "Agente IA";
 
@@ -76,6 +77,21 @@ export const NOM_SOLO_LECTURA = ["nom_estado", "nom_proponer_visita"];
 
 export function crearNom(sql: Sql, conv: Conv, escribir: boolean) {
   const exigirNom = () => { if (conv.unidad !== "nom") throw new Error("Primero asigna la unidad NOM con asignar_unidad"); };
+  const estadoNom = async (): Promise<any> => {
+    if (!escribir && conv.sim_nom) return (conv.sim_turno ?? 0) >= conv.sim_nom.desde_turno ? conv.sim_nom.estado : { tasacion: null, visita: null };
+    return (await sql`select core.api_nom_wa_estado(${conv.id}::uuid) as r`)[0].r;
+  };
+  // Condiciones comerciales desde core.parametros: el asesor las informa solo si el cliente pregunta
+  const condiciones = async () => {
+    const c = (await sql`select valor from core.parametros where clave = 'nom.comision'`)[0]?.valor ?? {};
+    const clp = (n: number) => "$" + Number(n).toLocaleString("es-CL");
+    return {
+      comision: c.pct_hasta_umbral ? `${c.pct_hasta_umbral}% sobre los primeros ${clp(c.umbral_clp)} del precio de venta y ${c.pct_sobre_umbral}% sobre lo que exceda, con un mínimo de ${clp(c.minimo_clp)}, IVA incluido. Solo se cobra si se vende.` : null,
+      fee: c.fee_entrada_clp ? `${clp(c.fee_entrada_clp)} de entrada (inspección, fotos y publicación), no reembolsable, se descuenta de la comisión si se vende.` : null,
+      exclusividad: "45 días, con renovación automática.",
+      regla: "Informa la comisión solo si el cliente la pregunta. No la negocies: si pide condiciones distintas, traspasa.",
+    };
+  };
 
   return {
     async nom_solicitar_tasacion(i: any): Promise<Resultado> {
@@ -86,13 +102,12 @@ export function crearNom(sql: Sql, conv: Conv, escribir: boolean) {
     },
 
     async nom_estado(): Promise<Resultado> {
-      const r = (await sql`select core.api_nom_wa_estado(${conv.id}::uuid) as r`)[0].r;
-      return { ok: true, data: r };
+      return { ok: true, data: { ...(await estadoNom()), condiciones: await condiciones() } };
     },
 
     async nom_proponer_visita(i: any): Promise<Resultado> {
       exigirNom();
-      const est = (await sql`select core.api_nom_wa_estado(${conv.id}::uuid) as r`)[0].r as any;
+      const est = await estadoNom();
       if (!est?.tasacion || !["aprobada", "enviada"].includes(est.tasacion.estado)) {
         return { ok: false, error: "La visita se agenda después de enviar el informe de tasación. Si aún no está, dile que se lo envías apenas esté listo." };
       }

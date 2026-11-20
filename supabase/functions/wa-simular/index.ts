@@ -17,7 +17,8 @@ const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { prepare: false, max: 4,
 const client = new Anthropic({ maxRetries: 2, timeout: 90_000 });
 const TZ = "America/Santiago";
 
-type Escenario = { id: string; titulo?: string; esperado?: string; unidad?: string | null; nombre?: string | null; origen?: string | null; turnos: string[] };
+// sim_nom: estado NOM ficticio desde un turno (1 = primer mensaje del cliente), p. ej. tasación ya enviada para probar el agendamiento
+type Escenario = { id: string; titulo?: string; esperado?: string; unidad?: string | null; nombre?: string | null; origen?: string | null; turnos: string[]; sim_nom?: { desde_turno: number; estado: unknown } };
 
 function seguroIgual(a: string, b: string) {
   if (!a || a.length !== b.length) return false;
@@ -37,10 +38,14 @@ async function correr(lote: string, e: Escenario, cfg: Record<string, string>, p
   try {
     const conv: Conversacion = { id: crypto.randomUUID(), estado: e.unidad ? "lead" : "sin_unidad", unidad: e.unidad ?? null, flujo: null,
       oportunidad_id: null, empresa_id: null, nombre: e.nombre ?? null, telefono_norm: null, ficha: {} };
+    const sim = conv as any;
+    if (e.sim_nom) sim.sim_nom = e.sim_nom;
+    sim.sim_turno = 0;
     const activas = ["carclass", "nom", "blackgps"].filter((u) => cfg[`agente_modo_${u}`] && !["apagado", "observar"].includes(cfg[`agente_modo_${u}`]));
     const historial: Anthropic.MessageParam[] = [];
     const system = promptOverride ?? await promptSistema(sql);
     for (const msg of e.turnos) {
+      sim.sim_turno += 1;
       historial.push({ role: "user", content: [{ type: "text", text: msg }] });
       transcripcion.push({ rol: "cliente", texto: msg });
       const contexto: Contexto = {
