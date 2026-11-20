@@ -55,7 +55,7 @@ El CRM y sistema de gestión propio del grupo empresarial **Carclass Group** (Fe
 - Leads web y de WhatsApp: `core.api_registrar_lead` (B2C → `nuevo`; BlackGPS → `por_contactar`). Se mide `primera_respuesta_en` para el SLA de 5 minutos.
 - **Stock NOM vigente:** solo Toyota Corolla Cross (TDCG37). La Outlander se retiró el 18-nov. La web muestra otros autos para no verse vacía: el asesor dice que ya se vendieron.
 - **Direcciones ante clientes (Felipe 20-nov):** oficina «Av. Puerta Oriente 361, oficina 409B, Chicureo»; taller «complejo industrial Alto Portezuelo, en Quilicura» (El Juncal 240, bodega 16; Felipe 20-nov: se nombra el complejo primero y luego la comuna); la calle y bodega exactas al confirmar la reserva.
-- **Retiro a domicilio Carclass:** sin costo en Chicureo y Lo Barnechea para ventas con PPF desde $600.000. **Regla interna, no se menciona al cliente.** Otras zonas o ventas: se evalúa según distancia, sujeto a confirmación.
+- **Retiro a domicilio Carclass (Felipe 20-nov, `core_v44`):** sin costo extra solo en Chicureo y Lo Barnechea y solo para ventas con PPF desde $600.000; ahí el asesor puede decir «sin costo extra». **La condición es interna, no se menciona.** Otros servicios en la zona u otras zonas: se ofrece igual, sin hablar de costo, y se traspasa para confirmar según distancia.
 - **Asesor de WhatsApp:** fuente única en este repo (`supabase/functions/wa-agente`, `prompts/asesor-sistema.md`); `wa-simular` importa los mismos módulos y prueba prompts con `prompt_url` antes de subirlos. Webs y mensajes de entrada en `docs/webs-asesor.md`.
 
 ## 5. Estado de los datos (5-nov-2026)
