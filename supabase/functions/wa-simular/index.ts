@@ -18,7 +18,7 @@ const client = new Anthropic({ maxRetries: 2, timeout: 90_000 });
 const TZ = "America/Santiago";
 
 // sim_nom: estado NOM ficticio desde un turno (1 = primer mensaje del cliente), p. ej. tasación ya enviada para probar el agendamiento
-type Escenario = { id: string; titulo?: string; esperado?: string; unidad?: string | null; nombre?: string | null; origen?: string | null; turnos: string[]; sim_nom?: { desde_turno: number; estado: unknown } };
+type Escenario = { id: string; titulo?: string; esperado?: string; unidad?: string | null; nombre?: string | null; origen?: string | null; turnos: string[]; sim_nom?: { desde_turno: number; estado: unknown }; activas?: string[] };
 
 function seguroIgual(a: string, b: string) {
   if (!a || a.length !== b.length) return false;
@@ -41,7 +41,8 @@ async function correr(lote: string, e: Escenario, cfg: Record<string, string>, p
     const sim = conv as any;
     if (e.sim_nom) sim.sim_nom = e.sim_nom;
     sim.sim_turno = 0;
-    const activas = ["carclass", "nom", "blackgps"].filter((u) => cfg[`agente_modo_${u}`] && !["apagado", "observar"].includes(cfg[`agente_modo_${u}`]));
+    // activas: permite probar una unidad como si estuviera activa (p. ej. NOM antes de encenderla), sin tocar los modos reales
+    const activas = e.activas ?? ["carclass", "nom", "blackgps"].filter((u) => cfg[`agente_modo_${u}`] && !["apagado", "observar"].includes(cfg[`agente_modo_${u}`]));
     const historial: Anthropic.MessageParam[] = [];
     const system = promptOverride ?? await promptSistema(sql);
     for (const msg of e.turnos) {
