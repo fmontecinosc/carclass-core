@@ -9,9 +9,9 @@
 // Responde 202 de inmediato y procesa en segundo plano.
 import Anthropic from "npm:@anthropic-ai/sdk@0.136.0";
 import postgres from "npm:postgres@3.4.4";
-import { pensar, MODELO_POR_DEFECTO, type Contexto } from "https://raw.githubusercontent.com/fmontecinosc/carclass-core/6ccc0a07a483e561bb2132eef3cbddde2824d90b/supabase/functions/wa-agente/cerebro.ts";
-import { HERRAMIENTAS, crearEjecutor, type Conversacion } from "https://raw.githubusercontent.com/fmontecinosc/carclass-core/6ccc0a07a483e561bb2132eef3cbddde2824d90b/supabase/functions/wa-agente/herramientas.ts";
-import { promptSistema } from "https://raw.githubusercontent.com/fmontecinosc/carclass-core/6ccc0a07a483e561bb2132eef3cbddde2824d90b/supabase/functions/wa-agente/prompt.ts";
+import { pensar, MODELO_POR_DEFECTO, type Contexto } from "https://raw.githubusercontent.com/fmontecinosc/carclass-core/ea591f0b7f33d3a19035114739350c5d805af38d/supabase/functions/wa-agente/cerebro.ts";
+import { HERRAMIENTAS, crearEjecutor, type Conversacion } from "https://raw.githubusercontent.com/fmontecinosc/carclass-core/ea591f0b7f33d3a19035114739350c5d805af38d/supabase/functions/wa-agente/herramientas.ts";
+import { promptSistema } from "https://raw.githubusercontent.com/fmontecinosc/carclass-core/ea591f0b7f33d3a19035114739350c5d805af38d/supabase/functions/wa-agente/prompt.ts";
 
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { prepare: false, max: 4, idle_timeout: 20 });
 const client = new Anthropic({ maxRetries: 2, timeout: 90_000 });
