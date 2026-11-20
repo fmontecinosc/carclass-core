@@ -423,7 +423,8 @@ async function viewDashboard(params) {
     catch (e) { toast(e.message, true); }
   };
   try {
-    const [d, L] = await Promise.all([rpc("app_dashboard2", { p_desde: d0, p_hasta: d1, p_unidad: u || null }), rpc("app_lineas", { p_desde: d0, p_hasta: d1 })]);
+    const [d, L, BU] = await Promise.all([rpc("app_dashboard2", { p_desde: d0, p_hasta: d1, p_unidad: u || null }), rpc("app_lineas", { p_desde: d0, p_hasta: d1 }), ME.ve_finanzas && (!u || u === "blackgps") ? rpc("app_bgps_ventas_unicas", { p_meses: 6 }).catch(() => null) : null]);
+    if (L.blackgps && BU) L.blackgps.unicas = BU;
     $("#dash").innerHTML = (u ? unidadDash(u, L) : holdingDash(L)) + comercialDash(d, u);
     bindLineas($("#dash"));
     $$("#dash [data-cotnueva]").forEach((b) => b.onclick = () => modalNuevaCotizacion());
@@ -437,6 +438,14 @@ function metaBar(v, meta, fmt = int, label = "") {
   const pct = meta ? Math.max(0, Math.min(100, (Number(v || 0) / meta) * 100)) : 0;
   return `<div class="meta">${label ? `<div class="meta-k">${label}</div>` : ""}<div class="meta-l"><span><b>${fmt(v || 0)}</b> <span class="faint">de ${fmt(meta)}</span></span><span class="${pct >= 100 ? "ok-t" : pct < 40 ? "bad-t" : ""}">${Math.round(pct)}%</span></div><div class="meta-t"><i style="width:${pct}%"></i></div></div>`;
 }
+const TIPO_UNICA = { equipos: "Equipos y cámaras", instalaciones: "Instalaciones", desinstalaciones: "Desinstalaciones", servicios: "Otros servicios", otros: "Notas de crédito y otros" };
+const mesNombre = (iso) => parseD(iso).toLocaleDateString("es-CL", { month: "long" });
+function unicasMes(U) { // ventas BlackGPS no MRR del mes en curso
+  if (!U) return null;
+  const hoy = new Date(), clave = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-01`;
+  return (U.meses || []).find((m) => m.mes === clave) || { mes: clave, total: 0, n: 0, por_tipo: {} };
+}
+const unicasDetalle = (m) => Object.entries(m.por_tipo || {}).sort((a, b) => b[1] - a[1]).map(([t, v]) => `${TIPO_UNICA[t] || t} ${clpM(v)}`).join(" · ");
 const mini = (l, v, s = "") => `<div class="mini"><span class="l">${l}</span><b>${v}</b>${s ? `<span class="s">${s}</span>` : ""}</div>`;
 function lineCard(u, body, alertas) {
   const lin = LINEAS.find(([k]) => k === u);
@@ -454,7 +463,7 @@ function holdingDash(L) {
     const alto = (b.riesgo || []).filter((r) => r.riesgo === "alto").length; if (alto) al.push(`${alto} cliente${alto > 1 ? "s" : ""} con riesgo alto de fuga`);
     if (c.vencidas) al.push(`${int(c.vencidas)} próximas acciones vencidas`);
     cards.push(lineCard("blackgps", `${metaBar(b.equipos, metaV(L, "blackgps.equipos"), int, "Equipos facturando · meta diciembre")}
-      <div class="minis">${b.mrr != null ? mini("MRR", clpM(b.mrr)) : ""}${mini("Clientes", int(b.clientes))}${mini("Llamadas hoy", `${int(b.llamadas_hoy)}<span class="faint">/${metaV(L, "blackgps.llamadas_dia")}</span>`)}${mini("Reuniones 7 días", int(b.reuniones_7d))}</div>`, al));
+      <div class="minis">${b.mrr != null ? mini("MRR", clpM(b.mrr)) : ""}${mini("Clientes", int(b.clientes))}${mini("Llamadas hoy", `${int(b.llamadas_hoy)}<span class="faint">/${metaV(L, "blackgps.llamadas_dia")}</span>`)}${mini("Reuniones 7 días", int(b.reuniones_7d))}</div>${(() => { const m = unicasMes(b.unicas); return m ? `<div class="unicas"><div class="l">Ventas únicas de ${mesNombre(m.mes)} <span class="faint">· fuera del MRR</span></div><b>${clpM(m.total)}</b>${m.total ? `<span class="s">${esc(unicasDetalle(m))}</span>` : '<span class="s">Sin instalaciones ni equipos facturados este mes</span>'}</div>` : ""; })()}`, al));
   }
   if (L.carclass) {
     const k = L.carclass, c = C.carclass || {}, al = [], dv = diasDesde(k.ultima_venta);
@@ -519,7 +528,11 @@ function unidadDash(u, L) {
     <div class="kpis">${b.mrr != null ? `<div class="kpi"><span class="l">MRR</span><span class="v">${clpM(b.mrr)}</span><span class="s">${clp(b.equipos ? b.mrr / b.equipos : 0)} por equipo</span></div>` : ""}
       <div class="kpi"><span class="l">Clientes activos</span><span class="v">${int(b.clientes)}</span><span class="s">${int(b.equipos)} equipos</span></div>
       <div class="kpi"><span class="l">Actividad 7 días</span><span class="v">${int(b.llamadas_7d)}</span><span class="s">llamadas · ${int(b.reuniones_7d)} reuniones</span></div>
-      <a class="kpi" href="#/bandeja"><span class="l">Por revisar y entrantes</span><span class="v ${C.bandeja ? "warn" : ""}">${int(C.bandeja)}</span><span class="s">${int(C.vencidas)} acciones vencidas</span></a></div>
+      <a class="kpi" href="#/bandeja"><span class="l">Por revisar y entrantes</span><span class="v ${C.bandeja ? "warn" : ""}">${int(C.bandeja)}</span><span class="s">${int(C.vencidas)} acciones vencidas</span></a>
+      ${b.unicas ? (() => { const m = unicasMes(b.unicas); return `<div class="kpi"><span class="l">Ventas únicas de ${mesNombre(m.mes)}</span><span class="v">${clpM(m.total)}</span><span class="s">${int(m.n)} facturas fuera del MRR · licencias del mes ${clpM(b.unicas.licencias_mes)}</span></div>`; })() : ""}</div>
+    ${b.unicas ? (() => { const U = b.unicas, max = Math.max(1, ...(U.meses || []).map((m) => m.total)); return `<div class="grid2">
+      <section class="card"><div class="card-h"><h3>Ventas únicas por mes</h3><span class="r faint" style="font-size:12px">equipos, cámaras, instalaciones y desinstalaciones</span></div><div class="card-b bars">${(U.meses || []).length ? U.meses.map((m) => `<div class="bar-row" title="${esc(unicasDetalle(m))}"><span class="lab" style="text-transform:capitalize">${mesNombre(m.mes)}</span><span class="bar-track"><i style="width:${Math.max(0, (m.total / max) * 100)}%;background:var(--u-blackgps)"></i></span><span class="n">${clpM(m.total)}</span></div>`).join("") : '<div class="muted">Sin ventas únicas en los últimos meses.</div>'}</div></section>
+      <section class="card"><div class="card-h"><h3>Facturas únicas de ${mesNombre(unicasMes(U).mes)}</h3><span class="badge">${(U.mes_actual || []).length}</span></div><div class="card-b" style="display:grid;gap:8px;font-size:13px">${(U.mes_actual || []).length ? U.mes_actual.map((f) => `<div class="row" style="gap:10px;align-items:flex-start"><span class="pill">${esc(TIPO_UNICA[f.tipo] || f.tipo)}</span><div style="flex:1;min-width:0"><b>${f.documento ? "Factura " + esc(f.documento) : "Sin folio"}</b> · ${fecha(f.fecha)}<div class="muted" style="font-size:12px">${esc((f.detalle || "").replace(/^Factura (N° )?\d+ ?·? ?/, ""))}</div></div><b style="white-space:nowrap">${clp(f.monto)}</b></div>`).join("") : '<div class="muted">Sin facturas fuera del MRR este mes.</div>'}</div></section></div>`; })() : ""}
     <div class="grid2">
       ${embudoCard("Embudo BlackGPS · somosB2B", ETAPAS.blackgps, C.por_etapa || [], "#/embudo/blackgps")}
       ${b.top ? `<section class="card"><div class="card-h"><h3>Concentración de la cartera</h3><span class="r faint" style="font-size:12px">sobre 20% es riesgo estructural</span></div><div class="card-b bars">${b.top.map((t) => `<a class="bar-row" href="#/cliente/${t.empresa_id}"><span class="lab">${esc(t.empresa)}</span><span class="bar-track"><i style="width:${Math.min(100, t.pct * 3)}%;background:${t.pct > 20 ? "var(--bad)" : "var(--c, var(--brand))"}"></i></span><span class="n">${String(t.pct).replace(".", ",")}%</span></a>`).join("")}</div></section>` : ""}

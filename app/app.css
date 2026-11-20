@@ -716,3 +716,7 @@ a.kpi:hover, a.ucard:hover, .ucard:hover { box-shadow: var(--shadow-hover); tran
   .page-head h1 { font-size: 24px; }
 }
 @media print { .side, .top { background: none !important; box-shadow: none !important; } .ucard::after, .kpi::after { display: none; } }
+.ucard .unicas { display: grid; gap: 2px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--c) 7%, var(--surface)); border: 1px solid color-mix(in srgb, var(--c) 18%, var(--border)); }
+.ucard .unicas .l { font-size: 12px; font-weight: 600; color: var(--muted); }
+.ucard .unicas b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.ucard .unicas .s { font-size: 12px; color: var(--muted); }
