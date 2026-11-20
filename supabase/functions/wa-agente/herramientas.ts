@@ -316,7 +316,10 @@ export function crearEjecutor(o: OpcionesEjecutor) {
         from crm.catalogo
         where activo and unidad = ${i.unidad} and (${i.codigo ?? null}::text is null or codigo = ${i.codigo ?? null})
         order by orden`;
-      return { ok: true, data: { moneda: "CLP con IVA", items: filas } };
+      // Página web del servicio (carclass.enlaces): para compartirla una vez si el cliente no llegó desde ahí
+      const enlaces = await parametro(sql, "carclass.enlaces");
+      const items = filas.map((f: any) => ({ ...f, enlace: enlaces?.por_codigo?.[f.codigo] ?? null }));
+      return { ok: true, data: { moneda: "CLP con IVA", items } };
     },
 
     async consultar_ppf_modelo(i) {
@@ -477,10 +480,11 @@ export function crearEjecutor(o: OpcionesEjecutor) {
           lugares,
           horario_recepcion: recepcion?.horario,
           plazos_aproximados_dias: plazos ? { ceramico: plazos.ceramico, ppf_frontal: plazos.ppf_frontal, ppf_total: plazos.ppf_total, laminas: plazos.laminas, nota: "aproximados, según el vehículo" } : null,
-          retiro: retiro ? { comunas_sin_costo: retiro.comunas_sin_costo, desde_monto: retiro.desde_monto, otras_comunas: "Felipe confirma el costo" } : null,
+          // La condición de costo del retiro es interna: el asesor la aplica, pero nunca la menciona al cliente
+          retiro: retiro ? { zonas: retiro.zonas ?? retiro.comunas_sin_costo, regla_interna: retiro.regla_agente, como_decirlo: retiro.como_decirlo ?? null } : null,
           pago: transferencia?.pago ?? null,
           datos_transferencia: datos,
-          regla: "Con clientes de Carclass nunca menciones NOM: di 'nuestra oficina ubicada en Puerta Oriente 361, Chicureo'.",
+          regla: recepcion?.regla_cliente ?? "Con clientes de Carclass nunca menciones NOM: di «nuestra oficina».",
         },
       };
     },
