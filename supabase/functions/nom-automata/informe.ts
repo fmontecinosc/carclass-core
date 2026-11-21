@@ -78,7 +78,10 @@ export async function pdfInforme(p: any): Promise<Uint8Array> {
   const caja = (x: number, w: number, etiqueta: string, valor: string, grande = false) => {
     page.drawRectangle({ x, y: y - 52, width: w, height: 52, color: grande ? ACENTO : FONDO });
     txt(etiqueta, x + 10, y - 16, 8, neg, grande ? rgb(1, 1, 1) : GRIS);
-    txt(valor, x + 10, y - 38, grande ? 17 : 13, neg, grande ? rgb(1, 1, 1) : NEGRO);
+    // El valor se achica hasta caber en la caja (los rangos son largos)
+    let tam = grande ? 17 : 13;
+    while (tam > 8 && neg.widthOfTextAtSize(limpiar(valor), tam) > w - 20) tam -= 0.5;
+    txt(valor, x + 10, y - 38, tam, neg, grande ? rgb(1, 1, 1) : NEGRO);
   };
   const g = 8, cw = (W - 2 * g) / 3;
   caja(M, cw, "PRECIO SUGERIDO DE PUBLICACIÓN", clp(val.precio_publicacion), true);
@@ -114,7 +117,7 @@ export async function pdfInforme(p: any): Promise<Uint8Array> {
       y -= alto;
       page.drawLine({ start: { x: M, y }, end: { x: M + W, y }, thickness: 0.5, color: LINEA });
     }
-    y -= 6;
+    y -= 14;
     if (comps.some((c) => c.financiamiento)) { asegurar(12); txt("* Precio publicado con financiamiento.", M, y, 7.5, reg, GRIS); y -= 12; }
     asegurar(12);
     txt(`Fuentes: ${cons.fuentes ?? "portales de avisos"} · cobertura: ${cons.cobertura ?? "Región Metropolitana"} · consulta del ${fechaLarga(cons.en)}.`, M, y, 7.5, reg, GRIS);
