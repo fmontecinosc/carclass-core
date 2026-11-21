@@ -158,6 +158,10 @@
   .login-card .btn-save{width:100%;padding:12px;}
   .login-card .link-btn{display:block;margin:12px auto 0;}
 
+  .cot-res{display:flex;flex-direction:column;gap:4px;margin-top:6px;}
+  .cot-res button{all:unset;cursor:pointer;border:1px solid #e3e3e3;border-radius:6px;padding:7px 10px;font-size:12px;line-height:1.35;background:#fff;}
+  .cot-res button:hover{border-color:#111;}
+  .cot-res button b{font-weight:700;} .cot-res button span{color:#777;}
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111;color:#fff;font-size:13px;padding:9px 14px;border-radius:6px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:70;}
   .toast.on{opacity:1;}
 
@@ -335,6 +339,12 @@
 
     <div class="sec">
       <div class="sec-title">Datos de la orden</div>
+      <div class="field"><label for="f_cot_q">Traer cotización de Core (asesor o app)</label>
+        <div style="display:flex;gap:6px;"><input id="f_cot_q" type="text" placeholder="N° CC-…, cliente, auto o teléfono" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarCotCore();}">
+        <button class="btn-ghost" type="button" onclick="buscarCotCore()">Buscar</button></div>
+        <div id="cot_res" class="cot-res"></div>
+        <div id="cot_link" class="hint" style="text-align:left;"></div>
+      </div>
       <div class="row2">
         <div class="field"><label for="f_num">N° de orden</label><input id="f_num" type="text"></div>
         <div class="field"><label for="f_fecha">Fecha cotización</label><input id="f_fecha" type="date"></div>
@@ -620,6 +630,7 @@ let customSeq = 1;
 let qcState = {};
 let currentStage = 'cotiza';
 let currentId = null;
+let enlace = null; // {cotizacion_id, cotizacion_num, oportunidad_id, avances:{ingreso,entrega}}: cotización de Core ligada
 let ventaRegistrada = false;
 let dirty = false;
 let ordersCache = [];
@@ -1053,7 +1064,7 @@ window.addEventListener('resize', ajustarEscala);
 function collectState(){
   const fields = {};
   FIELD_IDS.forEach(id=>{ fields[id] = val(id); });
-  return {version:2, fields, qtyState, priceState, customItems, customSeq, qcState, stage:currentStage};
+  return {version:2, fields, qtyState, priceState, customItems, customSeq, qcState, stage:currentStage, enlace};
 }
 function applyState(d){
   const s = d || {};
@@ -1062,6 +1073,7 @@ function applyState(d){
   customItems = s.customItems || [];
   customSeq = s.customSeq || (customItems.length+1);
   qcState = s.qcState || {};
+  enlace = s.enlace || null; pintarEnlace();
   Object.entries(s.fields||{}).forEach(([id,v])=>setVal(id, v));
   ['f_lugar_recepcion','f_lugar_entrega'].forEach(id=>{ if(!LUGARES[val(id)]) setVal(id, /chicureo|oriente/i.test(String((s.fields||{})[id]||'')) ? 'oficina' : 'taller'); });
   el('search_serv').value = '';
@@ -1093,7 +1105,9 @@ async function saveOrder(silent){
     total_iva: Math.round(t.ivaCLP),
     total: Math.round(t.totalCLP),
     abono: Math.round(parseFloat(val('f_abono'))||0),
-    datos: collectState()
+    datos: collectState(),
+    oportunidad_id: enlace?.oportunidad_id || null,
+    cotizacion_id: enlace?.cotizacion_id || null
   };
   setStatus('Guardando…');
   let res;
@@ -1112,7 +1126,65 @@ async function saveOrder(silent){
   dirty = false;
   setStatus('Guardado en la nube · ' + new Date().toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}), 'ok');
   if(!silent) toast('Orden guardada');
+  await avanzarOportunidad();
   return true;
+}
+
+/* ================= INTEGRACIÓN CON CORE ================= */
+// Busca cotizaciones Carclass de Core (las que arma el asesor por WhatsApp o la app) para continuar a ingreso y entrega
+async function buscarCotCore(){
+  if(!sb || !session){ toast('Ingresa para buscar cotizaciones'); return; }
+  const box = el('cot_res'); box.innerHTML = '<span class="hint">Buscando…</span>';
+  const {data, error} = await sb.rpc('app_cotizacion_buscar', {p_q: val('f_cot_q') || null});
+  if(error){ box.innerHTML = `<span class="hint">No se pudo buscar: ${esc(error.message)}</span>`; return; }
+  if(!data || !data.length){ box.innerHTML = '<span class="hint">No hay cotizaciones que coincidan.</span>'; return; }
+  box.innerHTML = data.map(c=>`<button type="button" onclick="cargarCotCore('${c.id}')"><b>${esc(c.numero||'—')}</b> · ${esc(c.cliente||'Sin nombre')} · ${fmtCLP(c.total)}<br><span>${esc(c.auto||'Auto sin indicar')} · ${fmtDate(c.fecha)} · ${esc(c.estado)}${c.orden ? ' · orden '+esc(c.orden) : ''}</span></button>`).join('');
+}
+// Carga cliente, auto y servicios de la cotización; el N° de orden pasa a ser el de la cotización
+async function cargarCotCore(id){
+  if(dirty && !window.confirm('Tienes cambios sin guardar. ¿Reemplazarlos con la cotización de Core?')) return;
+  const {data:c, error} = await sb.rpc('app_cotizacion', {p_id: id});
+  if(error || !c){ toast('No se pudo abrir la cotización'); return; }
+  // Si ya existe una orden de esta cotización, se abre esa
+  const ya = await sb.from('car_ordenes').select('id').eq('cotizacion_id', id).order('actualizado_en', {ascending:false}).limit(1);
+  if(ya.data && ya.data.length){ dirty = false; await openOrder(ya.data[0].id); el('cot_res').innerHTML=''; toast('Esta cotización ya tenía orden: la abrí'); return; }
+  newOrderSilencioso();
+  setVal('f_num', c.numero || genOrderNumber());
+  if(c.fecha) setVal('f_fecha', c.fecha);
+  setVal('f_nombre', c.contacto || c.cliente || ''); setVal('f_telefono', c.telefono || ''); setVal('f_email', c.email || '');
+  setVal('f_origen', 'Asesor WhatsApp');
+  const auto = String(c.items?.auto || '').trim();
+  if(auto){
+    const anio = (auto.match(/\b(19|20)\d{2}\b/)||[])[0] || '';
+    const resto = auto.replace(anio,'').replace(/\s+/g,' ').trim().split(' ');
+    setVal('f_marca', resto.shift() || ''); setVal('f_modelo', resto.join(' ')); setVal('f_anio', anio);
+  }
+  for(const l of (c.items?.lineas || [])){
+    const cat = CATALOG.find(i=>i.id===l.codigo);
+    const qty = Math.max(1, parseInt(l.cantidad)||1), precio = Math.round(Number(l.precio)||0);
+    if(cat){ qtyState[cat.id] = (qtyState[cat.id]||0) + qty; if(precio && precio !== cat.price) priceState[cat.id] = precio; }
+    else customItems.push({id:'custom_'+(customSeq++), name:l.nombre || 'Servicio', desc:l.descripcion || '', price:precio, qty, group: /ppf|xpel/i.test(l.nombre||'') ? 'PPF' : 'Ítems personalizados'});
+  }
+  enlace = {cotizacion_id: c.id, cotizacion_num: c.numero, oportunidad_id: c.oportunidad_id || null, avances:{}};
+  renderList(); renderCustomList(); markDirty(); pintarEnlace();
+  el('cot_res').innerHTML = ''; setVal('f_cot_q','');
+  toast(`Cotización ${c.numero} cargada`);
+}
+function pintarEnlace(){
+  const b = el('cot_link'); if(!b) return;
+  b.textContent = enlace ? `Ligada a la cotización ${enlace.cotizacion_num || ''}${enlace.oportunidad_id ? ' y su oportunidad en Core: al guardar el ingreso pasa a «En taller» y al guardar la entrega a «Entregado».' : ' (sin oportunidad en Core).'}` : '';
+}
+// Al guardar en Ingreso o Entrega, la oportunidad avanza una sola vez por etapa
+async function avanzarOportunidad(){
+  if(!enlace?.oportunidad_id || !['ingreso','entrega'].includes(currentStage)) return;
+  enlace.avances = enlace.avances || {};
+  if(enlace.avances[currentStage]) return;
+  const r = await sb.rpc('app_orden_avance', {p:{oportunidad_id: enlace.oportunidad_id, cotizacion_id: enlace.cotizacion_id, etapa: currentStage,
+    numero: val('f_num'), fecha_entrega: val('f_fecha_entrega_est') || null}});
+  if(r.error){ toast('Orden guardada, pero la oportunidad no avanzó: ' + r.error.message); return; }
+  enlace.avances[currentStage] = true;
+  await sb.from('car_ordenes').update({datos: collectState()}).eq('id', currentId);
+  toast(currentStage==='ingreso' ? 'Oportunidad en Core: «En taller»' : 'Oportunidad en Core: «Entregado»');
 }
 
 async function loadOrders(){
@@ -1169,11 +1241,20 @@ async function registerSale(){
   const vehiculo = [val('f_marca'), val('f_modelo'), val('f_anio')].filter(Boolean).join(' ');
   const servicios = t.lines.map(l=>l.qty>1 ? `${l.name} x${l.qty}` : l.name).join(' · ');
   const cobrado = val('f_saldo_pagado')==='Sí';
-  const v = await sb.rpc('app_fin_guardar', {p:{tabla:'ventas', datos:{unidad:'carclass', fecha, descripcion:`${servicios}${vehiculo ? ' · '+vehiculo : ''}`.slice(0,300),
+  let v = null;
+  if(enlace?.oportunidad_id){
+    const st = await sb.rpc('app_oportunidad_estado', {p_id: enlace.oportunidad_id});
+    if(!st.error && st.data?.estado === 'abierta'){
+      v = await sb.rpc('app_ganar_con_venta', {p:{oportunidad_id: enlace.oportunidad_id, nota:`Acta de entrega ${val('f_num')}`,
+        venta:{fecha, descripcion:`${servicios}${vehiculo ? ' · '+vehiculo : ''}`.slice(0,300), modalidad:'servicio', monto:Math.round(t.totalCLP),
+          afecto_iva:true, estado_cobro: cobrado ? 'cobrado' : 'pendiente', fecha_cobro: cobrado ? fecha : null, documento: val('f_num')}}});
+    }
+  }
+  if(!v) v = await sb.rpc('app_fin_guardar', {p:{tabla:'ventas', datos:{unidad:'carclass', fecha, descripcion:`${servicios}${vehiculo ? ' · '+vehiculo : ''}`.slice(0,300),
     modalidad:'servicio', monto:Math.round(t.totalCLP), afecto_iva:true, estado_cobro: cobrado ? 'cobrado' : 'pendiente', fecha_cobro: cobrado ? fecha : null,
     cliente: val('f_nombre') || null, documento: val('f_num'), origen:'cotizador'}}});
   if(v.error){ toast('No se pudo registrar la venta: ' + v.error.message); return; }
-  const ventaId = v.data && (v.data.id || v.data.venta_id);
+  const ventaId = v.data && (v.data.venta_id || v.data.id);
   const costo = Math.round(parseFloat(val('f_costo_partner'))||0);
   if(costo > 0){
     const c = await sb.rpc('app_fin_guardar', {p:{tabla:'costos', datos:{unidad:'carclass', venta_id: ventaId || null, fecha, tipo:'directo', categoria:'partner',
@@ -1183,7 +1264,7 @@ async function registerSale(){
   const upd = await sb.from('car_ordenes').update({venta_registrada:true}).eq('id', currentId);
   if(upd.error){ toast('Venta registrada en Core, pero no se pudo marcar la orden. Avisa antes de reintentar.'); return; }
   ventaRegistrada = true;
-  el('sale_hint').textContent = 'Venta registrada en Finanzas de Core.';
+  el('sale_hint').textContent = enlace?.oportunidad_id ? 'Venta registrada en Finanzas y oportunidad ganada en Core (postventa programada).' : 'Venta registrada en Finanzas de Core.';
   toast('Venta registrada en Finanzas de Core');
 }
 
@@ -1194,8 +1275,11 @@ async function downloadPDF(){
 }
 function newOrder(){
   if(dirty && !window.confirm('Tienes cambios sin guardar. ¿Comenzar una orden nueva igual?')) return;
+  newOrderSilencioso();
+}
+function newOrderSilencioso(){
   qtyState = {}; priceState = {}; customItems = []; customSeq = 1; qcState = {};
-  currentId = null; ventaRegistrada = false;
+  currentId = null; ventaRegistrada = false; enlace = null; pintarEnlace();
   const defaults = {
     f_ejecutivo:'Felipe Montecinos', f_descuento:'0', f_iva:'19', f_validez:'7', f_iva_incluido:true,
     f_lugar_recepcion:'taller', f_lugar_entrega:'taller', f_dir_domicilio:'', f_recepciono:'Felipe Montecinos', f_abono:'0', f_taller:'Hiendcar · Quilicura', f_costo_partner:'0',
@@ -1230,13 +1314,19 @@ el('login_form').addEventListener('submit', async (e)=>{
   if(!sb){ el('l_err').textContent = 'No se pudo cargar la conexión. Revisa internet o usa el modo sin conexión.'; return; }
   const {data, error} = await sb.auth.signInWithPassword({email: el('l_email').value.trim(), password: el('l_pass').value});
   if(error){ el('l_err').textContent = 'Correo o contraseña incorrectos.'; return; }
-  session = data.session; offline = false; setUserBar(); showLogin(false); toast('Conectado'); cargarCatalogoCore();
+  session = data.session; offline = false; setUserBar(); showLogin(false); toast('Conectado'); await cargarCatalogoCore(); await abrirDesdeUrl();
 });
 el('l_offline').addEventListener('click', ()=>{ offline = true; showLogin(false); setUserBar(); setStatus('Modo sin conexión: no se guarda', 'warn'); });
 
 window.addEventListener('beforeunload', (e)=>{ if(dirty && session){ e.preventDefault(); e.returnValue = ''; } });
 document.addEventListener('keydown', (e)=>{ if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='s'){ e.preventDefault(); saveOrder(); } });
 
+async function abrirDesdeUrl(){
+  const id = new URLSearchParams(location.search).get('cot');
+  if(!id || !/^[0-9a-f-]{36}$/i.test(id)) return;
+  history.replaceState(null, '', location.pathname);
+  await cargarCotCore(id);
+}
 /* ================= START ================= */
 init();
 (async ()=>{
@@ -1244,7 +1334,7 @@ init();
   const {data} = await sb.auth.getSession();
   session = data.session;
   setUserBar();
-  if(!session) showLogin(true); else cargarCatalogoCore();
+  if(!session) showLogin(true); else { await cargarCatalogoCore(); await abrirDesdeUrl(); }
   sb.auth.onAuthStateChange((_ev, s)=>{ session = s; setUserBar(); });
 })();
 </script>
