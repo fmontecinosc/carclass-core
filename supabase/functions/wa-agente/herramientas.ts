@@ -335,7 +335,9 @@ export function crearEjecutor(o: OpcionesEjecutor) {
       // Página web del servicio (carclass.enlaces): para compartirla una vez si el cliente no llegó desde ahí
       const enlaces = await parametro(sql, "carclass.enlaces");
       const items = filas.map((f: any) => ({ ...f, enlace: enlaces?.por_codigo?.[f.codigo] ?? null }));
-      return { ok: true, data: { moneda: "CLP con IVA", items } };
+      // Colega de confianza para lavado a domicilio (no hacemos lavados): se recomienda con su nombre y web
+      const lavado = i.unidad === "carclass" ? await parametro(sql, "carclass.lavado_recomendado") : null;
+      return { ok: true, data: { moneda: "CLP con IVA", items, lavado_recomendado: lavado ? { nombre: lavado.nombre, web: lavado.web, telefono: lavado.telefono ?? null, como_decirlo: lavado.como_decirlo ?? null } : null } };
     },
 
     async consultar_ppf_modelo(i) {
