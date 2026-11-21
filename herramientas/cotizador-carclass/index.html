@@ -872,7 +872,10 @@ function groupedRowsHtml(lines){
   return html;
 }
 function headerLinesHtml(){
-  const groupsPresent = [...new Set(buildLines().map(l=>l.group))].filter(g=>g!=='Ítems personalizados' && g!=='Paquetes Carclass');
+  // Los paquetes aportan sus servicios a la cabecera (Shield = PPF + cerámico; Protection Pack suma láminas; Protect+ = cerámico + láminas)
+  const grupos = buildLines().flatMap(l=> l.group!=='Paquetes Carclass' ? [l.group]
+    : /protection/i.test(l.name) ? ['PPF','Sellado Cerámico','Láminas de Seguridad'] : /shield/i.test(l.name) ? ['PPF','Sellado Cerámico'] : ['Sellado Cerámico','Láminas de Seguridad']);
+  const groupsPresent = ORDEN_GRUPOS.filter(g=>grupos.includes(g)).concat([...new Set(grupos)].filter(g=>!ORDEN_GRUPOS.includes(g) && g!=='Ítems personalizados'));
   const list = groupsPresent.length ? groupsPresent : ['PPF','Sellado Cerámico','Láminas de Seguridad','Detailing'];
   return list.slice(0,4).map(g=>esc(g.toUpperCase())).join('<br>');
 }
