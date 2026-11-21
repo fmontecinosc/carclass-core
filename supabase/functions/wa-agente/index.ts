@@ -8,6 +8,7 @@ import { HERRAMIENTAS, crearEjecutor, type Conversacion } from "./herramientas.t
 import { promptSistema } from "./prompt.ts";
 import { enviarTexto, enviarDocumento, descargarMedia, pausa } from "./kapso.ts";
 import { procesarSeguimientos } from "./seguimientos.ts";
+import { simular } from "./simular.ts";
 
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { prepare: false, max: 3, idle_timeout: 20 });
 const client = new Anthropic({ maxRetries: 2, timeout: 90_000 });
@@ -147,9 +148,12 @@ async function procesar(convId: string, desde: Date, cfg: Record<string, string>
         }
       }
       // Documentos que armaron las herramientas (hoy: PDF de cotización PPF), después del texto
+      const docs = new Map<string, any>();
       for (const a of salida.acciones) {
-        const doc = (a.resultado?.data as any)?.documento;
-        if (!a.resultado?.ok || !doc?.url) continue;
+        const d = (a.resultado?.data as any)?.documento;
+        if (a.resultado?.ok && d?.url) docs.set(d.nombre, d);
+      }
+      for (const doc of docs.values()) {
         await pausa(1500, 2500);
         // Un fallo aquí no debe reintentar el turno (el texto ya salió): se deja tarea con el link para enviarlo a mano
         try {
@@ -201,6 +205,8 @@ Deno.serve(async (req) => {
     if (req.method !== "POST") return new Response("Método no permitido", { status: 405 });
     const cfg = await config();
     if (!seguroIgual(req.headers.get("x-agente-secret") ?? "", cfg.agente_secret ?? "")) return new Response("No autorizado", { status: 401 });
+    // Simulador de conversaciones (reemplaza la función wa-simular)
+    if (new URL(req.url).pathname.endsWith("/simular")) return await simular(sql, client, cfg, req);
 
     const tomados = await sql`select * from wa.tomar_cola(3)`;
     const resultados: string[] = [];

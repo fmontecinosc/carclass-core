@@ -3,7 +3,7 @@
 import type Anthropic from "npm:@anthropic-ai/sdk@0.136.0";
 import type postgres from "npm:postgres@3.4.4";
 import { HERRAMIENTAS_NOM, NOM_SOLO_LECTURA, crearNom } from "./nom.ts";
-import { pdfPpf, subirDocumento, nombreArchivo } from "./documentos.ts";
+import { pdfPpf, pdfCotizacion, subirDocumento, nombreArchivo } from "./documentos.ts";
 
 type Sql = ReturnType<typeof postgres>;
 export type Resultado = { ok: boolean; data?: unknown; error?: string };
@@ -501,8 +501,8 @@ export function crearEjecutor(o: OpcionesEjecutor) {
       if (items.length === 0) return { ok: false, error: "Sin ítems" };
       const total = items.reduce((s: number, x: any) => s + Number(x.precio) * Number(x.cantidad), 0);
       const vigencia = sumarDias(partesChile(ahora).fecha, 7);
-      const INSTR = "Comparte el link una sola vez junto al total («Te dejo la cotización: <link>»); ahí el cliente ve el detalle y puede descargar el PDF. No copies el detalle completo en el mensaje.";
-      if (!escribir) return { ok: true, data: { simulado: true, numero: "CC-2611-SIM", total, vigencia, link: "https://app.carclass.cl/#/c/SIMULACION", instruccion: INSTR } };
+      const INSTR = "El PDF de la cotización se envía solo, después de tu mensaje. Di en una línea que le envías la cotización con el total y la vigencia de 7 días; nunca pegues links ni copies el detalle completo.";
+      if (!escribir) return { ok: true, data: { simulado: true, numero: "CC-2611-SIM", total, vigencia, documento_simulado: "Cotizacion-CC-2611-SIM.pdf", instruccion: INSTR } };
       // Nombre visible de cada línea: el del catálogo si viene el código
       const cods = items.map((x: any) => x.codigo).filter(Boolean);
       const cat = cods.length ? await sql`select codigo, nombre, descripcion from crm.catalogo where unidad = 'carclass' and codigo = any(${cods})` : [];
@@ -541,9 +541,18 @@ export function crearEjecutor(o: OpcionesEjecutor) {
         id = r[0].id;
       }
       await moverEtapa("cotizado", { monto_estimado: total, proxima_accion: `Seguimiento de cotización ${numero}` });
+      // PDF de la cotización: se envía por WhatsApp después del texto (Felipe 21-nov-2026: al cliente PDF, no links)
+      const larga = (f: string) => new Intl.DateTimeFormat("es-CL", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" }).format(new Date(`${f}T12:00:00Z`));
+      const bytes = await pdfCotizacion({
+        numero, fecha: larga(partesChile(ahora).fecha), vigencia: larga(vigencia), cliente: (conv.ficha?.nombre as string) ?? conv.nombre,
+        vehiculo: i.vehiculo ?? null, lineas: lineas.map((l: any) => ({ nombre: l.nombre, descripcion: l.descripcion, cantidad: l.cantidad, precio: l.precio })), total, notas: i.notas ?? null,
+      });
+      const archivo = `Cotizacion-${numero}.pdf`;
+      const url = await subirDocumento(archivo, bytes, "cotizaciones");
+      await sql`update crm.cotizaciones set pdf_url = ${url} where id = ${id}::uuid`;
       return {
         ok: true,
-        data: { numero, total, vigencia, cotizacion_id: id, actualizada: abierta.length > 0, link: `https://app.carclass.cl/#/c/${token}`, instruccion: INSTR },
+        data: { numero, total, vigencia, cotizacion_id: id, actualizada: abierta.length > 0, documento: { url, nombre: archivo, numero }, instruccion: INSTR },
       };
     },
 

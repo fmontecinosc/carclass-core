@@ -163,11 +163,105 @@ export async function pdfPpf(d: DatosPpf): Promise<Uint8Array> {
   return await doc.save();
 }
 
+// Cotización Carclass (cerámico, láminas, paquetes, etc.): mismo formato que la de PPF, con líneas, neto, IVA y total
+export interface LineaCot { nombre: string; descripcion?: string | null; cantidad: number; precio: number }
+export interface DatosCot { numero: string; fecha: string; vigencia: string; cliente: string | null; vehiculo: string | null; lineas: LineaCot[]; total: number; notas?: string | null }
+
+export async function pdfCotizacion(d: DatosCot): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  doc.setTitle(`Cotización ${d.numero} · Carclass`);
+  doc.setAuthor("Carclass");
+  const page: PDFPage = doc.addPage([595.28, 841.89]);
+  const reg = await doc.embedFont(StandardFonts.Helvetica);
+  const neg = await doc.embedFont(StandardFonts.HelveticaBold);
+  const M = 44, W = 595.28 - 2 * M;
+  let y = 841.89 - 40;
+  const txt = (t: string, x: number, yy: number, size: number, font = reg, color = NEGRO) =>
+    page.drawText(limpiar(t), { x, y: yy, size, font, color });
+  const der = (t: string, xDer: number, yy: number, size: number, font = reg, color = NEGRO) =>
+    txt(t, xDer - font.widthOfTextAtSize(limpiar(t), size), yy, size, font, color);
+
+  const lb = await logo();
+  if (lb) { try { const img = await doc.embedPng(lb); page.drawImage(img, { x: M, y: y - 62, width: 66, height: 66 }); } catch { /* sin logo */ } }
+  txt("CARCLASS", M + 80, y - 22, 20, neg);
+  txt("Protección y estética vehicular · Instalador oficial XPEL", M + 80, y - 38, 9, reg, GRIS);
+  der("COTIZACIÓN", M + W, y - 18, 13, neg);
+  der(`N° ${d.numero}`, M + W, y - 34, 9, reg, GRIS);
+  der(`Emitida el ${d.fecha}`, M + W, y - 46, 9, reg, GRIS);
+  der(`Válida hasta el ${d.vigencia}`, M + W, y - 58, 9, reg, GRIS);
+  y -= 78;
+  page.drawRectangle({ x: M, y, width: W, height: 2, color: DORADO });
+  y -= 26;
+  const col2 = M + W / 2;
+  txt("CLIENTE", M, y, 7.5, neg, GRIS); txt("VEHÍCULO", col2, y, 7.5, neg, GRIS);
+  y -= 15;
+  txt(d.cliente || "—", M, y, 11.5, neg);
+  const veh = partir(d.vehiculo || "—", neg, 11.5, W / 2);
+  veh.forEach((l, i) => txt(l, col2, y - i * 14, 11.5, neg));
+  y -= 14 * Math.max(1, veh.length) + 22;
+
+  // Tabla de servicios
+  const cN = W * 0.56, cC = W * 0.10, cP = W * 0.17;
+  page.drawRectangle({ x: M, y: y - 26, width: W, height: 26, color: NEGRO });
+  const blanco = rgb(1, 1, 1);
+  txt("SERVICIO", M + 10, y - 17, 8.5, neg, blanco);
+  der("CANT.", M + cN + cC - 6, y - 17, 8.5, neg, blanco);
+  der("PRECIO", M + cN + cC + cP - 6, y - 17, 8.5, neg, blanco);
+  der("TOTAL", M + W - 10, y - 17, 8.5, neg, blanco);
+  y -= 26;
+  for (const [i, l] of d.lineas.entries()) {
+    const det = l.descripcion ? partir(l.descripcion, reg, 8.5, cN - 20) : [];
+    const alto = 27 + det.length * 11;
+    if (i % 2 === 1) page.drawRectangle({ x: M, y: y - alto, width: W, height: alto, color: FONDO });
+    const nom = partir(l.nombre, neg, 10.5, cN - 20)[0] ?? l.nombre;
+    txt(nom, M + 10, y - 16, 10.5, neg);
+    det.forEach((t, k) => txt(t, M + 10, y - 29 - k * 11, 8.5, reg, GRIS));
+    der(String(l.cantidad), M + cN + cC - 6, y - 16, 10, reg);
+    der(clp(l.precio), M + cN + cC + cP - 6, y - 16, 10, reg);
+    der(clp(l.precio * l.cantidad), M + W - 10, y - 16, 10.5, neg);
+    y -= alto;
+    page.drawLine({ start: { x: M, y }, end: { x: M + W, y }, thickness: 0.6, color: LINEA });
+  }
+  // Totales (montos con IVA incluido)
+  const neto = Math.round(d.total / 1.19);
+  y -= 16;
+  const fila = (k: string, v: string, grande = false) => {
+    txt(k, M + W - 210, y, grande ? 11 : 9.5, grande ? neg : reg, grande ? NEGRO : GRIS);
+    der(v, M + W - 10, y, grande ? 13 : 10, grande ? neg : reg);
+    y -= grande ? 22 : 15;
+  };
+  fila("Neto", clp(neto)); fila("IVA 19%", clp(d.total - neto));
+  page.drawLine({ start: { x: M + W - 210, y: y + 10 }, end: { x: M + W, y: y + 10 }, thickness: 0.8, color: DORADO });
+  y -= 4;
+  fila("TOTAL (IVA incluido)", clp(d.total), true);
+  y -= 14;
+
+  txt("CONDICIONES", M, y, 8.5, neg, GRIS);
+  y -= 14;
+  const cond = [
+    ...(d.notas ? [d.notas] : []),
+    "Valores con IVA incluido, sujetos a revisión del vehículo en la recepción.",
+    "Para reservar se abonan $50.000, que se descuentan del total. Al recibir el auto se completa el 50% y el saldo se paga a la entrega.",
+    "Recepción en nuestro taller del complejo industrial Alto Portezuelo, en Quilicura, o en nuestra oficina de Av. Puerta Oriente 361, oficina 409B, Chicureo, previa coordinación.",
+    "Instalación por técnicos certificados XPEL, con control de calidad e informe fotográfico.",
+  ];
+  for (const c of cond) {
+    const ls = partir(c, reg, 8.5, W - 12);
+    page.drawCircle({ x: M + 3, y: y + 3, size: 1.6, color: DORADO });
+    ls.forEach((l, k) => txt(l, M + 12, y - k * 11.5, 8.5, reg, NEGRO));
+    y -= ls.length * 11.5 + 5;
+  }
+  page.drawLine({ start: { x: M, y: 52 }, end: { x: M + W, y: 52 }, thickness: 0.6, color: LINEA });
+  txt("Carclass · +56 9 8670 4745 · carclass.cl · @carclass.cl", M, 38, 8.5, reg, GRIS);
+  der("Responde por WhatsApp para reservar", M + W, 38, 8.5, neg, NEGRO);
+  return await doc.save();
+}
+
 // Sube el PDF al bucket público «documentos» y devuelve su URL. La ruta lleva un token aleatorio.
-export async function subirDocumento(nombreArchivo: string, bytes: Uint8Array): Promise<string> {
+export async function subirDocumento(nombreArchivo: string, bytes: Uint8Array, carpeta = "ppf"): Promise<string> {
   const base = Deno.env.get("SUPABASE_URL")!;
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const ruta = `ppf/${crypto.randomUUID().replace(/-/g, "")}/${nombreArchivo}`;
+  const ruta = `${carpeta}/${crypto.randomUUID().replace(/-/g, "")}/${nombreArchivo}`;
   const r = await fetch(`${base}/storage/v1/object/documentos/${ruta}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, apikey: key, "Content-Type": "application/pdf", "x-upsert": "false" },
