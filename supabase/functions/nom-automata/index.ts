@@ -73,7 +73,9 @@ async function enviarSalientes(): Promise<string[]> {
       if (s.tipo === "tasacion_aprobada") {
         const payload = (await sql`select nom.payload_cliente(${s.referencia}::uuid) as p`)[0].p;
         const nombre = nombreInforme(payload);
-        pdf = { url: await subirInforme(nombre, await pdfInforme(payload)), nombre };
+        const of = await param("nom.oficina");
+        const wa = (await param("whatsapp.unidades"))?.nom?.numero ?? null;
+        pdf = { url: await subirInforme(nombre, await pdfInforme(payload, { whatsapp: wa ?? undefined, agenda_url: of?.agenda_url ?? null })), nombre };
       }
       for (let i = 0; i < textos.length; i++) {
         if (i > 0) await pausa(1500, 3000);

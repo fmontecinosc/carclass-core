@@ -74,7 +74,10 @@ function enlace(doc: PDFDocument, page: PDFPage, url: string, x1: number, y1: nu
   page.node.addAnnot(annot);
 }
 
-export async function pdfInforme(p: any): Promise<Uint8Array> {
+// Opciones del llamador: número de WhatsApp de NOM (solo dígitos) y, si existe, una página de citas de Google Calendar
+export interface OpcionesInforme { whatsapp?: string; agenda_url?: string | null }
+
+export async function pdfInforme(p: any, op: OpcionesInforme = {}): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const v = p.vehiculo ?? {}, val = p.valores ?? {}, tx = p.textos ?? {}, cq = p.consulta ?? {};
   const pre = p.tipo === "pre_estimacion";
@@ -280,7 +283,38 @@ export async function pdfInforme(p: any): Promise<Uint8Array> {
 
   parrafo(`Alcance: ${tx.alcance ?? "los antecedentes de propietarios, kilometraje y llaves fueron informados por el propietario, no verificados en inspección NOM. Los valores suponen una unidad sin daños estructurales, limitaciones de dominio ni reparaciones importantes pendientes."}`, 7.6, MUT, compacto ? 3 * MM : 5 * MM);
   parrafo(`Los avisos y precios pueden modificarse o dejar de estar disponibles con posterioridad a la fecha de consulta.${p.vigencia_hasta ? ` Referencia vigente hasta el ${fechaLarga(p.vigencia_hasta)}.` : ""}`, 7.6, MUT, 2.5 * MM);
-  parrafo(`Siguiente paso: ${pre ? "confirmamos el valor con la inspección del vehículo" : "inspección completa y fotos profesionales para la publicación"} en una visita de unas 2 horas en nuestra oficina en Puertas de Chicureo (Av. Puerta Oriente 361, oficina 409B).`, 8, INK, 2.5 * MM);
+  // Siguiente paso: botón que abre WhatsApp con el mensaje listo para agendar la visita (el asesor la reserva y crea
+  // el evento en Google Calendar); si hay página de citas, un segundo botón directo al calendario.
+  {
+    const auto = [v.marca, v.modelo, v.anio].filter(Boolean).join(" ");
+    const wa = (op.whatsapp ?? "56986704745").replace(/\D/g, "");
+    const msg = `Hola, quiero agendar la visita a la oficina de Nor-Oriente Motors para mi ${auto}${p.folio ? ` (informe ${p.folio})` : ""}.`;
+    const urlWa = `https://wa.me/${wa}?text=${encodeURIComponent(msg)}`;
+    const texto = `${pre ? "Confirmamos el valor con la inspección del vehículo" : "Inspección completa y fotos profesionales para la publicación"} en una visita de unas 2 horas a nuestra oficina en Puertas de Chicureo (Av. Puerta Oriente 361, oficina 409B).`;
+    const altoBtn = 22, anchoBtn = 178, gapB = 4;
+    const botones: [string, string, ReturnType<typeof rgb>][] = [["AGENDAR VISITA POR WHATSAPP", urlWa, GREEN]];
+    if (op.agenda_url && /^https:\/\//.test(op.agenda_url)) botones.push(["ELEGIR HORARIO EN EL CALENDARIO", op.agenda_url, K]);
+    const anchoTxt = W - 10 * MM - anchoBtn - 6 * MM;
+    const lin = partir(texto, sans, 8, anchoTxt);
+    const altoBtns = botones.length * altoBtn + (botones.length - 1) * gapB;
+    const alto = 3.5 * MM * 2 + Math.max(8.2 + 4 + lin.length * 10.5, altoBtns);
+    // Este recuadro puede usar el espacio hasta justo sobre el pie (la línea del pie está a ~14 mm)
+    if (y - alto - 3.5 * MM < 16 * MM) { nuevaPagina(); foliosBanda.push(page); }
+    y -= 3.5 * MM;
+    rr(page, MX, y, W, alto, 2 * MM, { fill: CARD, border: LINE });
+    espaciado("SIGUIENTE PASO", MX + 5 * MM, y - 3.5 * MM - 7.4, 7.4, sansB, GOLD, 0.4);
+    lin.forEach((l, i) => txt(l, MX + 5 * MM, y - 3.5 * MM - 7.4 - 12 - i * 10.5, 8, sans, INK));
+    const xB = MX + W - 5 * MM - anchoBtn;
+    let yB = y - alto / 2 + altoBtns / 2;
+    for (const [etiqueta, url, fondo] of botones) {
+      rr(page, xB, yB, anchoBtn, altoBtn, 3 * MM, { fill: fondo });
+      const w = anchoEsp(etiqueta, 7.4, sansB, 0.35);
+      espaciado(etiqueta, xB + anchoBtn / 2 - w / 2, yB - altoBtn / 2 - 2.6, 7.4, sansB, BLANCO, 0.35);
+      enlace(doc, page, url, xB, yB - altoBtn, xB + anchoBtn, yB);
+      yB -= altoBtn + gapB;
+    }
+    y -= alto;
+  }
 
   // Folio en la banda y pie en todas las páginas
   const pags = doc.getPages(), total = pags.length;
