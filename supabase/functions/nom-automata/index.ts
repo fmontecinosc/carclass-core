@@ -3,17 +3,19 @@
 //  2. Envía los mensajes de nom.salientes (informe aprobado, confirmación, recordatorio) si la ventana de 24 h está abierta
 //     y el asesor de NOM está en modo «activo». Si la ventana está cerrada, crea una tarea para Felipe con el texto listo.
 //  3. Calendario: crea o borra el evento de cada visita en el Google Calendar de carclass.cl (si el puente está conectado).
-//  4. Investigación de mercado: toma una tasación en cola, busca comparables con Claude, los registra y calcula.
-//     Al terminar avisa a Felipe «Tasación lista para aprobar». Corre en segundo plano (EdgeRuntime.waitUntil).
+//  4. Investigación de mercado por etapas: cada minuto avanza UNA llamada a Claude (pocas búsquedas y lecturas) y guarda
+//     la conversación en nom.investigaciones; al terminar registra los avisos, calcula y avisa «Tasación lista para aprobar».
+//  El informe aprobado sale en PDF (no link) aunque el asesor de NOM esté en «observar»: la aprobación de Felipe lo autoriza.
 import Anthropic from "npm:@anthropic-ai/sdk@0.136.0";
 import postgres from "npm:postgres@3.4.4";
-import { enviarTexto, pausa } from "./kapso.ts";
+import { enviarTexto, enviarDocumento, pausa } from "./kapso.ts";
 import { gcalConectado, crearEvento, cancelarEvento } from "./gcal.ts";
-import { investigar, limpiarAviso } from "./investigador.ts";
+import { pasoInvestigacion, limpiarAviso, type EstadoInv } from "./investigador.ts";
+import { pdfInforme, subirInforme, nombreInforme } from "./informe.ts";
 
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { prepare: false, max: 3, idle_timeout: 20 });
 const AUTOR = "Agente IA";
-const VERSION = "1.0.3";
+const VERSION = "1.1.0";
 
 function seguroIgual(a: string, b: string) {
   if (!a || a.length !== b.length) return false;
@@ -42,7 +44,9 @@ async function enviarSalientes(): Promise<string[]> {
   const pnidDefecto = (await sql`select valor from wa.config where clave = 'phone_number_id'`)[0]?.valor;
   for (const s of pend as any[]) {
     const textos: string[] = s.mensajes;
-    if (modo !== "activo") {
+    // La aprobación de Felipe autoriza el envío del informe aunque el asesor de NOM esté en observar o borrador
+    const autorizado = modo === "activo" || (s.tipo === "tasacion_aprobada" && modo !== "apagado");
+    if (!autorizado) {
       await sql`update nom.salientes set estado = 'retenido', error = ${"asesor NOM en modo " + modo} where id = ${s.id}`;
       await tarea({
         titulo: `[NOM] Enviar a mano · ${s.nombre ?? s.telefono} · ${s.tipo.replace(/_/g, " ")}`,
@@ -64,11 +68,24 @@ async function enviarSalientes(): Promise<string[]> {
       continue;
     }
     try {
+      // Informe de tasación en PDF (se arma antes de enviar el texto: si falla, no sale nada y se reintenta)
+      let pdf: { url: string; nombre: string } | null = null;
+      if (s.tipo === "tasacion_aprobada") {
+        const payload = (await sql`select nom.payload_cliente(${s.referencia}::uuid) as p`)[0].p;
+        const nombre = nombreInforme(payload);
+        pdf = { url: await subirInforme(nombre, await pdfInforme(payload)), nombre };
+      }
       for (let i = 0; i < textos.length; i++) {
         if (i > 0) await pausa(1500, 3000);
         const { wamid } = await enviarTexto(s.phone_number_id || pnidDefecto, s.wa_usuario, textos[i]);
         await sql`insert into wa.mensajes (wamid, conversacion_id, direccion, tipo, texto, enviado_en)
                   values (${wamid}, ${s.conversacion_id}, 'saliente_api', 'text', ${textos[i]}, now())`;
+        if (i === 0 && pdf) {
+          await pausa(1500, 2500);
+          const d = await enviarDocumento(s.phone_number_id || pnidDefecto, s.wa_usuario, pdf.url, pdf.nombre);
+          await sql`insert into wa.mensajes (wamid, conversacion_id, direccion, tipo, texto, enviado_en)
+                    values (${d.wamid}, ${s.conversacion_id}, 'saliente_api', 'document', ${`[Documento] ${pdf.nombre} · ${pdf.url}`}, now())`;
+        }
       }
       await sql.begin(async (tx: any) => {
         await tx`select set_config('core.autor', ${AUTOR}, true)`;
@@ -144,10 +161,12 @@ async function sincronizarCalendario(): Promise<string[]> {
 // 4. Investigación de mercado
 // ---------------------------------------------------------------------------------------------
 async function tomarInvestigacion() {
+  // Un paso a la vez; el bloqueo cubre la duración de una llamada (los fallos suman intentos en el catch)
   const r = await sql`
-    update nom.investigaciones set estado = 'en_curso', intentos = intentos + 1, bloqueado_hasta = now() + interval '12 minutes', error = null
+    update nom.investigaciones set estado = 'en_curso', bloqueado_hasta = now() + interval '6 minutes', error = null
     where id = (select id from nom.investigaciones
                 where (estado = 'pendiente' or (estado = 'en_curso' and bloqueado_hasta < now())) and intentos < 3
+                  and coalesce(bloqueado_hasta, '-infinity') < now()
                 order by creado_en limit 1 for update skip locked)
     returning *`;
   return r[0] ?? null;
@@ -158,12 +177,21 @@ async function correrInvestigacion(inv: any, silencio = false) {
   try {
     const cfg = await param("nom.automatizacion");
     const modelo = cfg?.investigacion_modelo ?? "claude-sonnet-5-5";
-    const client = new Anthropic({ maxRetries: 2, timeout: 280_000 });
-    const { hallazgo, uso, costo_usd } = await investigar(client, modelo, {
+    const client = new Anthropic({ maxRetries: 1, timeout: 240_000 });
+    const paso = await pasoInvestigacion(client, modelo, {
       marca: t.marca, modelo: t.modelo, version: t.version, anio: t.anio, km: t.km,
       transmision: t.transmision, combustible: t.combustible, traccion: t.traccion,
-    }, { maxBusquedas: Number(cfg?.investigacion_max_busquedas ?? 8), maxLecturas: Number(cfg?.investigacion_max_lecturas ?? 12) });
+    }, {
+      maxBusquedas: Number(cfg?.investigacion_max_busquedas ?? 8), maxLecturas: Number(cfg?.investigacion_max_lecturas ?? 12),
+      porEtapa: Number(cfg?.investigacion_por_etapa ?? 4), maxVueltas: Number(cfg?.investigacion_max_vueltas ?? 8),
+    }, (inv.conversacion as EstadoInv) ?? null);
 
+    if (!paso.terminado) {
+      await sql`update nom.investigaciones set estado = 'pendiente', bloqueado_hasta = null, conversacion = ${sql.json(paso.estado as any)},
+                  vueltas = ${paso.estado.vueltas}, costo_usd = ${paso.costo_usd} where id = ${inv.id}`;
+      return;
+    }
+    const hallazgo = paso.hallazgo!, uso = paso.estado.uso, costo_usd = paso.costo_usd;
     const avisos = (hallazgo.avisos ?? []).map(limpiarAviso).filter(Boolean) as any[];
     // Una búsqueda registrada por portal, con sus avisos
     const porPortal = new Map<string, any[]>();
@@ -184,23 +212,24 @@ async function correrInvestigacion(inv: any, silencio = false) {
     } as any)}, ${AUTOR})`;
     const calc = (await sql`select core.api_nom_tasacion_calcular(${t.id}::uuid, ${AUTOR}) as r`)[0].r as any;
     const validos = avisos.filter((a) => a.verificacion === "verificado_activo").length;
-    await sql`update nom.investigaciones set estado = 'lista', terminado_en = now(), costo_usd = ${costo_usd},
+    await sql`update nom.investigaciones set estado = 'lista', terminado_en = now(), costo_usd = ${costo_usd}, bloqueado_hasta = null,
+                vueltas = ${paso.estado.vueltas}, conversacion = null,
                 resultado = ${sql.json({ uso, avisos: avisos.length, verificados: validos, notas_internas: hallazgo.notas_internas ?? null } as any)}
               where id = ${inv.id}`;
     if (silencio) return; // pruebas: sin aviso ni tarea
     const pub = calc?.precio_publicacion ? `publicación $${Number(calc.precio_publicacion).toLocaleString("es-CL")}` : "sin precio (revisar)";
     await sql`select core.push(${"Tasación lista para aprobar"},
-      ${`${t.marca} ${t.modelo} ${t.anio} · ${pub} · ${validos} avisos verificados${calc?.tipo === "pre_estimacion" ? " · pre-estimación" : ""}`},
+      ${`${t.marca} ${t.modelo} ${t.anio} · ${pub} · ${avisos.length} avisos, ${validos} verificados${calc?.tipo === "pre_estimacion" ? " · pre-estimación" : ""}`},
       ${"#/tasacion/" + t.id}, ${"nom_tas:" + t.id})`;
     await tarea({
       titulo: `[NOM] Aprobar tasación ${t.folio} · ${t.marca} ${t.modelo} ${t.anio}`,
-      descripcion: `Investigación lista (${avisos.length} avisos, ${validos} verificados, costo USD ${costo_usd}). ${hallazgo.notas_internas ?? ""}\nAl aprobarla, el informe sale solo por WhatsApp al cliente.`,
+      descripcion: `Investigación lista (${avisos.length} avisos, ${validos} verificados, costo USD ${costo_usd}). ${hallazgo.notas_internas ?? ""}\nAl aprobarla, el informe en PDF sale solo por WhatsApp al cliente (si la tasación vino de WhatsApp).`,
       oportunidad_id: t.oportunidad_id, empresa_id: t.empresa_id,
     });
   } catch (e) {
     const msg = String((e as any)?.message ?? e).slice(0, 500);
-    const r = await sql`update nom.investigaciones set estado = case when intentos >= 3 then 'error' else 'pendiente' end,
-                          error = ${msg}, bloqueado_hasta = now() + interval '3 minutes' where id = ${inv.id} returning estado`;
+    const r = await sql`update nom.investigaciones set intentos = intentos + 1, estado = case when intentos + 1 >= 3 then 'error' else 'pendiente' end,
+                          error = ${msg}, bloqueado_hasta = now() + interval '2 minutes' where id = ${inv.id} returning estado`;
     if (r[0]?.estado === "error") {
       await tarea({ titulo: `[NOM] Investigación de mercado falló · ${t?.folio ?? ""}`, descripcion: `Tres intentos fallidos. Último error: ${msg}. Tasa a mano desde Core o con Claude.`, oportunidad_id: t?.oportunidad_id, empresa_id: t?.empresa_id });
       await sql`select core.push('Tasación NOM sin investigación', ${msg.slice(0, 120)}, ${"#/tasacion/" + inv.tasacion_id}, ${"nom_inv_err:" + inv.id})`;

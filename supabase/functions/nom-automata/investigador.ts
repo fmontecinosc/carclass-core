@@ -38,8 +38,10 @@ Cómo trabajas
    - evidencia: copia breve (máximo 300 caracteres) del texto donde aparecen precio, año y km, e indica si viene de la página del aviso o de un listado.
    - diferencias: en pocas palabras, en qué se diferencia del auto tasado (año, km, versión, equipamiento).
    - No registres avisos de otra versión de motor, otra tracción, otro combustible ni otra transmisión: no son comparables.
-4. Apunta a 8–12 avisos registrados y al menos 3 verificados. Un aviso visto en un listado o en una búsqueda con su URL individual SÍ se registra (como "no_verificado"); no lo dejes solo en notas_internas. Si hay pocos, amplía a año ±2 y a otras regiones (indica la región). Nunca inventes un aviso, una URL ni una cifra.
-5. Precios en pesos chilenos, enteros, sin puntos. Km enteros.
+4. Si un portal solo te muestra listados (sin URL individual), registra igual cada auto que viste ahí: usa como url la página del listado o de búsqueda donde aparece, verificacion "no_verificado" y en evidencia copia título, año, km, precio y comuna tal como se ven. Nunca dejes autos comparables solo en notas_internas: todo comparable visto va en "avisos".
+5. Apunta a 8–12 avisos registrados y al menos 3 verificados. Un aviso visto en un listado o en una búsqueda con su URL individual SÍ se registra (como "no_verificado"); no lo dejes solo en notas_internas. Si hay pocos, amplía a año ±2 y a otras regiones (indica la región). Nunca inventes un aviso, una URL ni una cifra.
+6. Precios en pesos chilenos, enteros, sin puntos. Km enteros.
+7. Trabajas por etapas: en cada etapa tienes pocas búsquedas y lecturas. Si se te acaban y aún te falta información, responde solo la palabra CONTINUAR (sin JSON) y en la etapa siguiente recibirás más. Cuando tengas suficiente, o cuando se te indique que no quedan herramientas, responde con el JSON final.
 
 Al terminar, responde SOLO con un bloque \`\`\`json con esta forma:
 {
@@ -59,58 +61,74 @@ transmision ∈ manual, automatica. combustible ∈ bencina, diesel, hibrido, el
 
 const PRECIO = { input: 2.0, output: 10.0, cache_read: 0.1, cache_write: 2.5 }; // USD por millón (Sonnet 5.5)
 
-export async function investigar(client: Anthropic, modelo: string, v: Vehiculo, opts: { maxBusquedas: number; maxLecturas: number }) {
-  const pedido = [
-    `Auto a tasar: ${v.marca} ${v.modelo}${v.version ? " " + v.version : ""}, año ${v.anio}${v.km != null ? `, ${v.km.toLocaleString("es-CL")} km` : ""}.`,
-    v.transmision ? `Transmisión: ${v.transmision}.` : "",
-    v.combustible ? `Combustible: ${v.combustible}.` : "",
-    v.traccion ? `Tracción: ${v.traccion}.` : "",
-    `Fecha de hoy: ${new Date().toLocaleDateString("es-CL", { timeZone: "America/Santiago" })}.`,
-    "Busca, abre y registra los comparables vigentes.",
-  ].filter(Boolean).join("\n");
+export interface EstadoInv {
+  mensajes: any[];
+  uso: { input: number; output: number; cache_read: number; cache_write: number; busquedas: number; lecturas: number };
+  vueltas: number;
+}
 
+// Un paso de la investigación: UNA llamada a Claude con un tope de herramientas por etapa (cabe holgado en el límite
+// de tiempo de una Edge Function). El estado (conversación y uso) se guarda en la base y el cron sigue en el minuto siguiente.
+export async function pasoInvestigacion(client: Anthropic, modelo: string, v: Vehiculo,
+  opts: { maxBusquedas: number; maxLecturas: number; porEtapa: number; maxVueltas: number }, previo: EstadoInv | null,
+): Promise<{ estado: EstadoInv; terminado: boolean; hallazgo?: Hallazgo; costo_usd: number }> {
+  const est: EstadoInv = previo ?? {
+    mensajes: [{ role: "user", content: [
+      `Auto a tasar: ${v.marca} ${v.modelo}${v.version ? " " + v.version : ""}, año ${v.anio}${v.km != null ? `, ${v.km.toLocaleString("es-CL")} km` : ""}.`,
+      v.transmision ? `Transmisión: ${v.transmision}.` : "",
+      v.combustible ? `Combustible: ${v.combustible}.` : "",
+      v.traccion ? `Tracción: ${v.traccion}.` : "",
+      `Fecha de hoy: ${new Date().toLocaleDateString("es-CL", { timeZone: "America/Santiago" })}.`,
+      `Tienes en total ${opts.maxBusquedas} búsquedas y ${opts.maxLecturas} lecturas, repartidas en etapas. Busca, abre y registra los comparables vigentes.`,
+    ].filter(Boolean).join("\n") }],
+    uso: { input: 0, output: 0, cache_read: 0, cache_write: 0, busquedas: 0, lecturas: 0 },
+    vueltas: 0,
+  };
+  const quedanB = Math.max(0, opts.maxBusquedas - est.uso.busquedas);
+  const quedanL = Math.max(0, opts.maxLecturas - est.uso.lecturas);
+  const sinHerramientas = (quedanB === 0 && quedanL === 0) || est.vueltas + 1 >= opts.maxVueltas;
+  // Las herramientas siempre se declaran (el historial tiene bloques de ellas); en la etapa final no se pueden usar
   const tools: any[] = [
-    // Variantes con filtrado dinámico: el modelo filtra la página antes de que entre al contexto (menos tokens por lectura)
-    { type: "web_search_20260209", name: "web_search", max_uses: opts.maxBusquedas,
+    { type: "web_search_20260209", name: "web_search", max_uses: Math.max(1, Math.min(opts.porEtapa, quedanB)),
       user_location: { type: "approximate", city: "Santiago", region: "Región Metropolitana", country: "CL", timezone: "America/Santiago" } },
-    // Mercado Libre bloquea la lectura automática: no se gastan lecturas ahí (sus avisos se registran desde la búsqueda)
-    { type: "web_fetch_20260209", name: "web_fetch", max_uses: opts.maxLecturas, max_content_tokens: 6000,
+    // Mercado Libre bloquea la lectura automática: sus avisos se registran desde la búsqueda
+    { type: "web_fetch_20260209", name: "web_fetch", max_uses: Math.max(1, Math.min(opts.porEtapa, quedanL)), max_content_tokens: 6000,
       blocked_domains: ["mercadolibre.cl"] },
   ];
-  const mensajes: any[] = [{ role: "user", content: pedido }];
-  const uso = { input: 0, output: 0, cache_read: 0, cache_write: 0, busquedas: 0, lecturas: 0 };
-  let texto = "";
+  const r: any = await client.beta.messages.create({
+    model: modelo,
+    max_tokens: 12000,
+    output_config: { effort: "medium" },
+    cache_control: { type: "ephemeral" },
+    system: SISTEMA,
+    tools,
+    ...(sinHerramientas || quedanB === 0 && quedanL === 0 ? { tool_choice: { type: "none" } } : {}),
+    messages: est.mensajes,
+  } as any);
+  const u = r.usage ?? {};
+  est.uso.input += u.input_tokens ?? 0; est.uso.output += u.output_tokens ?? 0;
+  est.uso.cache_read += u.cache_read_input_tokens ?? 0; est.uso.cache_write += u.cache_creation_input_tokens ?? 0;
+  est.uso.busquedas += u.server_tool_use?.web_search_requests ?? 0;
+  est.uso.lecturas += u.server_tool_use?.web_fetch_requests ?? 0;
+  est.vueltas += 1;
+  est.mensajes.push({ role: "assistant", content: r.content });
+  const costo_usd = Math.round(((est.uso.input * PRECIO.input + est.uso.output * PRECIO.output + est.uso.cache_read * PRECIO.cache_read
+    + est.uso.cache_write * PRECIO.cache_write) / 1e6 + est.uso.busquedas * 0.01) * 1e4) / 1e4;
 
-  for (let vuelta = 0; vuelta < 6; vuelta++) {
-    const r: any = await client.beta.messages.create({
-      model: modelo,
-      max_tokens: 12000,
-      output_config: { effort: "medium" },
-      // Caché automática del último bloque: cada vuelta (pause_turn) relee lo ya visto a precio de caché
-      cache_control: { type: "ephemeral" },
-      system: SISTEMA,
-      tools,
-      messages: mensajes,
-    } as any);
-    const u = r.usage ?? {};
-    uso.input += u.input_tokens ?? 0; uso.output += u.output_tokens ?? 0;
-    uso.cache_read += u.cache_read_input_tokens ?? 0; uso.cache_write += u.cache_creation_input_tokens ?? 0;
-    uso.busquedas += u.server_tool_use?.web_search_requests ?? 0;
-    uso.lecturas += u.server_tool_use?.web_fetch_requests ?? 0;
-    mensajes.push({ role: "assistant", content: r.content });
-    if (r.stop_reason === "pause_turn") continue; // la API pausó una vuelta larga de herramientas: se retoma
-    texto = r.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n");
-    break;
-  }
-
+  if (r.stop_reason === "pause_turn") return { estado: est, terminado: false, costo_usd }; // la API pausó: se retoma tal cual
+  const texto = r.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n");
   const m = texto.match(/```json\s*([\s\S]*?)```/) ?? texto.match(/(\{[\s\S]*\})\s*$/);
-  if (!m) throw new Error("El analista no devolvió el JSON de resultados");
-  const h = JSON.parse(m[1]) as Hallazgo;
-  if (!Array.isArray(h.avisos)) throw new Error("Resultado sin avisos");
-
-  const costo = (uso.input * PRECIO.input + uso.output * PRECIO.output + uso.cache_read * PRECIO.cache_read + uso.cache_write * PRECIO.cache_write) / 1e6
-    + uso.busquedas * 0.01; // búsqueda web: USD 10 por 1.000
-  return { hallazgo: h, uso, costo_usd: Math.round(costo * 1e4) / 1e4 };
+  if (m) {
+    const h = JSON.parse(m[1]) as Hallazgo;
+    if (!Array.isArray(h.avisos)) throw new Error("Resultado sin avisos");
+    return { estado: est, terminado: true, hallazgo: h, costo_usd };
+  }
+  if (est.vueltas >= opts.maxVueltas + 1) throw new Error("El analista no entregó el JSON de resultados");
+  const b = Math.max(0, opts.maxBusquedas - est.uso.busquedas), l = Math.max(0, opts.maxLecturas - est.uso.lecturas);
+  est.mensajes.push({ role: "user", content: (b > 0 || l > 0) && est.vueltas + 1 < opts.maxVueltas
+    ? `Sigue. Te quedan ${b} búsquedas y ${l} lecturas en total (hasta ${opts.porEtapa} de cada una en esta etapa). Cuando tengas suficiente, entrega el JSON final.`
+    : "Ya no quedan búsquedas ni lecturas. Entrega ahora el JSON final con todo lo que encontraste (incluye como avisos los autos vistos en listados)." });
+  return { estado: est, terminado: false, costo_usd };
 }
 
 // Limpieza mínima antes de entregar a la base (los CHECK de nom.mercado_avisos son la última palabra)
