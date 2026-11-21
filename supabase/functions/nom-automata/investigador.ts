@@ -96,22 +96,36 @@ export async function pasoInvestigacion(client: Anthropic, modelo: string, v: Ve
     { type: "web_fetch_20260209", name: "web_fetch", max_uses: opts.porEtapa, max_content_tokens: 6000,
       blocked_domains: ["mercadolibre.cl"] },
   ];
-  const r: any = await client.beta.messages.create({
+  const pedir = (mensajes: any[]) => client.beta.messages.create({
     model: modelo,
     max_tokens: 12000,
     output_config: { effort: "medium" },
     cache_control: { type: "ephemeral" },
     system: SISTEMA,
     tools,
-    messages: est.mensajes,
+    messages: mensajes,
   } as any);
+  let r: any;
+  try {
+    r = await pedir(est.mensajes);
+  } catch (e) {
+    // El razonamiento (thinking) guardado de etapas anteriores puede quedar ligado a otra conversación:
+    // la API permite quitarlo del historial y seguir (el contenido visible y los resultados de búsqueda se conservan)
+    if (!/signature/i.test(String((e as any)?.message ?? e))) throw e;
+    est.mensajes = est.mensajes.map((m: any) => Array.isArray(m.content) && m.role === "assistant"
+      ? { ...m, content: m.content.filter((b: any) => b.type !== "thinking" && b.type !== "redacted_thinking") } : m);
+    r = await pedir(est.mensajes);
+  }
   const u = r.usage ?? {};
   est.uso.input += u.input_tokens ?? 0; est.uso.output += u.output_tokens ?? 0;
   est.uso.cache_read += u.cache_read_input_tokens ?? 0; est.uso.cache_write += u.cache_creation_input_tokens ?? 0;
   est.uso.busquedas += u.server_tool_use?.web_search_requests ?? 0;
   est.uso.lecturas += u.server_tool_use?.web_fetch_requests ?? 0;
   est.vueltas += 1;
-  est.mensajes.push({ role: "assistant", content: r.content });
+  // Si la API había pausado el turno, la respuesta lo continúa: se une al mismo mensaje del asistente
+  const ultimo = est.mensajes[est.mensajes.length - 1];
+  if (ultimo?.role === "assistant" && Array.isArray(ultimo.content)) ultimo.content = [...ultimo.content, ...r.content];
+  else est.mensajes.push({ role: "assistant", content: r.content });
   const costo_usd = Math.round(((est.uso.input * PRECIO.input + est.uso.output * PRECIO.output + est.uso.cache_read * PRECIO.cache_read
     + est.uso.cache_write * PRECIO.cache_write) / 1e6 + est.uso.busquedas * 0.01) * 1e4) / 1e4;
 
