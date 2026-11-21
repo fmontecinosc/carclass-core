@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.10.4";
+const VERSION = "2.10.5";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -211,15 +211,15 @@ function viewLogin(msg = "") {
     <section class="login-brand">
       <div class="logo-row">${logoDisc()}<div><b>Carclass Core</b><small>Carclass Group</small></div></div>
       <div>
-        <h1>Todo el grupo, <em>en un solo lugar</em>.</h1>
-        <p class="lead">El CRM de Carclass, Carwash.hf, NOM, BlackGPS y somosB2B. Leads, clientes, agenda y resultados conectados a tus agentes.</p>
+        <h1>Cada negocio, <em>bajo control</em>.</h1>
+        <p class="lead">BlackGPS, Carclass, NOM, Carwash.hf y somosB2B en una sola base: leads, conversaciones, agenda, ventas y márgenes, con asesores IA que trabajan contigo.</p>
         <ul class="benefits">
-          <li><span class="ck">${ico("check", 14)}</span><div><b>Cada lead respondido a tiempo</b><span class="s">Bandeja con reloj de minutos sin respuesta y avisos al teléfono.</span></div></li>
-          <li><span class="ck">${ico("check", 14)}</span><div><b>Embudo que avanza solo</b><span class="s">Cada gestión mueve la etapa; nunca retrocede sin que tú lo decidas.</span></div></li>
-          <li><span class="ck">${ico("check", 14)}</span><div><b>Ventas y márgenes reales</b><span class="s">Venta cerrada separada de cobrada, por unidad y por mes.</span></div></li>
+          <li><span class="ck">${ico("check", 14)}</span><div><b>Ningún lead sin respuesta</b><span class="s">Bandeja con reloj, avisos al teléfono y asesor IA en WhatsApp las 24 horas.</span></div></li>
+          <li><span class="ck">${ico("check", 14)}</span><div><b>El embudo siempre al día</b><span class="s">Cada gestión avanza la etapa y deja la próxima acción agendada.</span></div></li>
+          <li><span class="ck">${ico("check", 14)}</span><div><b>Números reales</b><span class="s">Ventas, cobros y márgenes por unidad y por mes.</span></div></li>
         </ul>
       </div>
-      <div class="foot">© ${new Date().getFullYear()} Carclass Group · Huertos Familiares, Tiltil</div>
+      <div class="foot">© ${new Date().getFullYear()} Carclass Group · Puertas de Chicureo</div>
     </section>
     <section class="login-form">
       <form id="f-login" class="login-card" autocomplete="on" novalidate>
