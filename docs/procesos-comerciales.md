@@ -149,7 +149,7 @@ Etapas: nuevo → calificando → revision_agendada → revisado → propuesta �
 - Propuesta: 3 comparables, precio de publicación y piso. Comisión vigente en Core (`core.parametros` nom.comision, Felipe 20 nov): bajo $20 MM, 5% del precio con mínimo $500.000; desde $20 MM, el mayor entre $1.000.000 y el 3,5% del precio; con IVA, más el fee de entrada. Contrato con exclusividad de 45 días.
 - Contrato: borrador por WhatsApp para revisión y firma (plantilla: Contrato de consignación NOM, borrador base).
 - Publicado: fotos, ficha, Chileautos, Yapo, Facebook Marketplace e Instagram.
-- Reporte semanal al consignante: lo genera el agente en la herramienta de reportería (reporte-consignacion.netlify.app), con su protocolo de ajuste de precio, y se envía por WhatsApp. Mismo día de la semana para todos los consignantes.
+- Reporte al consignante cada 7 días: lo genera el agente en la herramienta de reportería (reporte-consignacion.netlify.app), con su protocolo de ajuste de precio, y se envía por WhatsApp. Mismo día de la semana para todos los consignantes.
 - Nada bajo el piso sin aprobación escrita del consignante.
 - Venta: transferencia digital por Autofact. Pago al consignante idealmente dentro de las primeras 24 h; plazo máximo 3 días hábiles.
 
@@ -187,7 +187,7 @@ Etapas: nuevo → coordinando → agendado → atendido (ganada) → recompra.
 
 - Canal: número y agente propios de Carwash.hf (+56 9 4619 6226), aparte del WhatsApp del grupo.
 - Estado: operación activa en horario temporal, viernes a domingo de 10:00 a 17:00, máximo 4 autos por día, sujeto a que haya lavador. Se agendan lavados en ese horario; si el día está lleno o el cliente pide otro día, se ofrece el siguiente bloque disponible.
-- Coordinando (setter): marca y modelo para definir el tamaño, servicio, día y hora. Cotiza los 4 lavados con el catálogo de abajo; pulido, cerámico, empresas y vans pasan a Felipe.
+- Coordinando (setter): marca y modelo para definir el tamaño, servicio, día y hora. Cotiza los 4 lavados, el Pulido Básico y el Sellado Cerámico Lite con el catálogo de abajo; empresas y vans pasan a Felipe.
 - Agendado: bloque reservado y recordatorio el día anterior.
 - Cierre: lo hace Felipe por WhatsApp.
 - Atendido: servicio hecho por el operador (Simón) y pagado → venta ganada.
@@ -205,6 +205,8 @@ Lavados con precio (el setter cotiza solo):
 
 La web publica cada lavado «desde» el precio del tamaño mediano ($20.000, $35.000, $75.000, $155.000). Los precios del tamaño compacto también están vigentes (Felipe, 21 nov 2026).
 
-Sin precio publicado (se cotiza por WhatsApp; lo hace Felipe): pulido y sellado cerámico; empresas (lavado programado para camionetas de faena, vans de pasajeros y vehículos corporativos); vans, furgones y minibuses.
+Pulidos (valor aproximado con IVA, se confirma con el auto a la vista): Pulido Básico ≈ $150.000 (lavado completo, descontaminación y pulido abrillantado); Sellado Cerámico Lite ≈ $250.000 (corrección intermedia + sellado cerámico, solo exterior, sin interior).
+
+Sin precio publicado (se cotiza por WhatsApp; lo hace Felipe): empresas (lavado programado para camionetas de faena, vans de pasajeros y vehículos corporativos); vans, furgones y minibuses.
 
 Reglas: atención solo con hora agendada por WhatsApp; la hora se confirma el día anterior. Sin descuentos, planes ni paquetes no escritos. No se mezclan precios, garantías ni XPEL de Carclass con Carwash.hf. Sin servicio a domicilio.
