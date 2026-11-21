@@ -32,9 +32,9 @@ El CRM y sistema de gestión propio del grupo empresarial **Carclass Group** (Fe
 | Esquemas | `core` (usuarios, claves API, eventos de auditoría, SOPs/vistas), `crm` (empresas, contactos, analisis, oportunidades, actividades, cotizaciones), `fin` (ventas, costos), `ops` (contratos_gps, cierres_mensuales, vehiculos, proyectos, tareas, sops) | |
 | Lógica de negocio | Funciones SQL `core.api_*` (para la API) y `public.app_*` (para la app web, con RLS por rol) | |
 | API | Edge Function **core-api** (Deno). REST para ChatGPT y formularios, MCP para Claude, endpoint `/lead-web` para formularios públicos | v1.1.0 en producción |
-| App web | Netlify, sitio **carclass-core** (`deb7fddb-d934-4858-88eb-58428e9b3b1a`) → **https://app.carclass.cl** (dominio principal desde el 17-nov; carclass-core.netlify.app sigue funcionando) | v2.8.3 publicada desde la nube con el conector Netlify. v1 respaldada en `app-v1/` |
+| App web | **Cloudflare Pages**, proyecto **carclass-core** (cuenta `1f79658975d74e5e9f2b7b6a96bc0107`, carclass-core.pages.dev) conectado a GitHub (`main`, salida `app`, sin build): **se publica solo con cada push a `main`** → **https://app.carclass.cl** (desde el 21-nov). El sitio Netlify `deb7fddb-…` quedó de respaldo sin tráfico (se agotaron los créditos de Netlify) | v2.10.4. v1 respaldada en `app-v1/` |
 | Herramientas externas | Netlify: **cotizador-carclass** (`e5290aca-…`, PDF cotización → ingreso → acta, no guarda datos) y **nom-inspeccion** (`c71b83a5-…`, inspección IPC; guarda en `public.nom_inspecciones`) | Enlazadas desde Core (Catálogo → Herramientas). Subidas a mano, sin repositorio |
-| Dominio | `app.carclass.cl` → CNAME `carclass-core.netlify.app` (DNS en Premium Hosting/cPanel, TXT `subdomain-owner-verification` para Netlify). El panel antiguo se retiró sin respaldo (Felipe 17-nov); su playbook comercial quedó en Core (`core_v30`) | Hecho 17-nov |
+| Dominio | `app.carclass.cl` → CNAME `carclass-core.pages.dev` (TTL 300; DNS en Premium Hosting/cPanel). El 21-nov se eliminaron el A `75.2.60.5` (Netlify) y el TXT SPF del subdominio. Volver a Netlify: borrar el CNAME y recrear el A a 75.2.60.5. El panel antiguo se retiró sin respaldo (Felipe 17-nov); su playbook comercial quedó en Core (`core_v30`) | Cloudflare activo con SSL 21-nov |
 | Proyecto antiguo | Supabase `blackgps-comercial` (`jacsosgucokqwmwqqjij`): ya migrado a Core, queda de solo lectura | |
 | Tablas antiguas | `public.*` de carclass-group (car_ventas, gps_contratos, leads, movimientos, nom_*…): intactas, fuente histórica. La app nueva NO las usa | |
 
@@ -259,7 +259,7 @@ Felipe guarda los documentos y la base del negocio en su Drive (fmontecinos@carc
 **App 2.10.1 (21-nov) · Conversaciones rediseñada + tasador:** fusión de la rama `nom-tasador-fase1` (2.9.2: Tasaciones NOM, `informe-tasacion.js`, logos para PDF) con 2.10.0 (auditoría de Chrome). Conversaciones como chat: burbujas por autor (tú en verde, cliente en blanco, asesor IA con filete dorado y etiqueta), agrupadas, separadores de día, hora en la burbuja, medios como chips, reacciones sobre la burbuja, lista de 2 líneas con un solo indicador, nombres sin letras → «Sin nombre · +56 9…», alto completo, campo que crece y botón circular; modos del asesor en el botón «Asesor IA» (panel con guardar; Carwash.hf «lo atiendes tú»); confirmaciones dentro de la app (sin `confirm()`). Embudo con acción en 2 líneas y códigos de motivo legibles, Vehículos en tarjetas en el celular, Agenda en Semana y con el cliente primero, precios exactos en el cotizador, próxima acción en día hábil (`diaHabil`), resultados B2C en la bitácora, servicios de interés según el Cerebro, «Procesos y ayuda», error de `viewRegistro` corregido. **Regla de trabajo entre sesiones:** `git pull` antes de tocar `app/`, push a `main` después, y nunca publicar en Netlify sin pull previo (una sesión publicó 2.9.2 sin subirla y casi se pierde).
 
 **Pendiente:**
-- Netlify: conectar el sitio carclass-core al repositorio (base `app`) para publicar con cada push; desde la nube de Claude la red bloquea Netlify.
+- Netlify: el cotizador Carclass y nom-inspeccion siguen ahí; evaluar moverlos a Cloudflare Pages si se vuelven a agotar los créditos.
 - Push con la app cerrada: claves VAPID, tabla de suscripciones y envío desde core-api.
 - Google Calendar en ambos sentidos, cotizador con banda de precio, PDF y link público «vista» (necesita la lista de precios), adjuntos en bitácora (Storage), inspección de vehículos NOM, invitar usuarios (solo cuando Felipe lo pida), Conversaciones con WhatsApp Cloud API (6.2).
 
@@ -273,7 +273,7 @@ Felipe guarda los documentos y la base del negocio en su Drive (fmontecinos@carc
 
 ## 8. Cómo trabajar en este repositorio
 
-- `app/`: app web estática (sin build). Publicar con `netlify deploy --prod --dir app --site deb7fddb-d934-4858-88eb-58428e9b3b1a`. Al cambiar `app.js` o `app.css`, sube la versión en `?v=` de `index.html` y en `CACHE`/`SHELL` de `sw.js`.
+- `app/`: app web estática (sin build). **Se publica sola** en Cloudflare Pages al hacer push a `main` (pull antes, nunca forzar). La API de Cloudflare se usa con `Authorization: Bearer proxy-injected` (token como network secret del entorno). Al cambiar `app.js` o `app.css`, sube la versión en `?v=` de `index.html`, en `CACHE`/`SHELL` de `sw.js` y `VERSION` de `app.js`.
 - `supabase/functions/core-api/`: API. Publicar con `supabase functions deploy core-api --no-verify-jwt --project-ref tvjpwwwnpchecolcsnxp`.
 - Cambios de base: siempre como migración nueva, nunca editar tablas a mano. No tocar las tablas `public.*` antiguas salvo para leer.
 - Probar cada flujo de punta a punta y borrar los datos de prueba.
