@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.9.1";
+const VERSION = "2.10.0";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -28,6 +28,7 @@ const UNIDADES = {
   grupo:    { n: "Grupo", c: "var(--u-grupo)" },
 };
 const ETAPA_TXT = {
+  tasado: "Tasado", oferta_enviada: "Oferta enviada", aceptada: "Aceptada", inspeccionado: "Inspeccionado", comprado: "Comprado",
   pre_revision: "Pre-revisión", por_contactar: "Por contactar", en_prospeccion: "En prospección", reunion_por_agendar: "Reunión por agendar",
   en_asisma: "En Asisma", onboarding: "Onboarding", nuevo: "Nuevo", calificando: "Calificando", pre_evaluado: "Pre-evaluado", cotizado: "Cotizado",
   negociando: "Negociando", agendado: "Agendado", en_taller: "En taller", entregado: "Entregado", coordinando: "Coordinando", atendido: "Atendido",
@@ -35,9 +36,14 @@ const ETAPA_TXT = {
   presentado: "Presentado", visita_agendada: "Visita agendada", reservado: "Reservado",
   analizada: "Analizada", factible: "Factible", contactable: "Contactable", contactado: "Contactado", en_servicio: "En servicio", postventa: "Postventa",
 };
+const nombreVis = (n) => { const t = String(n || "").trim(); return t && /\p{L}/u.test(t.replace(/^Lead\s+/i, "")) && !/^Lead\s+\d+$/i.test(t) ? t : (t.match(/\d{8,}/) ? "Sin nombre · " + t.match(/\d{8,}/)[0] : "Sin nombre"); };
+const sinCodigos = (t) => String(t || "").replace(/\b(precio|competencia|sin_respuesta|fuera_zona|no_califica|desistio|datos_erroneos|duplicado)\b(?=[\s.,;)]|$)/g, (m) => m.includes("_") || m === "desistio" ? `«${((MOTIVOS.find(([k]) => k === m) || [])[1] || m).toLowerCase()}»` : m);
 const MOTIVOS = [["precio", "Precio"], ["competencia", "Se fue con la competencia"], ["sin_respuesta", "Sin respuesta"], ["fuera_zona", "Fuera de zona"],
   ["no_califica", "No califica"], ["desistio", "Desistió"], ["datos_erroneos", "Datos erróneos"], ["duplicado", "Duplicado"], ["otro", "Otro"]];
 const RESULTADOS = [["", "Sin resultado"], ["no_contesta", "No contesta"], ["interesado", "Interesado"], ["reunion_agendada", "Reunión agendada"], ["enviar_info", "Pide información"], ["no_interesado", "No interesado"]];
+// resultados de una gestión: B2B (llamadas de prospección) o B2C (clientes particulares)
+const RESULTADOS_B2C = [["", "Sin resultado"], ["no_contesta", "No contesta"], ["interesado", "Interesado"], ["envio_fotos", "Envió fotos"], ["cotizacion_enviada", "Cotización enviada"], ["agendo", "Agendó"], ["enviar_info", "Pide información"], ["no_interesado", "No interesado"]];
+const resultadosDe = (u) => ["carclass", "carwash", "nom"].includes(u) ? RESULTADOS_B2C : RESULTADOS;
 const CANALES = [["whatsapp", "WhatsApp"], ["meta", "Meta Ads"], ["google", "Google Ads"], ["web", "Sitio web"], ["referido", "Referido"], ["llamada", "Llamada"], ["presencial", "Presencial"], ["manual", "Otro"]];
 const CANAL_TXT = Object.fromEntries([...CANALES, ["asisma", "Asisma"], ["prospeccion_blackgps", "Prospección BlackGPS"], ["landing", "Landing"]]);
 
@@ -96,6 +102,8 @@ const int = (n) => n == null ? "—" : Number(n).toLocaleString("es-CL");
 const iso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
 const hoyISO = () => iso(new Date());
 const masDias = (n, base = new Date()) => { const x = new Date(base); x.setDate(x.getDate() + n); return iso(x); };
+// fechas propuestas para próximas acciones: nunca sábado ni domingo
+const diaHabil = (n) => { const x = new Date(); x.setDate(x.getDate() + n); while ([0, 6].includes(x.getDay())) x.setDate(x.getDate() + 1); return iso(x); };
 const parseD = (s) => new Date(s.length <= 10 ? s + "T12:00:00" : s);
 const fecha = (s) => s ? parseD(s).toLocaleDateString("es-CL", { day: "numeric", month: "short", year: parseD(s).getFullYear() !== new Date().getFullYear() ? "numeric" : undefined }) : "—";
 const fechaHora = (s) => s ? parseD(s).toLocaleString("es-CL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
@@ -118,6 +126,11 @@ const ORDEN_U = ["carclass", "nom", "carwash", "blackgps", "somosb2b"];
 const unidadesMias = () => (ME?.unidades || []).filter((x) => x !== "grupo" && UNIDADES[x]).sort((a, b) => ORDEN_U.indexOf(a) - ORDEN_U.indexOf(b));
 
 const I = {
+  send: '<path d="M21 3 10 14M21 3l-7 18-4-7-7-4z"/>',
+  image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/>',
+  video: '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/>',
+  mic: '<rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+  pin: '<path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/>',
   dash: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
   bell: '<path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8M10.3 20a2 2 0 0 0 3.4 0"/>',
   inbox: '<path d="M3 13h5l1.5 3h5L16 13h5M5 5h14l2 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z"/>',
@@ -250,7 +263,7 @@ const NAV = [
   ["Post-venta", [["tareas", "Tareas y postventa", "tasks", "tareas"]]],
   ["Finanzas", [["finanzas", "Resultados", "chart"], ["flujo", "Flujo de caja", "money"], ["registro", "Registro", "doc"], ["importar", "Importar", "dl"]], "fin"],
   ["Organización", [["equipo", "Equipo", "team"]]],
-  ["Ayuda", [["ayuda", "Procesos", "help"]]],
+  ["Ayuda", [["ayuda", "Procesos y ayuda", "help"]]],
 ];
 const TITULOS = Object.fromEntries(NAV.flatMap(([g, items]) => items.map(([r, t]) => [r, [g, t]])));
 TITULOS.cliente = ["Comercial", "Ficha del cliente"];
@@ -498,7 +511,9 @@ const ETAPAS = {
   carwash: ["nuevo", "coordinando", "agendado", "atendido"],
   consignante: ["nuevo", "calificando", "revision_agendada", "revisado", "propuesta", "contrato_firmado", "publicado", "negociando"],
   comprador: ["nuevo", "calificando", "presentado", "visita_agendada", "negociando", "reservado", "entregado"],
+  compra_directa: ["nuevo", "calificando", "tasado", "oferta_enviada", "aceptada", "inspeccionado", "comprado"],
 };
+const FLUJO_TXT = { consignante: "Consignantes", comprador: "Compradores", compra_directa: "Compra directa" };
 function embudoCard(titulo, orden, rows, href) {
   const by = {}; rows.forEach((r) => (by[r.etapa] = (by[r.etapa] || 0) + Number(r.n)));
   const max = Math.max(1, ...orden.map((e) => by[e] || 0));
@@ -670,16 +685,16 @@ async function viewBandeja(params) {
       const wa = waLink(b.telefono, `Hola${b.contacto ? " " + b.contacto.split(" ")[0] : ""}, te escribo de ${uName(b.unidad)}.`);
       return `<div class="lead">
         <div class="clock ${cls}" ${m != null && m < 60 ? `data-m="${Math.floor(m)}"` : ""}>${t === "pre_revision" ? `${ico("spark", 20)}` : m == null ? `${ico("check", 20)}` : clockTxt(m)}</div>
-        <div><div class="t"><a href="#/cliente/${b.empresa_id}">${esc(b.contacto || b.empresa)}</a>${b.contacto && b.contacto !== b.empresa && b.tipo !== "persona" ? ` <span class="muted" style="font-weight:500">· ${esc(b.empresa)}</span>` : ""}</div>
+        <div><div class="t"><a href="#/cliente/${b.empresa_id}">${esc(nombreVis(b.contacto || b.empresa))}</a>${b.contacto && b.contacto !== b.empresa && b.tipo !== "persona" ? ` <span class="muted" style="font-weight:500">· ${esc(b.empresa)}</span>` : ""}</div>
           <div class="meta">${unidadPill(b.unidad)}${b.flujo ? `<span class="pill">${esc(b.flujo)}</span>` : ""}<span>${esc(etapaTxt(b.etapa))}</span>${b.canal ? `<span>${esc(CANAL_TXT[b.canal] || b.canal)}</span>` : ""}${b.campana ? `<span class="pill gold">${esc(b.campana)}</span>` : ""}<span>${hace(b.creado)}</span>${b.telefono ? `<a href="tel:${esc(b.telefono)}">${esc(b.telefono)}</a>` : ""}${b.flota ? `<span>${int(b.flota)} vehículos</span>` : ""}</div>
           ${b.ultimo_mensaje ? `<div class="msg">${esc(b.ultimo_mensaje)}</div>` : ""}
           ${b.analisis?.resumen ? `<div class="msg"><b style="font-size:12px;color:var(--muted)">Análisis GPT${b.analisis.score != null ? ` · calce ${b.analisis.score}` : ""}${b.analisis.pilar ? ` · ${esc(b.analisis.pilar)}` : ""}</b><div>${esc(b.analisis.resumen)}</div></div>` : ""}</div>
         <div class="acts">${t === "pre_revision"
           ? `<button class="btn sm primary" data-ok="${b.oportunidad_id}">${ico("check", 14)} Aprobar</button><button class="btn sm" data-no="${b.oportunidad_id}">Descartar</button>`
-          : `${wa ? `<a class="btn sm primary" href="${wa}" target="_blank" rel="noopener">${ico("chat", 14)} WhatsApp</a>` : ""}<button class="btn sm" data-act="${b.oportunidad_id}" data-nom="${esc(b.contacto || b.empresa)}">${ico("call", 14)} Registrar</button><button class="btn sm ghost" data-lose="${b.oportunidad_id}" data-nom="${esc(b.contacto || b.empresa)}">Descartar</button>`}</div>
+          : `${wa ? `<a class="btn sm primary" href="${wa}" target="_blank" rel="noopener">${ico("chat", 14)} WhatsApp</a>` : ""}<button class="btn sm" data-act="${b.oportunidad_id}" data-nom="${esc(b.contacto || b.empresa)}" data-uni="${b.unidad || ""}">${ico("call", 14)} Registrar</button><button class="btn sm ghost" data-lose="${b.oportunidad_id}" data-nom="${esc(b.contacto || b.empresa)}">Descartar</button>`}</div>
       </div>`; }).join("")}</div>`;
     const again = () => { viewBandeja(params); cargarAvisos(); };
-    $$("[data-act]").forEach((x) => x.onclick = () => modalActividad(x.dataset.act, x.dataset.nom, again));
+    $$("[data-act]").forEach((x) => x.onclick = () => modalActividad(x.dataset.act, x.dataset.nom, again, x.dataset.uni));
     $$("[data-lose]").forEach((x) => x.onclick = () => modalCerrar(x.dataset.lose, x.dataset.nom, "perdida", again));
     $$("[data-ok]").forEach((x) => x.onclick = async () => { x.disabled = true; try { await rpc("app_revisar_lead", { p: { oportunidad_id: x.dataset.ok, aprobar: true } }); toast("Aprobado · pasa a Por contactar"); again(); } catch (e) { toast(e.message, true); x.disabled = false; } });
     $$("[data-no]").forEach((x) => x.onclick = () => modalDescartarPre(x.dataset.no, again));
@@ -700,8 +715,6 @@ function modalDescartarPre(id, after) {
    El asesor IA trabaja en modo «borrador»: propone y Felipe envía desde su WhatsApp (coexistencia);
    al responder desde el teléfono, el webhook descarta el borrador y pausa al asesor 12 h. */
 const MODO_TXT = { borrador: "propone borradores", observar: "solo observa", activo: "responde solo", auto: "responde solo" };
-const TIPO_MSG = { audio: "Audio", image: "Imagen", document: "Documento", video: "Video", sticker: "Sticker", location: "Ubicación", contacts: "Contacto", unsupported: "Mensaje no compatible" };
-const msgTxt = (m) => m.texto || `[${TIPO_MSG[m.tipo] || m.tipo || "mensaje"}]`;
 // Acciones que el asesor dejó en el borrador (crear cotización, reservar cita, traspasar…)
 const ACCION_TXT = { crear_cotizacion: ["Cotización creada", "gold"], reservar_cita: ["Cita reservada", "info"], proponer_horarios: ["Propuso horarios", ""], registrar_comprobante: ["Comprobante recibido", "warn"],
   programar_seguimiento: ["Seguimiento programado", ""], traspasar_humano: ["Te lo traspasa", "bad"], descartar: ["Descartar lead (se aplica al enviar)", "warn"], asignar_unidad: ["Clasificó el chat", ""], actualizar_ficha: ["Actualizó la ficha", ""], marcar_personal: ["Marcó como personal", ""] };
@@ -717,88 +730,167 @@ async function waEnviar(body) {
   return j;
 }
 const borradorTxt = (b) => (Array.isArray(b.mensajes) ? b.mensajes : []).map((x) => typeof x === "string" ? x : x?.texto || x?.text || x?.body || "").filter(Boolean);
+// --- chat: helpers de presentación (2.10) ---
+const MEDIO = { image: ["image", "Foto"], video: ["video", "Video"], audio: ["mic", "Audio"], document: ["doc", "Documento"], sticker: ["image", "Sticker"], location: ["pin", "Ubicación"], contacts: ["users", "Contacto"] };
+const medioTxt = (t) => t === "unsupported" ? "Mensaje no compatible" : t === "revoke" ? "Mensaje eliminado" : t === "reaction" ? "Reacción" : (MEDIO[t] || [0, t ? "Archivo" : "Mensaje"])[1];
+const fmtTel = (t) => { const d = String(t || "").replace(/\D/g, ""); return d.length === 11 && d.startsWith("569") ? `+56 9 ${d.slice(3, 7)} ${d.slice(7)}` : d ? "+" + d : ""; };
+// nombre visible: los emoji, signos o números sueltos no son un nombre
+function nombreChat(c) {
+  const n = String(c.nombre || "").trim(), sinLetras = !/\p{L}/u.test(n.replace(/^Lead\s+/i, "")) || /^Lead\s+\d+$/i.test(n);
+  if (!n || sinLetras) return { txt: "Sin nombre", html: `<span class="faint">Sin nombre</span> · ${esc(fmtTel(c.telefono))}`, ini: "" };
+  return { txt: n, html: esc(n), ini: initials(n) };
+}
+function avatarChat(c) {
+  const n = nombreChat(c), col = c.unidad ? UNIDADES[c.unidad]?.c : null;
+  return `<span class="c-av ${col ? "" : "none"}" ${col ? `style="--c:${col}"` : ""}>${n.ini ? esc(n.ini) : ico("users", 16)}${col ? '<i class="c-av-dot"></i>' : ""}</span>`;
+}
+const hhmm = (s) => parseD(s).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit", hour12: false });
+const diaClave = (s) => { const d = parseD(s); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
+function diaTxt(s) {
+  const d = parseD(s), hoy = new Date(), ayer = new Date(Date.now() - 864e5);
+  if (diaClave(d.toISOString()) === diaClave(hoy.toISOString())) return "Hoy";
+  if (diaClave(d.toISOString()) === diaClave(ayer.toISOString())) return "Ayer";
+  return d.toLocaleDateString("es-CL", { weekday: "short", day: "numeric", month: "short" });
+}
+function horaCorta(s) { if (!s) return ""; const d = parseD(s); const dias = (Date.now() - d) / 864e5; return dias < 1 && diaClave(s) === diaClave(new Date().toISOString()) ? hhmm(s) : dias < 2 ? "ayer" : dias < 7 ? d.toLocaleDateString("es-CL", { weekday: "short" }) : d.toLocaleDateString("es-CL", { day: "numeric", month: "short" }); }
+const autorMsg = (m) => m.direccion === "entrante" ? "in" : m.direccion === "saliente_api" ? "ia" : "out";
+// burbujas agrupadas por autor (menos de 5 min), separadores de día, medios como chips y reacciones sobre la burbuja
+function burbujas(mensajes) {
+  const ms = mensajes.filter((m) => m.tipo !== "revoke" || !mensajes.some((x) => x.direccion === m.direccion && x.fecha === m.fecha && x.tipo !== "revoke"));
+  const out = []; let dia = null, prev = null;
+  ms.forEach((m) => {
+    if (m.tipo === "reaction") { // va pegada a la última burbuja del otro lado
+      const destino = [...out].reverse().find((o) => o.m && autorMsg(o.m) !== autorMsg(m));
+      if (destino) (destino.reac ||= []).push(m.texto || "👍"); return;
+    }
+    const dk = diaClave(m.fecha);
+    if (dk !== dia) { out.push({ sep: diaTxt(m.fecha) }); dia = dk; prev = null; }
+    const a = autorMsg(m), junto = prev && autorMsg(prev) === a && (parseD(m.fecha) - parseD(prev.fecha)) < 5 * 60e3;
+    if (!junto && out.length && out[out.length - 1].m) out[out.length - 1].ultimo = true;
+    out.push({ m, primero: !junto }); prev = m;
+  });
+  if (out.length && out[out.length - 1].m) out[out.length - 1].ultimo = true;
+  if (!out.length) return '<div class="chat-nada">Sin mensajes guardados.</div>';
+  return out.map((o) => {
+    if (o.sep) return `<div class="chat-day"><span>${esc(o.sep)}</span></div>`;
+    const m = o.m, a = autorMsg(m), med = MEDIO[m.tipo];
+    const cuerpo = m.texto && m.tipo === "text" ? `<span class="b-txt">${esc(m.texto)}</span>`
+      : med ? `<span class="b-media">${ico(med[0], 16)} ${med[1]}${m.texto ? `<span class="b-cap">${esc(m.texto)}</span>` : ""}</span>`
+      : `<span class="b-raro">${esc(m.texto || medioTxt(m.tipo))}</span>`;
+    return `<div class="bub ${a} ${o.primero ? "first" : ""} ${o.ultimo ? "last" : ""}">${o.primero && a === "ia" ? `<span class="ia-tag">${ico("spark", 11)} Asesor IA</span>` : ""}${cuerpo}<span class="bt">${hhmm(m.fecha)}${a !== "in" && m.estado === "read" ? ' <span class="b-ok">✓✓</span>' : ""}</span>${o.reac ? `<span class="b-reac">${o.reac.map(esc).join("")}</span>` : ""}</div>`;
+  }).join("");
+}
 async function viewConversaciones(id) {
   setActive("conversaciones");
   const P = $("#page");
-  let tab = lsGet("cc_conv_tab", "mios"); let MODOS = {};
-  P.innerHTML = `<div class="page-head"><div><h1>Conversaciones</h1><p>Los chats del WhatsApp del grupo. El asesor IA atiende los leads de Carclass y NOM y los chats nuevos; BlackGPS, los que tomas y los que el asesor te traspasa son tuyos. Los chats personales no aparecen.</p></div></div>
-    <div class="filters"><div class="seg" id="cv-tabs">${[["mios", "Míos"], ["asesor", "Asesor IA"], ["todas", "Todas"]].map(([k, t]) => `<button class="${k === tab ? "on" : ""}" data-tab="${k}">${t} <span class="badge" id="cv-n-${k}"></span></button>`).join("")}</div><div id="cv-modos" class="cv-modos"></div></div>
-    <div class="chat-layout ${id ? "con-chat" : ""}"><section class="card chat-list" id="cv-l">${loading(5)}</section><section class="card chat-pane" id="cv-c">${id ? loading(6) : `<div class="card-b">${empty("chat", "Elige una conversación")}</div>`}</section></div>`;
+  let tab = lsGet("cc_conv_tab", "mios"); let MODOS = {}; let LISTA = [];
+  P.innerHTML = `<div class="page-head cv-head ${id ? "con-chat" : ""}"><div><h1>Conversaciones</h1><p>WhatsApp del grupo. El asesor IA atiende Carclass, NOM y los chats nuevos; BlackGPS y los que tomas o te traspasa son tuyos.</p></div>
+      <div class="actions"><button class="btn sm" id="cv-cfg">${ico("spark", 15)} Asesor IA <span class="cv-cfg-dot" id="cv-cfg-dot"></span></button></div></div>
+    <div class="chat-layout ${id ? "con-chat" : ""}">
+      <section class="card chat-list"><div class="chat-list-h"><div class="seg" id="cv-tabs">${[["mios", "Míos"], ["asesor", "Asesor IA"], ["todas", "Todas"]].map(([k, t]) => `<button class="${k === tab ? "on" : ""}" data-tab="${k}">${t} <span class="badge" id="cv-n-${k}"></span></button>`).join("")}</div></div><div class="chat-list-b" id="cv-l">${loading(5)}</div></section>
+      <section class="card chat-pane" id="cv-c">${id ? loading(6) : ""}</section></div>`;
   // el asesor atiende Carclass, NOM y los chats nuevos aún sin clasificar (él mismo los clasifica o los marca personales)
   // wa-agente solo atiende chats «lead» o «sin_unidad» de sus líneas, sin pausa y con modo que responde o propone
   const esAsesor = (c) => ["lead", "sin_unidad"].includes(c.estado) && (!c.unidad || ["carclass", "nom", "carwash"].includes(c.unidad))
     && !c.humano && !c.traspaso && ["activo", "borrador"].includes(c.modo);
   $$("#cv-tabs [data-tab]").forEach((b) => b.onclick = () => { tab = b.dataset.tab; lsSet("cc_conv_tab", tab); $$("#cv-tabs button").forEach((x) => x.classList.toggle("on", x === b)); pintarLista(); });
-  const MODO_OPC = [["activo", "responde solo"], ["borrador", "propone borradores"], ["observar", "solo observa"], ["apagado", "apagado"]];
-  const pintarModos = async () => {
-    try {
-      const m = await rpc("app_asesor_modos"); MODOS = m.modos || {};
-      $("#cv-modos").innerHTML = `<span class="faint" style="font-size:12.5px">Asesor IA:</span>${["carclass", "nom", "blackgps"].map((u) => m.puede_editar
-        ? `<label class="cv-modo" style="--c:${UNIDADES[u].c}"><span class="ldot"></span>${uName(u)} <select data-modo="${u}" aria-label="Modo del asesor en ${uName(u)}">${MODO_OPC.map(([k, t]) => `<option value="${k}" ${m.modos[u] === k ? "selected" : ""}>${t}</option>`).join("")}</select></label>`
-        : `<span class="pill">${uName(u)} · ${esc(MODO_TXT[m.modos[u]] || m.modos[u])}</span>`).join("")}
-        ${m.programado ? "" : `<span class="pill warn" title="La ejecución automática del asesor (wa-agente) todavía no está encendida">aún no encendido</span>`}`;
-      $$("[data-modo]").forEach((s) => s.onchange = async () => { try { await rpc("app_asesor_modo", { p_unidad: s.dataset.modo, p_modo: s.value }); toast(`${uName(s.dataset.modo)}: el asesor ${MODO_TXT[s.value] || s.value}`); } catch (e) { toast(e.message, true); pintarModos(); } });
-    } catch { $("#cv-modos").innerHTML = ""; }
+
+  // ---- modos del asesor: panel aparte, con confirmación (antes eran selectores sueltos sobre la lista) ----
+  const MODO_OPC = [["activo", "Responde solo"], ["borrador", "Propone borradores"], ["observar", "Solo observa"], ["apagado", "Apagado"]];
+  let MODOS_INFO = null;
+  const cargarModos = async () => { try { MODOS_INFO = await rpc("app_asesor_modos"); MODOS = MODOS_INFO.modos || {}; } catch { MODOS_INFO = null; }
+    const dot = $("#cv-cfg-dot"); if (dot) dot.className = "cv-cfg-dot " + (MODOS_INFO && !MODOS_INFO.programado ? "off" : Object.values(MODOS).includes("activo") ? "on" : ""); };
+  cargarModos();
+  $("#cv-cfg").onclick = async () => {
+    await cargarModos(); const m = MODOS_INFO || { modos: {} };
+    const fila = (u) => `<div class="cv-modo-row" style="--c:${UNIDADES[u].c}"><span class="ldot"></span><b>${uName(u)}</b>${m.puede_editar
+      ? `<select class="input" data-modo="${u}" aria-label="Modo del asesor en ${uName(u)}">${MODO_OPC.map(([k, t]) => `<option value="${k}" ${m.modos[u] === k ? "selected" : ""}>${t}</option>`).join("")}</select>`
+      : `<span class="pill">${esc(MODO_TXT[m.modos[u]] || m.modos[u] || "—")}</span>`}</div>`;
+    const root = modal("Asesor IA por línea", `<div class="cv-modos-p">${["carclass", "nom", "blackgps"].map(fila).join("")}
+        <div class="cv-modo-row" style="--c:${UNIDADES.carwash.c}"><span class="ldot"></span><b>Carwash.hf</b><span class="pill">Lo atiendes tú</span></div>
+        <p class="hint">Carwash.hf no tiene asesor habilitado todavía. ${m.programado ? "" : "<b>La ejecución automática del asesor aún no está encendida.</b>"} Los cambios se aplican al guardar.</p></div>`, m.puede_editar ? async () => {
+      const cambios = $$("[data-modo]", root).filter((s) => s.value !== m.modos[s.dataset.modo]);
+      for (const s of cambios) await rpc("app_asesor_modo", { p_unidad: s.dataset.modo, p_modo: s.value });
+      toast(cambios.length ? cambios.map((s) => `${uName(s.dataset.modo)}: ${(MODO_OPC.find(([k]) => k === s.value) || [])[1]}`).join(" · ") : "Sin cambios");
+      cargarModos(); refrescar();
+    } : null, "Guardar cambios");
   };
-  pintarModos();
+
+  // ---- lista ----
+  const estadoChat = (c) => c.traspaso ? ["bad", "te necesita"] : c.sin_responder ? ["dotbad", "sin responder"] : c.borradores ? ["gold", c.borradores > 1 ? `${c.borradores} borradores` : "borrador"] : null;
+  const previa = (c) => { const pre = c.ultima_direccion === "saliente_api" ? "IA: " : c.ultima_direccion && c.ultima_direccion !== "entrante" ? "Tú: " : "";
+    return pre + (c.ultimo_mensaje ? esc(c.ultimo_mensaje) : `<i>${esc(medioTxt(c.ultimo_tipo))}</i>`); };
   const pintarLista = async () => {
-    const todas = (await rpc("app_conversaciones")).filter((c) => !c.unidad || enLinea(c.unidad));
+    const todas = (await rpc("app_conversaciones")).filter((c) => !c.unidad || enLinea(c.unidad)); LISTA = todas;
     const grupos = { asesor: todas.filter(esAsesor), mios: todas.filter((c) => !esAsesor(c)), todas };
     Object.entries(grupos).forEach(([k, l]) => { const b = $(`#cv-n-${k}`); if (b) b.textContent = (k === "todas" ? l.length : l.filter((c) => c.sin_responder || c.borradores || c.traspaso).length) || ""; });
     const l = grupos[tab] || todas;
-    $("#cv-l").innerHTML = l.length ? l.map((c) => `<a class="chat-item ${c.id === id ? "on" : ""}" href="#/conversaciones/${c.id}">
-      <span class="avatar" style="background:${c.unidad ? UNIDADES[c.unidad]?.c : "var(--muted)"}">${esc(initials(c.nombre))}</span>
-      <div style="min-width:0"><div class="row" style="justify-content:space-between;gap:6px;flex-wrap:nowrap"><b class="ell">${esc(c.nombre || c.telefono)}</b><span class="faint" style="font-size:11.5px;flex:none">${hace(c.orden)}</span></div>
-        <div class="ell muted" style="font-size:12.5px">${c.ultima_direccion && c.ultima_direccion !== "entrante" ? "Tú: " : ""}${esc(c.ultimo_mensaje || (c.ultimo_tipo ? `[${TIPO_MSG[c.ultimo_tipo] || c.ultimo_tipo}]` : ""))}</div>
-        <div class="row" style="gap:4px;margin-top:4px">${c.unidad ? unidadPill(c.unidad) : '<span class="pill">sin unidad</span>'}${c.sin_responder ? '<span class="pill bad">sin responder</span>' : ""}${c.traspaso ? '<span class="pill bad">te necesita</span>' : ""}${c.borradores ? `<span class="pill gold">${c.borradores} borrador${c.borradores > 1 ? "es" : ""}</span>` : ""}<span class="pill ${esAsesor(c) ? "info" : ""}">${esAsesor(c) ? "Asesor IA" : "Atiendes tú"}</span></div></div></a>`).join("")
+    $("#cv-l").innerHTML = l.length ? l.map((c) => { const st = estadoChat(c), nom = nombreChat(c);
+      return `<a class="chat-item ${c.id === id ? "on" : ""} ${c.sin_responder || c.traspaso ? "unread" : ""}" href="#/conversaciones/${c.id}">
+      ${avatarChat(c)}
+      <div class="ci-b"><div class="ci-l1"><span class="ci-n ell">${nom.html}</span><span class="ci-t">${esAsesor(c) ? `<span class="ci-who ia" title="Atiende el asesor IA">${ico("spark", 12)}</span>` : `<span class="ci-who" title="Atiendes tú">${ico("users", 12)}</span>`}${horaCorta(c.orden)}</span></div>
+        <div class="ci-l2"><span class="ell">${previa(c)}</span>${st ? `<span class="ci-st ${st[0]}">${st[1]}</span>` : ""}</div></div></a>`; }).join("")
       : `<div class="card-b">${empty("chat", tab === "asesor" ? "El asesor no tiene chats abiertos" : "Sin conversaciones", tab === "mios" ? "Aquí llegan BlackGPS, los chats que tomas y los que el asesor te traspasa." : "")}</div>`;
+    if (!id) pintarVacio();
     return l;
   };
+  const pintarVacio = () => {
+    const nec = LISTA.filter((c) => c.traspaso).length, sr = LISTA.filter((c) => c.sin_responder).length, bo = LISTA.filter((c) => c.borradores).length;
+    $("#cv-c").innerHTML = `<div class="chat-empty">${ico("chat", 28)}<h3>Elige una conversación</h3>
+      <div class="chat-empty-k">${nec ? `<button class="btn sm" data-ir="traspaso"><span class="ci-st bad">${nec}</span> te necesitan</button>` : ""}${sr ? `<button class="btn sm" data-ir="sin_responder"><span class="ci-st dotbad">${sr}</span> sin responder</button>` : ""}${bo ? `<button class="btn sm" data-ir="borradores"><span class="ci-st gold">${bo}</span> con borrador</button>` : ""}${!nec && !sr && !bo ? '<span class="faint">Todo al día.</span>' : ""}</div></div>`;
+    $$("[data-ir]").forEach((b) => b.onclick = () => { const c = LISTA.find((x) => x[b.dataset.ir]); if (c) location.hash = "#/conversaciones/" + c.id; });
+  };
+
+  // ---- chat ----
   const pintarChat = async () => {
     const d = await rpc("app_conversacion", { p_id: id });
     if (!d) { $("#cv-c").innerHTML = `<div class="card-b">${empty("chat", "Conversación no disponible")}</div>`; return; }
-    const c = d.conversacion || {}; const wa = waLink(c.telefono);
+    const c = d.conversacion || {}; const wa = waLink(c.telefono); const nom = nombreChat(c);
     const ventana = c.ventana_hasta && parseD(c.ventana_hasta) > new Date();
-    $("#cv-c").innerHTML = `<div class="card-h chat-h"><a class="btn ghost sm icon solo-movil" href="#/conversaciones" aria-label="Volver">${ico("left", 16)}</a>
-        <div style="min-width:0;flex:1"><b class="ell" style="display:block">${esc(c.nombre || c.telefono)}</b><span class="faint" style="font-size:12px">${esc(c.telefono || "")}${c.unidad ? " · " + esc(uName(c.unidad)) : ""}${c.etapa ? " · " + esc(etapaTxt(c.etapa)) : ""}</span></div>
-        ${c.empresa_id ? `<a class="btn sm" href="#/cliente/${c.empresa_id}">${ico("users", 14)} Ficha</a>` : ""}</div>
-      <div class="chat-state"><span>${c.humano ? `<b>Atiendes tú.</b> El asesor está en pausa${c.agente_pausado_hasta ? " hasta " + fechaHora(c.agente_pausado_hasta) : ""}.` : esAsesor(c) ? `<b>Atiende el asesor IA</b> · ${esc(MODO_TXT[c.modo] || c.modo)}.` : `<b>Atiendes tú.</b> El asesor ${esc(MODO_TXT[c.modo] || c.modo)} en esta línea.`} ${ventana ? `<span class="faint">Ventana de 24 h abierta hasta ${fechaHora(c.ventana_hasta)}.</span>` : '<span class="faint">Ventana de 24 h cerrada: solo plantillas.</span>'}</span>
-        <button class="btn sm ${c.humano ? "" : "primary"}" id="cv-at">${c.humano ? "Devolver al asesor" : "Tomar conversación"}</button></div>
-      ${c.traspaso ? `<div class="alert" style="margin:10px 16px 0">${ico("alert", 16)}<div><b>El asesor te traspasó este chat.</b> ${esc(String(c.traspaso).replace(/^\[WhatsApp\]\s*/, ""))}</div></div>` : ""}
+    const estado = c.humano ? `Atiendes tú${c.agente_pausado_hasta ? ` · el asesor vuelve el ${fechaHora(c.agente_pausado_hasta)}` : ""}`
+      : esAsesor(c) ? `Atiende el asesor IA · ${esc(MODO_TXT[c.modo] || c.modo)}` : `Atiendes tú · el asesor ${esc(MODO_TXT[c.modo] || c.modo)} en esta línea`;
+    $("#cv-c").innerHTML = `<div class="chat-h"><a class="btn ghost sm icon solo-movil" href="#/conversaciones" aria-label="Volver">${ico("left", 16)}</a>
+        ${avatarChat(c)}
+        <div class="chat-h-t"><div class="row" style="gap:8px;flex-wrap:nowrap;min-width:0"><b class="ell">${nom.ini ? nom.html : esc(fmtTel(c.telefono))}</b>${c.unidad ? unidadPill(c.unidad) : ""}</div>
+          <div class="chat-h-s ell">${nom.ini ? esc(fmtTel(c.telefono)) : "Sin nombre"}${c.etapa ? " · " + esc(etapaTxt(c.etapa)) : ""} · ${estado}</div></div>
+        ${c.empresa_id ? `<a class="btn sm ghost icon" href="#/cliente/${c.empresa_id}" title="Ver ficha" aria-label="Ver ficha">${ico("users", 16)}</a>` : ""}
+        <button class="btn sm ${c.humano ? "" : "primary"}" id="cv-at">${c.humano ? "Devolver al asesor" : "Tomar"}</button></div>
+      ${c.traspaso ? `<div class="chat-alert">${ico("alert", 15)}<span><b>Te necesita.</b> ${esc(String(c.traspaso).replace(/^\[WhatsApp\]\s*/, ""))}</span></div>` : ""}
       ${(() => { const actual = (k, fl) => c.unidad === k && (!fl || c.flujo === fl) ? "primary" : "";
         const botones = `<button class="btn sm ${actual("carclass")}" data-cls="carclass">Carclass</button><button class="btn sm ${actual("nom", "consignante")}" data-cls="nom" data-fl="consignante">NOM · vende su auto</button><button class="btn sm ${actual("nom", "comprador")}" data-cls="nom" data-fl="comprador">NOM · compra</button><button class="btn sm ${actual("carwash")}" data-cls="carwash">Carwash.hf</button><button class="btn sm ${actual("blackgps")}" data-cls="blackgps">BlackGPS</button><button class="btn sm ghost" data-cls="personal">Personal</button>
           <label class="check-row" style="font-size:12.5px;margin-left:4px"><input type="checkbox" id="cv-der" checked> Que lo atienda el asesor</label>`;
         return c.unidad
-          ? `<details class="clasificar-d"><summary>Cambiar línea o derivar al asesor · hoy: <b>${esc(uName(c.unidad))}${c.flujo ? " · " + (c.flujo === "consignante" ? "vende" : "compra") : ""}</b></summary><div class="clasificar">${botones}</div></details>`
+          ? `<details class="clasificar-d"><summary>Cambiar línea o derivar · hoy ${esc(uName(c.unidad))}${c.flujo ? " · " + (c.flujo === "consignante" ? "vende" : "compra") : ""}</summary><div class="clasificar">${botones}</div></details>`
           : `<div class="clasificar"><span class="faint" style="font-size:12.5px">¿De qué es este chat?</span>${botones}</div>`; })()}
-      <div class="chat-msgs" id="cv-m">${(d.mensajes || []).map((m) => `<div class="bub ${m.direccion === "entrante" ? "in" : "out"} ${m.direccion === "saliente_api" ? "ia" : ""}"><div>${esc(msgTxt(m))}</div><span class="bt">${m.direccion === "saliente_api" ? "Asesor IA · " : m.direccion === "saliente_app" ? "Tú · " : ""}${fechaHora(m.fecha)}</span></div>`).join("") || `<div class="muted" style="text-align:center;font-size:13px">Sin mensajes guardados.</div>`}</div>
-      ${(d.borradores || []).map((b) => { const t = borradorTxt(b); const acc = accionesTxt(b.acciones); return `<div class="borrador" data-bor="${b.id}"><div class="row" style="justify-content:space-between;align-items:center"><b style="font-size:13px">${ico("spark", 14)} Borrador del asesor</b><span class="faint" style="font-size:12px">${hace(b.creado_en)}</span></div>
-        <div class="bor-txt">${t.map((x) => `<div class="bub out ia propuesta">${esc(x)}</div>`).join("") || '<div class="muted" style="font-size:13px">Sin texto.</div>'}</div>
+      <div class="chat-msgs" id="cv-m">${burbujas(d.mensajes || [])}</div>
+      ${(d.borradores || []).map((b) => { const t = borradorTxt(b); const acc = accionesTxt(b.acciones); return `<div class="borrador" data-bor="${b.id}">
+        <div class="bor-h"><span class="ia-tag">${ico("spark", 12)} Borrador del asesor</span><span class="faint">${hace(b.creado_en)}</span></div>
+        <div class="bor-txt">${t.map((x) => `<p>${esc(x)}</p>`).join("") || '<p class="faint">Sin texto.</p>'}</div>
         ${acc.length ? `<div class="bor-acc">${acc.map((a) => `<span class="pill ${a.cls}">${esc(a.txt)}</span>`).join("")}</div>` : ""}
-        <div class="row" style="gap:8px">${t.length && ventana ? `<button class="btn sm primary" data-env="${b.id}">${ico("chat", 14)} Enviar</button><button class="btn sm" data-edit="${b.id}">Editar y enviar</button>` : ""}<button class="btn sm ghost danger" data-desc="${b.id}">Descartar</button>${wa && t.length ? `<a class="btn sm ghost" href="${waLink(c.telefono, t.join("\n\n"))}" target="_blank" rel="noopener">Abrir en mi WhatsApp</a>` : ""}</div>
-        ${ventana ? "" : '<div class="faint" style="font-size:12px">Pasaron más de 24 h desde el último mensaje del cliente: WhatsApp solo permite enviar una plantilla aprobada.</div>'}</div>`; }).join("")}
-      ${(d.citas || []).length ? `<div class="borrador">${d.citas.map((ci) => `<div style="font-size:13px">${ico("cal", 14)} <b>${esc(ci.tipo)}</b> · ${fechaHora(ci.inicio)}${ci.lugar ? " · " + esc(ci.lugar) : ""} <span class="pill ${ci.reserva_validada ? "ok" : "warn"}">${ci.reserva_validada ? "reserva validada" : "reserva por validar"}</span></div>`).join("")}</div>` : ""}
-      <div class="chat-foot">${ventana ? `<form id="cv-f" class="chat-compose"><textarea class="input" id="cv-txt" rows="2" placeholder="Escribe tu respuesta… (Enter envía, Shift+Enter salto de línea)"></textarea><button class="btn primary" id="cv-send">${ico("chat", 15)} Enviar</button></form>
-        <div class="faint" style="font-size:12px">Al responder tú, el asesor queda en pausa 12 h en este chat.</div>`
-        : `<div class="faint" style="font-size:12.5px">Ventana de 24 h cerrada: WhatsApp solo permite plantillas aprobadas. Puedes escribirle desde tu teléfono.</div>${wa ? `<a class="btn" href="${wa}" target="_blank" rel="noopener">${ico("chat", 15)} Abrir en mi WhatsApp</a>` : ""}`}</div>`;
+        <div class="bor-f">${!ventana ? '<span class="faint">Ventana de 24 h cerrada: solo plantilla aprobada.</span>' : ""}<button class="btn sm ghost danger" data-desc="${b.id}">Descartar</button>${t.length && ventana ? `<button class="btn sm ghost" data-edit="${b.id}">Editar</button><button class="btn sm primary" data-env="${b.id}">${ico("send", 14)} Enviar</button>` : wa && t.length ? `<a class="btn sm" href="${waLink(c.telefono, t.join("\n\n"))}" target="_blank" rel="noopener">Abrir en mi WhatsApp</a>` : ""}</div></div>`; }).join("")}
+      ${(d.citas || []).length ? `<div class="chat-citas">${d.citas.map((ci) => `<div>${ico("cal", 14)} <b>${esc(ci.tipo)}</b> · ${fechaHora(ci.inicio)}${ci.lugar ? " · " + esc(ci.lugar) : ""} <span class="pill ${ci.reserva_validada ? "ok" : "warn"}">${ci.reserva_validada ? "reserva validada" : "reserva por validar"}</span></div>`).join("")}</div>` : ""}
+      <div class="chat-foot">${ventana ? `<form id="cv-f" class="chat-compose"><textarea id="cv-txt" rows="1" placeholder="Escribe un mensaje" aria-label="Mensaje"></textarea><button class="chat-send" id="cv-send" aria-label="Enviar">${ico("send", 18)}</button></form>
+        <div class="chat-hint" id="cv-hint">Enter envía · Shift+Enter, salto de línea · al responder tú, el asesor queda en pausa 12 h</div>`
+        : `<div class="chat-closed"><span>Pasaron más de 24 h desde el último mensaje del cliente: WhatsApp solo permite plantillas aprobadas.</span>${wa ? `<a class="btn sm primary" href="${wa}" target="_blank" rel="noopener">${ico("chat", 14)} Abrir en mi WhatsApp</a>` : ""}</div>`}</div>`;
     const box = $("#cv-m"); box.scrollTop = box.scrollHeight;
     $("#cv-at").onclick = async () => { try { await rpc("app_conversacion_atender", { p_id: id, p_accion: c.humano ? "devolver" : "tomar" }); toast(c.humano ? "El asesor vuelve a atender" : "Tomaste la conversación: el asesor queda en pausa"); refrescar(); } catch (e) { toast(e.message, true); } };
-    $$("[data-cls]").forEach((b) => b.onclick = async () => {
-      const dest = b.dataset.cls;
-      if (dest === "personal" && !confirm("¿Marcar como personal? Se borran los mensajes guardados en Core y el chat deja de aparecer aquí. En tu WhatsApp no cambia nada.")) return;
-      b.disabled = true;
+    const clasificar = async (b) => {
+      const dest = b.dataset.cls; b.disabled = true;
       // BlackGPS lo atiendes tú; el asesor solo atiende Carclass, NOM y Carwash.hf
       const derivar = !!$("#cv-der")?.checked && ["carclass", "nom", "carwash"].includes(dest);
       try {
         await rpc("app_conversacion_clasificar", { p_id: id, p_destino: dest, p_flujo: b.dataset.fl || null, p_derivar: derivar });
         const modo = MODOS[dest];
         toast(dest === "personal" ? "Marcado como personal" : derivar
-          ? (["observar", "apagado"].includes(modo) ? `Clasificado como ${uName(dest)}. Ojo: en ${uName(dest)} el asesor está en «${MODO_TXT[modo] || modo}», cámbialo arriba para que responda.` : `Clasificado como ${uName(dest)} y derivado al asesor`)
+          ? (["observar", "apagado"].includes(modo) ? `Clasificado como ${uName(dest)}. Ojo: en ${uName(dest)} el asesor está en «${MODO_TXT[modo] || modo}»; cámbialo en «Asesor IA».` : `Clasificado como ${uName(dest)} y derivado al asesor`)
           : `Clasificado como ${uName(dest)}: lo atiendes tú`);
         if (dest === "personal") location.hash = "#/conversaciones"; else refrescar(); cargarAvisos(); }
       catch (e) { toast(e.message, true); b.disabled = false; }
-    });
-    $$("[data-desc]").forEach((b) => b.onclick = async () => { try { await rpc("app_borrador_descartar", { p_id: b.dataset.desc }); toast("Borrador descartado"); refrescar(); } catch (e) { toast(e.message, true); } });
+    };
+    $$("[data-cls]").forEach((b) => b.onclick = () => b.dataset.cls === "personal"
+      ? modal("Marcar como personal", '<p style="margin:0">Se borran los mensajes guardados en Core y el chat deja de aparecer aquí. En tu WhatsApp no cambia nada.</p>', () => clasificar(b), "Marcar como personal")
+      : clasificar(b));
+    $$("[data-desc]").forEach((b) => b.onclick = () => modal("Descartar borrador", '<p style="margin:0">El asesor no enviará este borrador. Puedes responder tú o esperar al próximo mensaje del cliente.</p>', async () => { await rpc("app_borrador_descartar", { p_id: b.dataset.desc }); toast("Borrador descartado"); refrescar(); }, "Descartar"));
     const enviar = async (body, btn, ok) => {
       if (btn) btn.disabled = true;
       try { const r = await waEnviar(body); toast(ok(r)); refrescar(); cargarAvisos(); }
@@ -808,12 +900,14 @@ async function viewConversaciones(id) {
     $$("[data-edit]").forEach((b) => b.onclick = () => {
       const box = b.closest(".borrador"); const bor = (d.borradores || []).find((x) => x.id === b.dataset.edit); const t = borradorTxt(bor);
       $(".bor-txt", box).innerHTML = t.map((x, i) => `<textarea class="input bor-ed" rows="3" aria-label="Mensaje ${i + 1}">${esc(x)}</textarea>`).join("");
-      b.outerHTML = `<button class="btn sm primary" data-envedit="${bor.id}">Enviar editado</button>`;
+      b.outerHTML = `<button class="btn sm primary" data-envedit="${bor.id}">${ico("send", 14)} Enviar editado</button>`;
       $(`[data-env="${bor.id}"]`)?.remove();
       $(`[data-envedit="${bor.id}"]`).onclick = (ev) => { const m = $$(".bor-ed", box).map((x) => x.value.trim()).filter(Boolean); if (!m.length) return toast("Escribe al menos un mensaje", true); enviar({ borrador_id: bor.id, mensajes: m }, ev.currentTarget, () => "Enviado con tus cambios"); };
     });
     if ($("#cv-f")) {
-      const txt = $("#cv-txt");
+      const txt = $("#cv-txt"), hint = $("#cv-hint");
+      const crecer = () => { txt.style.height = "auto"; txt.style.height = Math.min(txt.scrollHeight, 6 * 22 + 16) + "px"; hint.classList.toggle("on", !!txt.value); };
+      txt.oninput = crecer;
       txt.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#cv-f").requestSubmit(); } };
       $("#cv-f").onsubmit = (e) => { e.preventDefault(); const m = txt.value.trim(); if (!m) return; enviar({ conversacion_id: id, mensajes: [m] }, $("#cv-send"), () => "Mensaje enviado · el asesor queda en pausa 12 h"); };
     }
@@ -828,13 +922,13 @@ async function viewConversaciones(id) {
 async function viewEmbudo(u, flujo) {
   const unis = unidadesMias();
   u = unis.includes(u) ? u : (unis.includes("carclass") ? "carclass" : unis[0]);
-  if (u === "nom") flujo = flujo === "comprador" ? "comprador" : "consignante"; else flujo = null;
-  setActive("embudo", `Embudo · ${uName(u)}${flujo ? (flujo === "consignante" ? " · Consignantes" : " · Compradores") : ""}`);
+  if (u === "nom") flujo = ["comprador", "compra_directa"].includes(flujo) ? flujo : "consignante"; else flujo = null;
+  setActive("embudo", `Embudo · ${uName(u)}${flujo ? " · " + FLUJO_TXT[flujo] : ""}`);
   const P = $("#page");
   P.innerHTML = `<div class="page-head"><div><h1>Embudo</h1><p>Arrastra una tarjeta (o usa «Mover» en el celular) para cambiar su etapa, o suéltala en «Ganada» o «Perdida». Cada gestión registrada avanza la etapa sola; nunca retrocede sin que tú lo decidas.</p></div>
       <div class="actions"><button class="btn primary" id="e-new">${ico("plus", 16)} Nuevo lead</button></div></div>
     <div class="tabs">${unis.map((x) => `<a href="#/embudo/${x}" class="${x === u ? "on" : ""}">${uName(x)}</a>`).join("")}</div>
-    ${u === "nom" ? `<div class="seg"><button class="${flujo === "consignante" ? "on" : ""}" data-f="consignante">Consignantes</button><button class="${flujo === "comprador" ? "on" : ""}" data-f="comprador">Compradores</button></div>` : ""}
+    ${u === "nom" ? `<div class="seg">${Object.entries(FLUJO_TXT).map(([k, t]) => `<button class="${flujo === k ? "on" : ""}" data-f="${k}">${t}</button>`).join("")}</div>` : ""}
     <div id="kb">${loading(5)}</div>`;
   $("#e-new").onclick = () => modalLead({ unidad: u, flujo });
   $$("[data-f]").forEach((b) => b.onclick = () => (location.hash = `#/embudo/nom/${b.dataset.f}`));
@@ -846,9 +940,10 @@ async function viewEmbudo(u, flujo) {
       <div class="kanban">${etapas.map((et) => { const c = cols[et] || { total: 0, items: [] }; return `<section class="col" data-etapa="${esc(et)}">
         <div class="col-h"><b>${esc(etapaTxt(et))}</b><span class="badge">${int(c.total)}</span>${c.monto ? `<span class="m">${clpM(c.monto)}</span>` : ""}</div>
         <div class="col-b">${(c.items || []).map((it) => `<article class="kcard" draggable="true" data-id="${it.id}" data-emp="${it.empresa_id}" data-fecha="${it.proxima_fecha || ""}" data-nom="${esc(it.empresa)}">
-          <b>${esc(it.empresa)}</b>
+          <b>${esc(nombreVis(it.empresa))}</b>
           <div class="meta">${it.flota ? `<span>${int(it.flota)} veh.</span>` : ""}${it.comuna ? `<span>${esc(it.comuna)}</span>` : ""}${it.canal ? `<span>${esc(CANAL_TXT[it.canal] || it.canal)}</span>` : ""}${it.monto ? `<span class="num">${clpM(it.monto)}</span>` : ""}${it.sin_respuesta ? '<span class="pill bad">sin respuesta</span>' : ""}</div>
-          <div class="next">${it.proxima_fecha ? `<span class="pill ${it.proxima_fecha < hoyISO() ? "bad" : it.proxima_fecha === hoyISO() ? "warn" : ""}">${fecha(it.proxima_fecha)}</span>` : '<span class="pill">sin fecha</span>'}<span>${esc(it.proxima_accion || hace(it.ultima))}</span><button type="button" class="btn ghost sm kmove" data-mover aria-label="Mover de etapa">Mover</button></div>
+          <div class="nx-t" title="${esc(sinCodigos(it.proxima_accion || ""))}">${esc(sinCodigos(it.proxima_accion) || hace(it.ultima))}</div>
+          <div class="next">${it.proxima_fecha ? `<span class="pill ${it.proxima_fecha < hoyISO() ? "bad" : it.proxima_fecha === hoyISO() ? "warn" : ""}">${fecha(it.proxima_fecha)}</span>` : '<span class="pill">sin fecha</span>'}<button type="button" class="btn ghost sm kmove" data-mover aria-label="Mover de etapa">Mover</button></div>
         </article>`).join("")}${c.total > (c.items || []).length ? `<div class="col-more">y ${int(c.total - c.items.length)} más</div>` : ""}${!c.total ? '<div class="col-more">Sin oportunidades</div>' : ""}</div></section>`; }).join("")}</div>
       <div class="dropbar"><div class="dropzone win" data-cerrar="ganada">${ico("trophy", 16)} Soltar aquí: Ganada</div><div class="dropzone lose" data-cerrar="perdida">${ico("x", 16)} Soltar aquí: Perdida</div></div>`;
     let drag = null;
@@ -860,7 +955,7 @@ async function viewEmbudo(u, flujo) {
     });
     const moverA = async (card, etapa) => {
       const prev = card.parentElement; const col = $(`.col[data-etapa="${CSS.escape(etapa)}"] .col-b`); if (col) col.prepend(card);
-      try { await rpc("app_mover_etapa", { p: { oportunidad_id: card.dataset.id, etapa, proxima_fecha: card.dataset.fecha && card.dataset.fecha >= hoyISO() ? card.dataset.fecha : masDias(2) } }); toast(`Movida a ${etapaTxt(etapa)}`); }
+      try { await rpc("app_mover_etapa", { p: { oportunidad_id: card.dataset.id, etapa, proxima_fecha: card.dataset.fecha && card.dataset.fecha >= hoyISO() ? card.dataset.fecha : diaHabil(2) } }); toast(`Movida a ${etapaTxt(etapa)}`); }
       catch (err) { prev.prepend(card); toast(err.message, true); }
     };
     // «Mover»: alternativa al arrastre, que no funciona con el dedo en el celular
@@ -880,7 +975,7 @@ async function viewEmbudo(u, flujo) {
 /* ---------- agenda ---------- */
 async function viewAgenda(params) {
   setActive("agenda");
-  const v = params.get("v") || "mes";
+  const v = params.get("v") || lsGet("cc_agenda_v", "semana"); lsSet("cc_agenda_v", v);
   const base = params.get("d") ? parseD(params.get("d")) : new Date();
   let d0, d1, titulo;
   if (v === "mes") { const a = new Date(base.getFullYear(), base.getMonth(), 1); const off = (a.getDay() + 6) % 7; d0 = new Date(a); d0.setDate(1 - off); d1 = new Date(d0); d1.setDate(d0.getDate() + 41); titulo = base.toLocaleDateString("es-CL", { month: "long", year: "numeric" }); }
@@ -899,7 +994,7 @@ async function viewAgenda(params) {
         <div class="alert info">${ico("cal", 18)}<div><b>Google Calendar: pendiente de conectar.</b> Cuando lo conectemos, tus reuniones aparecerán aquí y lo que agendes en Core quedará en tu calendario, en ambos sentidos.</div></div></div></div>`;
   $$("[data-v]").forEach((b) => b.onclick = () => (location.hash = `#/agenda?v=${b.dataset.v}&d=${iso(base)}`));
   $("#a-t").onclick = () => modalTarea(() => viewAgenda(params));
-  const evHtml = (e) => `<a class="ev ${e.tipo} ${e.fecha < hoyISO() ? "past" : ""}" href="${e.empresa_id ? "#/cliente/" + e.empresa_id : "#/tareas"}" style="${e.tipo === "accion" ? `--c:${UNIDADES[e.unidad]?.c || "var(--brand)"}` : ""}" title="${esc(`${e.titulo} · ${e.cliente || ""}`)}">${esc(e.titulo)}${e.cliente ? ` · ${esc(e.cliente)}` : ""}</a>`;
+  const evHtml = (e) => `<a class="ev ${e.tipo} ${e.fecha < hoyISO() ? "past" : ""}" href="${e.empresa_id ? "#/cliente/" + e.empresa_id : "#/tareas"}" style="${e.tipo === "accion" ? `--c:${UNIDADES[e.unidad]?.c || "var(--brand)"}` : ""}" title="${esc(`${e.titulo} · ${e.cliente || ""}`)}">${e.cliente ? `<b>${esc(e.cliente)}</b> · ` : ""}${esc(e.titulo)}</a>`;
   try {
     const evs = (await rpc("app_agenda", { p_desde: iso(d0), p_hasta: iso(d1) })).filter((e) => enLinea(e.unidad));
     const por = {}; evs.forEach((e) => (por[e.fecha] ||= []).push(e));
@@ -927,7 +1022,7 @@ async function viewAgenda(params) {
       : `<div class="card-b muted" style="font-size:13px">Sin sugerencias. La agenda propone llamar 2 días después de cotizar, retomar lo detenido 14 días y el contacto mensual con clientes.</div>`;
     $$("[data-sg]").forEach((b) => b.onclick = async () => {
       const s = sg[b.dataset.sg]; b.disabled = true;
-      try { await rpc("app_crear_tarea", { p: { titulo: `${s.titulo} · ${s.cliente}`, unidad: s.unidad, vence: masDias(1), prioridad: "media", empresa_id: s.empresa_id, responsable: (ME.nombre || "").split(" ")[0] || null } }); toast("Tarea creada para mañana"); b.textContent = "Agendada"; }
+      try { await rpc("app_crear_tarea", { p: { titulo: `${s.titulo} · ${s.cliente}`, unidad: s.unidad, vence: diaHabil(1), prioridad: "media", empresa_id: s.empresa_id, responsable: (ME.nombre || "").split(" ")[0] || null } }); toast("Tarea creada para mañana"); b.textContent = "Agendada"; }
       catch (e) { toast(e.message, true); b.disabled = false; }
     });
   } catch (e) { $("#sg").innerHTML = `<div class="card-b err">${esc(e.message)}</div>`; }
@@ -940,7 +1035,7 @@ const DEF_NOTAS = {
   get carclass() {
     const pg = P("carclass.transferencia").pago || {}, res = pg.reserva_monto;
     const pago = res ? `Reserva de ${clpTxt(res)}${pg.reserva_abonable ? " (se abona al total)" : ""}; en la recepción se completa el 50% del total y el saldo se paga a la entrega.${pg.cancelacion ? " " + pg.cancelacion + "." : ""}` : "Pago 50/50: mitad al reservar y mitad a la entrega.";
-    return `Valores con IVA incluido. Precio final sujeto a evaluación presencial del vehículo. ${pago} Recepción en nuestro taller de Quilicura o en nuestra oficina de Chicureo, con previa coordinación. Incluye corrección de pintura en todo plan de cerámico, garantía XPEL y acta de entrega.`.replace(/\.\./g, ".");
+    return `Valores con IVA incluido. Precio final sujeto a evaluación presencial del vehículo. ${pago} Recepción en nuestra oficina en Puertas de Chicureo o en el centro de instalación de Alto Portezuelo, con previa coordinación; retiro y entrega a domicilio según zona. Incluye corrección de pintura en todo plan de cerámico, garantía XPEL y acta de entrega.`.replace(/\.\./g, ".");
   },
   get carwash() { const n = cwNeg(); return `Valores «desde», con IVA incluido, según el tamaño del vehículo. Servicio en ${n.direccion || "Huertos Familiares"}, ${cwHorario()}. Pago al momento de la entrega.`; },
 };
@@ -1001,7 +1096,7 @@ async function modalCotizador({ oportunidad_id, unidad, cliente, cot = null, aft
   };
   const root = modal(`${cot ? "Cotización " + cot.numero : "Nueva cotización"} · ${cliente}`, `
     <div class="row"><div class="field"><label for="q-auto">Vehículo</label><input class="input" id="q-auto" placeholder="Marca, modelo, año y color" value="${esc(cot?.items?.auto || "")}"></div><div class="field" style="flex:0 1 130px"><label for="q-vig">Validez (días)</label><input class="input" id="q-vig" type="number" min="1" value="7"></div></div>
-    <div class="field"><span class="lbl">Agregar del catálogo · ${esc(uName(unidad))}</span><div class="chips" id="q-cat">${cat.map((c, i) => `<button type="button" class="chip" data-add="${i}" title="${esc(c.descripcion || "")}">${ico("plus", 13)} ${esc(c.nombre)} <span class="faint">${clpM(c.precio)}</span></button>`).join("")}<button type="button" class="chip" data-add="otro">${ico("plus", 13)} Otro ítem</button></div></div>
+    <div class="field"><span class="lbl">Agregar del catálogo · ${esc(uName(unidad))}</span><div class="chips" id="q-cat">${cat.map((c, i) => `<button type="button" class="chip" data-add="${i}" title="${esc(c.descripcion || "")}">${ico("plus", 13)} ${esc(c.nombre)} <span class="faint">${c.aproximado ? "≈ " : ""}${clp(c.precio)}</span></button>`).join("")}<button type="button" class="chip" data-add="otro">${ico("plus", 13)} Otro ítem</button></div></div>
     <div id="q-lin"></div><div id="q-rules"></div>
     <div class="field"><label for="q-notas">Condiciones para el cliente</label><textarea class="input" id="q-notas" style="min-height:70px">${esc(cot?.notas || DEF_NOTAS[unidad] || "")}</textarea></div>`,
     () => guardar("enviada"), "Guardar y enviar", true, { text: "Guardar borrador", fn: () => guardar("borrador") });
@@ -1158,12 +1253,12 @@ async function viewCliente(id) {
             <div class="seg" id="bt-tipo">${[["nota", "note", "Nota"], ["llamada", "call", "Llamada"], ["whatsapp", "chat", "WhatsApp"], ["correo", "mail", "Correo"], ["reunion", "meet", "Reunión"]].map(([k, i, t], n) => `<button type="button" class="${n === 0 ? "on" : ""}" data-v="${k}">${t}</button>`).join("")}</div>
             <textarea class="input" id="bt-nota" placeholder="Qué pasó, con quién hablaste, qué pidió"></textarea>
             <div class="row">${abiertas.length > 1 ? `<div class="field"><label for="bt-op">Oportunidad</label><select class="input" id="bt-op">${abiertas.map((o) => `<option value="${o.id}">${esc(uName(o.unidad))} · ${esc(etapaTxt(o.etapa))}</option>`).join("")}</select></div>` : `<input type="hidden" id="bt-op" value="${abiertas[0].id}">`}
-              <div class="field"><label for="bt-res">Resultado</label><select class="input" id="bt-res">${RESULTADOS.map(([v, t]) => `<option value="${v}">${t}</option>`).join("")}</select></div></div>
-            <div class="row"><div class="field"><label for="bt-acc">Próxima acción</label><input class="input" id="bt-acc" placeholder="Ej: enviar cotización, volver a llamar"></div><div class="field" style="flex:0 1 170px"><label for="bt-f">Fecha</label><input class="input" id="bt-f" type="date" value="${masDias(2)}"></div></div>
+              <div class="field"><label for="bt-res">Resultado</label><select class="input" id="bt-res">${resultadosDe(abiertas[0]?.unidad).map(([v, t]) => `<option value="${v}">${t}</option>`).join("")}</select></div></div>
+            <div class="row"><div class="field"><label for="bt-acc">Próxima acción</label><input class="input" id="bt-acc" placeholder="Ej: enviar cotización, volver a llamar"></div><div class="field" style="flex:0 1 170px"><label for="bt-f">Fecha</label><input class="input" id="bt-f" type="date" value="${diaHabil(2)}"></div></div>
             <div class="row" style="justify-content:space-between;align-items:center"><button type="button" class="btn sm ghost" disabled title="Se activa al habilitar el almacenamiento de archivos">${ico("clip", 15)} Adjuntar</button><button class="btn primary" id="bt-save">Guardar en bitácora</button></div><div class="err" id="bt-err"></div>`
             : `<div class="muted" style="font-size:13px">Para registrar gestiones abre una oportunidad con «Nueva oportunidad».</div>`}
           </div>
-          <div class="card-b timeline" style="border-top:1px solid var(--border)">${d.actividades.length ? d.actividades.map((a) => `<div class="tl ${a.tipo === "sistema" ? "sys" : ""}"><span class="ic">${ico(tipoIco[a.tipo] || "dot", 15)}</span><div><div class="t">${a.tipo === "sistema" ? `<span class="muted">${esc(prettySistema(a.nota))}</span>` : `<b style="text-transform:capitalize">${esc(a.tipo === "reunion" ? "reunión" : a.tipo)}</b>${a.resultado ? ` · ${esc((RESULTADOS.find((r) => r[0] === a.resultado) || [0, a.resultado.replace(/_/g, " ")])[1])}` : ""}${a.nota ? `<div class="muted">${esc(a.nota)}</div>` : ""}`}</div><div class="d">${fechaHora(a.fecha)} · ${esc(a.autor || "")}</div></div></div>`).join("") : '<div class="muted">Sin gestiones todavía.</div>'}</div></section>
+          <div class="card-b timeline" style="border-top:1px solid var(--border)">${d.actividades.length ? d.actividades.map((a) => `<div class="tl ${a.tipo === "sistema" ? "sys" : ""}"><span class="ic">${ico(tipoIco[a.tipo] || "dot", 15)}</span><div><div class="t">${a.tipo === "sistema" ? `<span class="muted">${esc(prettySistema(a.nota))}</span>` : `<b style="text-transform:capitalize">${esc(a.tipo === "reunion" ? "reunión" : a.tipo)}</b>${a.resultado ? ` · ${esc(([...RESULTADOS, ...RESULTADOS_B2C].find((r) => r[0] === a.resultado) || [0, a.resultado.replace(/_/g, " ")])[1])}` : ""}${a.nota ? `<div class="muted">${esc(a.nota)}</div>` : ""}`}</div><div class="d">${fechaHora(a.fecha)} · ${esc(a.autor || "")}</div></div></div>`).join("") : '<div class="muted">Sin gestiones todavía.</div>'}</div></section>
       </div>
       <div class="stack">
         <section class="card"><div class="card-h"><h3>Contacto</h3></div><div class="card-b">${d.contactos.length ? d.contactos.map((c) => `<dl class="kv" style="margin-bottom:12px"><dt>Nombre</dt><dd><b>${esc(c.nombre)}</b>${c.decisor ? ' <span class="pill gold">decide</span>' : ""}</dd>${c.cargo ? `<dt>Cargo</dt><dd>${esc(c.cargo)}</dd>` : ""}${c.telefono ? `<dt>Teléfono</dt><dd><a href="tel:${esc(c.telefono)}">${esc(c.telefono)}</a></dd>` : ""}${c.email ? `<dt>Correo</dt><dd>${esc(c.email)}</dd>` : ""}</dl>`).join("") : `<dl class="kv">${tel ? `<dt>Teléfono</dt><dd><a href="tel:${esc(tel)}">${esc(tel)}</a></dd>` : ""}${e.email ? `<dt>Correo</dt><dd>${esc(e.email)}</dd>` : ""}${!tel && !e.email ? '<dd class="muted">Sin datos de contacto.</dd>' : ""}</dl>`}</div></section>
@@ -1188,7 +1283,7 @@ async function viewCliente(id) {
     $$("[data-cotizar]").forEach((b) => b.onclick = () => modalCotizador({ oportunidad_id: b.dataset.cotizar, unidad: b.dataset.u, cliente: e.nombre, after: again }));
     $$("[data-traspaso]").forEach((b) => b.onclick = () => modalTraspaso(b.dataset.traspaso, again));
     $$("select[data-etapa]").forEach((s) => s.onchange = async () => {
-      try { await rpc("app_mover_etapa", { p: { oportunidad_id: s.dataset.etapa, etapa: s.value, proxima_fecha: s.dataset.fecha || masDias(2) } }); toast("Etapa actualizada"); again(); }
+      try { await rpc("app_mover_etapa", { p: { oportunidad_id: s.dataset.etapa, etapa: s.value, proxima_fecha: s.dataset.fecha || diaHabil(2) } }); toast("Etapa actualizada"); again(); }
       catch (err) { toast(err.message, true); }
     });
     if ($("#bt-tipo")) {
@@ -1326,10 +1421,10 @@ async function viewVehiculos(params) {
     if (f === "clientes") v = v.filter((x) => x.modalidad === "cliente");
     const est = { disponible: "ok", publicado: "ok", evaluacion: "info", reservado: "gold", vendido: "", retirado: "" };
     const stockMode = f !== "clientes";
-    $("#vl").innerHTML = `<section class="card">${v.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Vehículo</th><th>Patente</th><th class="num">Km</th><th>Modalidad</th><th>Dueño</th>${stockMode ? `<th class="num">Publicado</th>${ME.rol === "dueno" ? '<th class="num">Piso (interno)</th>' : ""}<th class="num">Días</th><th>Inspección</th>` : ""}<th>Estado</th></tr></thead><tbody>
-      ${v.map((x) => { const vivo = !["vendido", "retirado"].includes(x.estado); return `<tr class="${x.dueno_id ? "click" : ""}" data-emp="${x.dueno_id || ""}"><td class="name">${esc([x.marca, x.modelo, x.version].filter(Boolean).join(" ") || "—")}${x.anio ? ` <span class="faint">${x.anio}</span>` : ""}</td><td>${esc(x.patente || "—")}</td><td class="num">${x.km ? int(x.km) : "—"}</td><td>${x.modalidad === "compra_directa" ? "Propio" : x.modalidad === "consignacion" ? `Consignado${x.comision_pct ? " " + String(x.comision_pct).replace(".", ",") + "%" : ""}` : "Cliente"}</td><td>${esc(x.dueno || "—")}</td>
-        ${stockMode ? `<td class="num">${x.precio_publicado ? clp(x.precio_publicado) : '<span class="faint">—</span>'}</td>${ME.rol === "dueno" ? `<td class="num faint">${x.precio_minimo ? clp(x.precio_minimo) : "—"}</td>` : ""}<td class="num">${x.dias != null ? `<span class="pill ${vivo && x.dias > 45 ? "bad" : vivo && x.dias > 30 ? "warn" : ""}">${int(x.dias)}</span>` : "—"}</td><td>${x.inspeccion ? `<span class="pill ${x.inspeccion.veredicto === "APTO" ? "ok" : "warn"}" title="${esc(x.inspeccion.folio || "")}">${esc(x.inspeccion.veredicto || "")} · ${int(x.inspeccion.score)}%</span>` : x.modalidad !== "cliente" ? `<a class="pill warn" href="${TOOLS.ipc}" target="_blank" rel="noopener" onclick="event.stopPropagation()">inspeccionar</a>` : ""}</td>` : ""}
-        <td><span class="pill ${est[x.estado] ?? ""}">${esc(x.estado || "—")}</span></td></tr>`; }).join("")}
+    $("#vl").innerHTML = `<section class="card">${v.length ? `<div class="tbl-wrap"><table class="tbl tbl-cards"><thead><tr><th>Vehículo</th><th>Patente</th><th class="num">Km</th><th>Modalidad</th><th>Dueño</th>${stockMode ? `<th class="num">Publicado</th>${ME.rol === "dueno" ? '<th class="num">Piso (interno)</th>' : ""}<th class="num">Días</th><th>Inspección</th>` : ""}<th>Estado</th></tr></thead><tbody>
+      ${v.map((x) => { const vivo = !["vendido", "retirado"].includes(x.estado); return `<tr class="${x.dueno_id ? "click" : ""}" data-emp="${x.dueno_id || ""}"><td class="name" data-l="Vehículo">${esc([x.marca, x.modelo].filter(Boolean).join(" ") || "—")}${x.anio ? ` <span class="faint">${x.anio}</span>` : ""}${x.version ? `<div class="sub faint ell" title="${esc(x.version)}">${esc(x.version)}</div>` : ""}</td><td data-l="Patente">${esc(x.patente || "—")}</td><td class="num" data-l="Km">${x.km ? int(x.km) : "—"}</td><td data-l="Modalidad">${x.modalidad === "compra_directa" ? "Propio" : x.modalidad === "consignacion" ? `Consignado${x.comision_pct ? " " + String(x.comision_pct).replace(".", ",") + "%" : ""}` : "Cliente"}</td><td data-l="Dueño">${esc(x.dueno || "—")}</td>
+        ${stockMode ? `<td class="num" data-l="Publicado">${x.precio_publicado ? clp(x.precio_publicado) : '<span class="faint">—</span>'}</td>${ME.rol === "dueno" ? `<td class="num faint" data-l="Piso">${x.precio_minimo ? clp(x.precio_minimo) : "—"}</td>` : ""}<td class="num" data-l="Días">${x.dias != null ? `<span class="pill ${vivo && x.dias > 45 ? "bad" : vivo && x.dias > 30 ? "warn" : ""}">${int(x.dias)}</span>` : "—"}</td><td data-l="Inspección">${x.inspeccion ? `<span class="pill ${x.inspeccion.veredicto === "APTO" ? "ok" : "warn"}" title="${esc(x.inspeccion.folio || "")}">${esc(x.inspeccion.veredicto || "")} · ${int(x.inspeccion.score)}%</span>` : x.modalidad !== "cliente" ? `<a class="pill warn" href="${TOOLS.ipc}" target="_blank" rel="noopener" onclick="event.stopPropagation()">inspeccionar</a>` : ""}</td>` : ""}
+        <td data-l="Estado"><span class="pill ${est[x.estado] ?? ""}">${esc(x.estado || "—")}</span></td></tr>`; }).join("")}
       </tbody></table></div>` : empty("car", "Sin vehículos en esta vista")}</section>
       ${stockMode ? '<p class="faint" style="font-size:12px;margin:0">Rotación: tope de 45 días. El precio piso es interno y nunca se comparte con compradores. La inspección se lee de la herramienta IPC de NOM.</p>' : ""}`;
     $$("#vl tr[data-emp]").forEach((tr) => tr.dataset.emp && (tr.onclick = () => (location.hash = "#/cliente/" + tr.dataset.emp)));
@@ -1544,6 +1639,7 @@ async function viewRegistro(params) {
   $("#rg-new").onclick = () => modalFin(t, null, recargar);
   try {
     const rows = await rpc("app_fin_registros", { p_tabla: t, p_desde: ctx.d0, p_hasta: ctx.d1, p_unidad: ctx.u || null });
+    if (!$("#fin")) return; // el usuario ya cambió de módulo
     const tot = rows.reduce((a, r) => a + Number(r.monto || 0), 0);
     const cols = t === "ventas" ? ["Fecha", "Unidad", "Cliente", "Detalle", "Tipo", "Monto", "Cobro"] : t === "costos" ? ["Fecha", "Unidad", "Tipo", "Categoría", "Proveedor y detalle", "Monto", "Pago"] : ["Fecha", "Tipo", "Categoría", "Detalle", "Cuenta", "Monto"];
     $("#fin").innerHTML = `<section class="card"><div class="card-h"><h3>${rows.length} registros</h3><span class="r"><b>${clp(tot)}</b></span></div>${rows.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr>${cols.map((c) => `<th class="${c === "Monto" ? "num" : ""}">${c}</th>`).join("")}</tr></thead><tbody>
@@ -1553,7 +1649,7 @@ async function viewRegistro(params) {
       </tbody></table></div>` : empty("doc", "Sin registros en el rango", "Cambia el rango o crea uno nuevo.")}</section>`;
     $$("#fin tr[data-i]").forEach((tr) => tr.onclick = () => modalFin(t, rows[tr.dataset.i], recargar));
     $("#rg-csv").onclick = () => downloadCSV(`${t}_${ctx.d0}_${ctx.d1}.csv`, rows);
-  } catch (e) { $("#fin").innerHTML = fail(e); }
+  } catch (e) { if ($("#fin")) $("#fin").innerHTML = fail(e); }
 }
 function modalFin(t, r, after, preset = {}) {
   const uSel = (v, incluirGrupo = true) => `<select class="input" id="fn-u">${FIN_U.filter((x) => incluirGrupo || x !== "grupo").map((x) => `<option value="${x}" ${x === (v || UNI || "carclass") ? "selected" : ""}>${uName(x)}</option>`).join("")}</select>`;
@@ -1753,7 +1849,7 @@ function bindSeg(root, onChange) {
 const segVal = (root, n) => $(`[data-seg="${n}"]`, root)?.dataset.val || "";
 
 const COMUNAS = ["Chicureo", "Lo Barnechea", "Las Condes", "Vitacura", "Colina", "Providencia", "Huechuraba", "Tiltil", "Lampa", "Ñuñoa"];
-const SERV_CARCLASS = ["Protección PPF", "Cerámico", "Láminas de seguridad", "Paquete Protect+", "Paquete Shield", "Detailing", "Llantas (Wheels)", "Pintura o desabolladura", "No sabe aún"];
+const SERV_CARCLASS = ["Protección PPF (frontal o total)", "PPF interior", "Sellado cerámico (1, 4 u 8 años)", "Láminas de seguridad", "Paquete Protect+", "Paquete Shield", "Protection Pack", "Detailing interior (solo si lo pide)", "Pintura o desabolladura", "No sabe aún"];
 function modalLead(pre = {}) {
   const unis = unidadesMias();
   const u0 = pre.unidad && unis.includes(pre.unidad) ? pre.unidad : UNI && unis.includes(UNI) ? UNI : unis.includes("carclass") ? "carclass" : unis[0];
@@ -1761,7 +1857,7 @@ function modalLead(pre = {}) {
   const sel = (id, label, opts, style = "") => `<div class="field" ${style ? `style="${style}"` : ""}><label for="${id}">${label}</label><select class="input" id="${id}">${opts.map((o) => `<option>${esc(o)}</option>`).join("")}</select></div>`;
   const root = modal("Nuevo lead", `
     <div class="field"><span class="lbl">Línea de negocio</span>${seg("u", unis.map((x) => [x, uName(x)]), u0)}</div>
-    <div class="field" id="ld-flujo"><span class="lbl">¿Qué busca?</span>${seg("flujo", [["consignante", "Vender su auto"], ["comprador", "Comprar un auto"]], pre.flujo || "consignante")}</div>
+    <div class="field" id="ld-flujo"><span class="lbl">¿Qué busca?</span>${seg("flujo", [["consignante", "Consignar su auto"], ["comprador", "Comprar un auto"], ["compra_directa", "Vender ya (compra directa o parte de pago)"]], pre.flujo || "consignante")}</div>
     <div class="row">${f("ld-nom", "Nombre", `value="${esc(pre.nombre || "")}" autocomplete="off"`)}${f("ld-tel", "Teléfono o WhatsApp", `type="tel" placeholder="+56 9 1234 5678" value="${esc(pre.telefono || "")}"`)}</div>
     <div class="row">${f("ld-mail", "Correo", `type="email" value="${esc(pre.email || "")}"`)}${f("ld-com", "Comuna", 'list="dl-com" autocomplete="off"', "flex:0 1 190px")}<datalist id="dl-com">${COMUNAS.map((c) => `<option value="${c}">`).join("")}</datalist></div>
     <div id="ld-extra"></div>
@@ -1775,7 +1871,7 @@ function modalLead(pre = {}) {
       const det = []; let veh = null, interes = null;
       if (unidad === "carclass") { veh = { marca: g("x-marca"), modelo: g("x-modelo"), anio: g("x-anio"), patente: g("x-pat") }; interes = g("x-serv"); det.push(`Servicio de interés: ${interes}`); }
       if (unidad === "carwash") { interes = `${g("x-serv")} · ${(g("x-tipo") || "").split(" (")[0]}`; det.push(`Servicio: ${interes}`); if (g("x-marca")) det.push(`Vehículo: ${g("x-marca")}`); if (g("x-fecha")) det.push(`Fecha deseada: ${g("x-fecha")}`); }
-      if (unidad === "nom" && fl === "consignante") { veh = { marca: g("x-marca"), modelo: g("x-modelo"), anio: g("x-anio"), km: g("x-km"), precio_esperado: g("x-precio") }; interes = `Consignar ${[g("x-marca"), g("x-modelo"), g("x-anio")].filter(Boolean).join(" ")}`.trim(); det.push(`Documentos y prendas: ${g("x-docs")}`); if (g("x-precio")) det.push(`Precio esperado: ${clp(g("x-precio"))}`); }
+      if (unidad === "nom" && ["consignante", "compra_directa"].includes(fl)) { veh = { marca: g("x-marca"), modelo: g("x-modelo"), anio: g("x-anio"), km: g("x-km"), precio_esperado: g("x-precio") }; interes = `${fl === "compra_directa" ? "Vender (compra directa)" : "Consignar"} ${[g("x-marca"), g("x-modelo"), g("x-anio")].filter(Boolean).join(" ")}`.trim(); det.push(`Documentos y prendas: ${g("x-docs")}`); if (g("x-precio")) det.push(`Precio esperado: ${clp(g("x-precio"))}`); }
       if (unidad === "nom" && fl === "comprador") { interes = g("x-interes") ? `Busca ${g("x-interes")}` : "Comprar un auto"; if (g("x-pres")) det.push(`Presupuesto: ${clp(g("x-pres"))}`); det.push(`Pago: ${g("x-pago")}`); }
       if (b2b) Object.assign(p, { empresa: g("ld-emp"), rut: g("ld-rut"), flota: g("ld-flota"), rubro: g("ld-rubro"), cargo: g("ld-cargo") });
       if (veh && (veh.marca || veh.modelo || veh.patente)) p.vehiculo = veh;
@@ -1789,10 +1885,10 @@ function modalLead(pre = {}) {
     }, "Crear lead");
   const extra = (u, fl) => {
     if (u === "carclass") return `<div class="xbox"><div class="lbl">Auto y servicio</div><div class="row">${f("x-marca", "Marca")}${f("x-modelo", "Modelo")}${f("x-anio", "Año", 'type="number" min="1980" max="2030"', "flex:0 1 90px")}${f("x-pat", "Patente", "", "flex:0 1 110px")}</div>${sel("x-serv", "Servicio de interés", SERV_CARCLASS)}<div class="hint">Pide fotos del auto para la pre-evaluación remota. Pintura y desabolladura las cotiza una persona con el especialista.</div></div>`;
-    if (u === "carwash") return `<div class="xbox"><div class="lbl">Vehículo y servicio</div><div class="row">${f("x-marca", "Marca y modelo", 'placeholder="Ej: Toyota Hilux"')}${sel("x-tipo", "Tamaño", ["Pequeño y mediano (citycar, sedán, SUV compacto)", "SUV y pickup mediana (Hilux, L200, Ranger)", "Pickup XL o SUV 3 corridas (F-150, Ram, Tahoe)", "Van, furgón o flota (lo cotiza Felipe)"])}</div>
-      <div class="row">${sel("x-serv", "Servicio", ["Lavado Boutique", "Lavado Básico (solo exterior)", "Lavado Técnico", "Pulido Básico", "Limpieza Interior + Tapicería", "Pulido Intermedio + Sellado Sintético", "Pulido + Sellado Cerámico", "No sabe aún"])}${f("x-fecha", "Fecha deseada", 'type="date"', "flex:0 1 160px")}</div>
-      <div class="hint">WhatsApp Carwash.hf +56 9 4619 6226 · ${esc(cwNeg().direccion || "Huertos Familiares")} · ${esc(cwHorario())} · máximo ${cwNeg().capacidad_diaria || 4} autos por día · sin domicilio. Lista oficial con precios «desde» según tamaño; en pulidos, cerámico e interior se confirma el estado del auto.</div></div>`;
-    if (u === "nom" && fl === "consignante") return `<div class="xbox"><div class="lbl">Auto a consignar</div><div class="row">${f("x-marca", "Marca")}${f("x-modelo", "Modelo")}${f("x-anio", "Año", 'type="number" min="1990" max="2030"', "flex:0 1 90px")}${f("x-km", "Km", 'type="number" min="0"', "flex:0 1 110px")}</div><div class="row">${f("x-precio", "Precio esperado", 'type="number" min="0" step="100000"')}${sel("x-docs", "Documentos y prendas", ["Por confirmar", "Al día y sin prendas", "Tiene prenda", "Documentos pendientes"])}</div><div class="hint">Califica si es ${P("nom.automatizacion").anio_minimo || 2015} o más, sin prendas y con precio dentro de ±10% del mercado. ${esc(comisionNomTxt())} Exclusividad 45 días.</div></div>`;
+    if (u === "carwash") return `<div class="xbox"><div class="lbl">Vehículo y servicio</div><div class="row">${f("x-marca", "Marca y modelo", 'placeholder="Ej: Toyota Hilux"')}${sel("x-tipo", "Tamaño", ["Auto o SUV compacto (citycar, sedán, SUV compacto)", "SUV o pickup mediana (Hilux, L200, Ranger)", "Pickup XL o SUV 7 asientos (F-150, Ram, Tahoe)", "Van, furgón o flota (lo cotiza Felipe)"])}</div>
+      <div class="row">${sel("x-serv", "Servicio", ["Lavado Boutique", "Lavado Básico (solo exterior)", "Lavado Técnico", "Interior + tapiz", "Pulido + sellado cerámico (lo cotiza Felipe)", "Empresa o flota (lo cotiza Felipe)", "No sabe aún"])}${f("x-fecha", "Fecha deseada", 'type="date"', "flex:0 1 160px")}</div>
+      <div class="hint">WhatsApp Carwash.hf +56 9 4619 6226 · ${esc(cwNeg().direccion || "Huertos Familiares")} · ${esc(cwHorario())} · máximo ${cwNeg().capacidad_diaria || 4} autos por día · sin domicilio. Precios según tamaño (web carclass.cl/carwash-hf); pulido, cerámico, empresas y vans los cotiza Felipe.</div></div>`;
+    if (u === "nom" && ["consignante", "compra_directa"].includes(fl)) return `<div class="xbox"><div class="lbl">${fl === "compra_directa" ? "Auto a vender (compra directa o parte de pago)" : "Auto a consignar"}</div><div class="row">${f("x-marca", "Marca")}${f("x-modelo", "Modelo")}${f("x-anio", "Año", 'type="number" min="1990" max="2030"', "flex:0 1 90px")}${f("x-km", "Km", 'type="number" min="0"', "flex:0 1 110px")}</div><div class="row">${f("x-precio", "Precio esperado", 'type="number" min="0" step="100000"')}${sel("x-docs", "Documentos y prendas", ["Por confirmar", "Al día y sin prendas", "Tiene prenda", "Documentos pendientes"])}</div><div class="hint">${fl === "compra_directa" ? "Nunca se ofrece precio en el primer contacto: se tasa en Core y la oferta va por escrito, aprobada por Felipe. Margen mínimo $1.000.000 a $1.500.000; compras de hasta $8 a $10 MM. Si es parte de pago, se cierra junto con la venta del auto NOM." : `Califica si es ${P("nom.automatizacion").anio_minimo || 2015} o más, sin prendas y con precio dentro de ±10% del mercado. ${esc(comisionNomTxt())} Exclusividad 45 días.`}</div></div>`;
     if (u === "nom") return `<div class="xbox"><div class="lbl">Lo que busca</div><div class="row">${f("x-interes", "Auto de interés", 'placeholder="Ej: Corolla Cross o SUV hasta $17 MM"')}${f("x-pres", "Presupuesto", 'type="number" min="0" step="500000"', "flex:0 1 150px")}${sel("x-pago", "Pago", ["Por confirmar", "Contado", "Financiamiento", "Con auto en parte de pago"], "flex:0 1 200px")}</div><div class="hint">Visita y test drive solo con calificados (plazo menor a 30 días). Reserva mínima $200.000.</div></div>`;
     return `<div class="xbox"><div class="lbl">Empresa</div><div class="row">${f("ld-emp", "Empresa", `value="${esc(pre.empresa || "")}"`)}${f("ld-rut", "RUT", `placeholder="76.123.456-7" value="${esc(pre.rut ? fmtRut(pre.rut) : "")}"`, "flex:0 1 150px")}${f("ld-flota", "Flota", 'type="number" min="0"', "flex:0 1 100px")}</div><div class="row">${f("ld-rubro", "Rubro")}${f("ld-cargo", "Cargo del contacto")}</div><div class="hint">Filtro BlackGPS: flotas de 10 o más vehículos. Desde la reunión en adelante manda Asisma.</div></div>`;
   };
@@ -1823,20 +1919,20 @@ function modalOportunidad(o, after) {
   if (!o) return;
   modal(`Editar oportunidad · ${uName(o.unidad)}`, `
     <div class="field"><label for="op-tit">Qué busca (título)</label><input class="input" id="op-tit" value="${esc(o.titulo || "")}" placeholder="Ej: Cerámico RAV4 2022"></div>
-    <div class="row"><div class="field"><label for="op-acc">Próxima acción</label><input class="input" id="op-acc" value="${esc(o.proxima_accion || "")}"></div><div class="field" style="flex:0 1 170px"><label for="op-f">Fecha</label><input class="input" id="op-f" type="date" value="${o.proxima_fecha || masDias(1)}"></div></div>
+    <div class="row"><div class="field"><label for="op-acc">Próxima acción</label><input class="input" id="op-acc" value="${esc(o.proxima_accion || "")}"></div><div class="field" style="flex:0 1 170px"><label for="op-f">Fecha</label><input class="input" id="op-f" type="date" value="${o.proxima_fecha || diaHabil(1)}"></div></div>
     <div class="field" style="max-width:220px"><label for="op-m">Monto estimado con IVA</label>${montoIn("op-m", o.monto)}</div>
     <p class="faint" style="margin:0;font-size:12px">La etapa se cambia con el selector de la tarjeta o registrando una gestión.</p>`, async () => {
     await rpc("app_oportunidad_guardar", { p: { id: o.id, titulo: $("#op-tit").value, proxima_accion: $("#op-acc").value, proxima_fecha: $("#op-f").value, monto: montoVal($("#op-m")) } });
     toast("Oportunidad actualizada"); after && after();
   }, "Guardar");
 }
-function modalActividad(opId, nombre, after) {
+function modalActividad(opId, nombre, after, unidad) {
   const root = modal(`Registrar gestión · ${nombre}`, `
     <div class="field"><span class="lbl">Tipo</span>${seg("tipo", [["whatsapp", "WhatsApp"], ["llamada", "Llamada"], ["correo", "Correo"], ["reunion", "Reunión"], ["nota", "Nota"]], "whatsapp")}</div>
-    <div class="field"><label for="a-res">Resultado</label><select class="input" id="a-res">${RESULTADOS.map(([v, t]) => `<option value="${v}">${t}</option>`).join("")}</select></div>
+    <div class="field"><label for="a-res">Resultado</label><select class="input" id="a-res">${resultadosDe(unidad).map(([v, t]) => `<option value="${v}">${t}</option>`).join("")}</select></div>
     <div class="field"><label for="a-nota">Detalle</label><textarea class="input" id="a-nota" placeholder="Qué pasó, con quién hablaste, qué pidió"></textarea></div>
     <div class="row"><div class="field"><label for="a-acc">Próxima acción</label><input class="input" id="a-acc" placeholder="Ej: enviar cotización, volver a llamar"></div>
-    <div class="field" style="flex:0 1 170px"><label for="a-fecha">Fecha</label><input class="input" id="a-fecha" type="date" value="${masDias(2)}"></div></div>`,
+    <div class="field" style="flex:0 1 170px"><label for="a-fecha">Fecha</label><input class="input" id="a-fecha" type="date" value="${diaHabil(2)}"></div></div>`,
     async () => {
       const r = await rpc("app_registrar_actividad", { p: { oportunidad_id: opId, tipo: segVal(root, "tipo"), resultado: $("#a-res").value || null, nota: $("#a-nota").value.trim() || null, proxima_accion: $("#a-acc").value.trim() || null, proxima_fecha: $("#a-fecha").value || null } });
       toast(r.etapa !== r.etapa_anterior ? `Gestión guardada · avanzó a ${etapaTxt(r.etapa)}` : r.estado === "perdida" ? "Gestión guardada · oportunidad perdida" : "Gestión guardada");
@@ -1885,7 +1981,7 @@ function modalTarea(after, preset = {}) {
     <div class="field"><label for="t-desc">Detalle</label><textarea class="input" id="t-desc" style="min-height:70px"></textarea></div>
     <div class="row"><div class="field"><label for="t-u">Unidad</label><select class="input" id="t-u">${unis.map((k) => `<option value="${k}" ${k === (preset.unidad || "grupo") ? "selected" : ""}>${uName(k)}</option>`).join("")}</select></div>
     <div class="field"><label for="t-resp">Responsable</label><input class="input" id="t-resp" value="${esc((ME.nombre || "").split(" ")[0])}"></div></div>
-    <div class="row"><div class="field"><label for="t-v">Vence</label><input class="input" id="t-v" type="date" value="${masDias(1)}"></div>
+    <div class="row"><div class="field"><label for="t-v">Vence</label><input class="input" id="t-v" type="date" value="${diaHabil(1)}"></div>
     <div class="field"><span class="lbl">Prioridad</span>${seg("prio", [["alta", "Alta"], ["media", "Media"], ["baja", "Baja"]], "media")}</div></div>`,
     async () => {
       if (!$("#t-tit").value.trim()) throw new Error("Escribe qué hay que hacer.");
@@ -1899,7 +1995,7 @@ function modalTraspaso(opId, after) {
     <div class="field"><label for="tr-id">N° o ID en Asisma</label><input class="input" id="tr-id" placeholder="Opcional, se puede agregar después"></div>
     <div class="field"><label for="tr-n">Resumen de la reunión</label><textarea class="input" id="tr-n" style="min-height:70px" placeholder="Qué necesita, cuántos vehículos, próximos pasos"></textarea></div>`, async () => {
     await rpc("app_registrar_actividad", { p: { oportunidad_id: opId, tipo: "reunion", resultado: "reunion_agendada", nota: ($("#tr-n").value.trim() || "Reunión realizada") + " · traspaso a Asisma" } });
-    await rpc("app_mover_etapa", { p: { oportunidad_id: opId, etapa: "en_asisma", asisma_id: $("#tr-id").value.trim() || null, proxima_accion: "Seguimiento en Asisma", proxima_fecha: masDias(7) } });
+    await rpc("app_mover_etapa", { p: { oportunidad_id: opId, etapa: "en_asisma", asisma_id: $("#tr-id").value.trim() || null, proxima_accion: "Seguimiento en Asisma", proxima_fecha: diaHabil(7) } });
     toast("Traspasado a Asisma"); after && after(); modalAsisma(opId);
   }, "Traspasar");
 }
