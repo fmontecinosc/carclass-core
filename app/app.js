@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.10.5";
+const VERSION = "2.10.6";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -370,7 +370,9 @@ async function mostrarAviso(a) {
 async function cargarAvisos() {
   if (!ME) return;
   try {
-    const [bandeja, tareas, cots, convs] = await Promise.all([rpc("app_bandeja", { p_tipo: "todas" }), rpc("app_tareas", { p_estado: "pendiente,en_curso" }), rpc("app_cotizaciones").catch(() => []), rpc("app_conversaciones").catch(() => [])]);
+    const [bandeja, tareas, cots, todasConvs] = await Promise.all([rpc("app_bandeja", { p_tipo: "todas" }), rpc("app_tareas", { p_estado: "pendiente,en_curso" }), rpc("app_cotizaciones").catch(() => []), rpc("app_conversaciones").catch(() => [])]);
+    // proveedores, equipo y clientes BlackGPS no son leads: no cuentan en avisos ni en el badge
+    const convs = todasConvs.filter((c) => c.es_lead !== false);
     const hoy = hoyISO(); const L = [];
     for (const c of convs.filter((c) => c.traspaso)) L.push({ id: `persona:${c.id}:${c.traspaso}`, level: "bad", icon: "users", title: `Cliente pide hablar contigo · ${c.nombre || c.telefono}`, body: String(c.traspaso).replace(/^\[WhatsApp\]\s*/, ""), href: "#/conversaciones/" + c.id, at: c.ultima_entrada || c.orden });
     for (const c of convs.filter((c) => c.borradores > 0)) L.push({ id: `borrador:${c.id}:${c.ultima_entrada || ""}`, level: "brand", icon: "spark", title: `Borrador del asesor por revisar · ${c.nombre || c.telefono}`, body: `${c.unidad ? uName(c.unidad) + " · " : ""}${c.ultimo_mensaje || "nuevo mensaje"}`, href: "#/conversaciones/" + c.id, at: c.ultima_entrada || c.orden });
@@ -781,14 +783,15 @@ function burbujas(mensajes) {
     return `<div class="bub ${a} ${o.primero ? "first" : ""} ${o.ultimo ? "last" : ""}">${o.primero && a === "ia" ? `<span class="ia-tag">${ico("spark", 11)} Asesor IA</span>` : ""}${cuerpo}<span class="bt">${hhmm(m.fecha)}${a !== "in" && m.estado === "read" ? ' <span class="b-ok">✓✓</span>' : ""}</span>${o.reac ? `<span class="b-reac">${o.reac.map(esc).join("")}</span>` : ""}</div>`;
   }).join("");
 }
+const TIPO_CONTACTO = { cliente: "Cliente BlackGPS", proveedor: "Proveedor", equipo: "Equipo", negocio: "Otro trabajo" };
 async function viewConversaciones(id) {
   setActive("conversaciones");
   const P = $("#page");
-  let tab = lsGet("cc_conv_tab", "mios"); let MODOS = {}; let LISTA = [];
+  let tab = lsGet("cc_conv_tab", "mios"); let MODOS = {}; let LISTA = []; let TODO = [];
   P.innerHTML = `<div class="page-head cv-head ${id ? "con-chat" : ""}"><div><h1>Conversaciones</h1><p>WhatsApp del grupo. El asesor IA atiende Carclass, NOM y los chats nuevos; BlackGPS y los que tomas o te traspasa son tuyos.</p></div>
       <div class="actions"><button class="btn sm" id="cv-cfg">${ico("spark", 15)} Asesor IA <span class="cv-cfg-dot" id="cv-cfg-dot"></span></button></div></div>
     <div class="chat-layout ${id ? "con-chat" : ""}">
-      <section class="card chat-list"><div class="chat-list-h"><div class="seg" id="cv-tabs">${[["mios", "Míos"], ["asesor", "Asesor IA"], ["todas", "Todas"]].map(([k, t]) => `<button class="${k === tab ? "on" : ""}" data-tab="${k}">${t} <span class="badge" id="cv-n-${k}"></span></button>`).join("")}</div></div><div class="chat-list-b" id="cv-l">${loading(5)}</div></section>
+      <section class="card chat-list"><div class="chat-list-h"><div class="seg" id="cv-tabs">${[["mios", "Míos"], ["asesor", "Asesor"], ["todas", "Todas"], ["contactos", "Contactos"]].map(([k, t]) => `<button class="${k === tab ? "on" : ""}" data-tab="${k}">${t} <span class="badge" id="cv-n-${k}"></span></button>`).join("")}</div></div><div class="chat-list-b" id="cv-l">${loading(5)}</div></section>
       <section class="card chat-pane" id="cv-c">${id ? loading(6) : ""}</section></div>`;
   $(".chat-layout", P).insertAdjacentHTML("beforebegin", '<div id="cv-kapso"></div>');
   // el asesor atiende Carclass, NOM y los chats nuevos aún sin clasificar (él mismo los clasifica o los marca personales)
@@ -821,24 +824,29 @@ async function viewConversaciones(id) {
   };
 
   // ---- lista ----
-  const estadoChat = (c) => c.traspaso ? ["bad", "te necesita"] : c.sin_responder ? ["dotbad", "sin responder"] : c.borradores ? ["gold", c.borradores > 1 ? `${c.borradores} borradores` : "borrador"] : null;
+  const esContacto = (c) => c.es_lead === false;
+  const estadoChat = (c) => esContacto(c) ? ["tc", TIPO_CONTACTO[c.tipo_contacto] || "Contacto"]
+    : c.traspaso ? ["bad", "te necesita"] : c.sin_responder ? ["dotbad", "sin responder"] : c.borradores ? ["gold", c.borradores > 1 ? `${c.borradores} borradores` : "borrador"] : null;
   const previa = (c) => { const pre = c.ultima_direccion === "saliente_api" ? "IA: " : c.ultima_direccion && c.ultima_direccion !== "entrante" ? "Tú: " : "";
     return pre + (c.ultimo_mensaje ? esc(c.ultimo_mensaje) : `<i>${esc(medioTxt(c.ultimo_tipo))}</i>`); };
   const pintarLista = async () => {
-    const todas = (await rpc("app_conversaciones")).filter((c) => !c.unidad || enLinea(c.unidad)); LISTA = todas;
-    const grupos = { asesor: todas.filter(esAsesor), mios: todas.filter((c) => !esAsesor(c)), todas };
-    Object.entries(grupos).forEach(([k, l]) => { const b = $(`#cv-n-${k}`); if (b) b.textContent = (k === "todas" ? l.length : l.filter((c) => c.sin_responder || c.borradores || c.traspaso).length) || ""; });
+    const todo = (await rpc("app_conversaciones")).filter((c) => !c.unidad || enLinea(c.unidad)); TODO = todo;
+    // solo los leads van a Míos, Asesor IA y Todas; proveedores, equipo y clientes BlackGPS quedan en Contactos
+    const todas = todo.filter((c) => !esContacto(c)); LISTA = todas;
+    const grupos = { asesor: todas.filter(esAsesor), mios: todas.filter((c) => !esAsesor(c)), todas, contactos: todo.filter(esContacto) };
+    Object.entries(grupos).forEach(([k, l]) => { const b = $(`#cv-n-${k}`); if (b) b.textContent = k === "contactos" ? "" : (k === "todas" ? l.length : l.filter((c) => c.sin_responder || c.borradores || c.traspaso).length) || ""; });
     const l = grupos[tab] || todas;
     $("#cv-l").innerHTML = l.length ? l.map((c) => { const st = estadoChat(c), nom = nombreChat(c);
-      return `<a class="chat-item ${c.id === id ? "on" : ""} ${c.sin_responder || c.traspaso ? "unread" : ""}" href="#/conversaciones/${c.id}">
+      return `<a class="chat-item ${c.id === id ? "on" : ""} ${!esContacto(c) && (c.sin_responder || c.traspaso) ? "unread" : ""}" href="#/conversaciones/${c.id}">
       ${avatarChat(c)}
       <div class="ci-b"><div class="ci-l1"><span class="ci-n ell">${nom.html}</span><span class="ci-t">${esAsesor(c) ? `<span class="ci-who ia" title="Atiende el asesor IA">${ico("spark", 12)}</span>` : `<span class="ci-who" title="Atiendes tú">${ico("users", 12)}</span>`}${horaCorta(c.orden)}</span></div>
         <div class="ci-l2"><span class="ell">${previa(c)}</span>${st ? `<span class="ci-st ${st[0]}">${st[1]}</span>` : ""}</div></div></a>`; }).join("")
-      : `<div class="card-b">${empty("chat", tab === "asesor" ? "El asesor no tiene chats abiertos" : "Sin conversaciones", tab === "mios" ? "Aquí llegan BlackGPS, los chats que tomas y los que el asesor te traspasa." : "")}</div>`;
+      : `<div class="card-b">${empty("chat", tab === "asesor" ? "El asesor no tiene chats abiertos" : tab === "contactos" ? "Sin contactos" : "Sin conversaciones", tab === "mios" ? "Aquí llegan BlackGPS, los chats que tomas y los que el asesor te traspasa." : tab === "contactos" ? "Proveedores, equipo y clientes BlackGPS. Marca un chat con «No es lead» para moverlo aquí." : "")}</div>`;
     if (!id) pintarVacio();
     return l;
   };
   const pintarVacio = () => {
+    if (tab === "contactos") { $("#cv-c").innerHTML = `<div class="chat-empty">${ico("users", 28)}<h3>Contactos</h3><p class="faint" style="max-width:34ch;text-align:center">Proveedores, equipo, clientes BlackGPS y otros chats de trabajo. No cuentan como leads ni generan avisos.</p></div>`; return; }
     const nec = LISTA.filter((c) => c.traspaso).length, sr = LISTA.filter((c) => c.sin_responder).length, bo = LISTA.filter((c) => c.borradores).length;
     $("#cv-c").innerHTML = `<div class="chat-empty">${ico("chat", 28)}<h3>Elige una conversación</h3>
       <div class="chat-empty-k">${nec ? `<button class="btn sm" data-ir="traspaso"><span class="ci-st bad">${nec}</span> te necesitan</button>` : ""}${sr ? `<button class="btn sm" data-ir="sin_responder"><span class="ci-st dotbad">${sr}</span> sin responder</button>` : ""}${bo ? `<button class="btn sm" data-ir="borradores"><span class="ci-st gold">${bo}</span> con borrador</button>` : ""}${!nec && !sr && !bo ? '<span class="faint">Todo al día.</span>' : ""}</div></div>`;
@@ -850,6 +858,8 @@ async function viewConversaciones(id) {
     const d = await rpc("app_conversacion", { p_id: id });
     if (!d) { $("#cv-c").innerHTML = `<div class="card-b">${empty("chat", "Conversación no disponible")}</div>`; return; }
     const c = d.conversacion || {}; const wa = waLink(c.telefono); const nom = nombreChat(c);
+    const lc = TODO.find((x) => x.id === id); const contacto = lc ? esContacto(lc) : c.estado === "contacto";
+    const tipoC = (lc && lc.tipo_contacto) || c.tipo_contacto; const dueno = ME.rol === "dueno";
     const ventana = c.ventana_hasta && parseD(c.ventana_hasta) > new Date();
     const estado = c.humano ? `Atiendes tú${c.agente_pausado_hasta ? ` · el asesor vuelve el ${fechaHora(c.agente_pausado_hasta)}` : ""}`
       : esAsesor(c) ? `Atiende el asesor IA · ${esc(MODO_TXT[c.modo] || c.modo)}` : `Atiendes tú · el asesor ${esc(MODO_TXT[c.modo] || c.modo)} en esta línea`;
@@ -858,9 +868,11 @@ async function viewConversaciones(id) {
         <div class="chat-h-t"><div class="row" style="gap:8px;flex-wrap:nowrap;min-width:0"><b class="ell">${nom.ini ? nom.html : esc(fmtTel(c.telefono))}</b>${c.unidad ? unidadPill(c.unidad) : ""}</div>
           <div class="chat-h-s ell">${nom.ini ? esc(fmtTel(c.telefono)) : "Sin nombre"}${c.etapa ? " · " + esc(etapaTxt(c.etapa)) : ""} · ${estado}</div></div>
         ${c.empresa_id ? `<a class="btn sm ghost icon" href="#/cliente/${c.empresa_id}" title="Ver ficha" aria-label="Ver ficha">${ico("users", 16)}</a>` : ""}
-        <button class="btn sm ${c.humano ? "" : "primary"}" id="cv-at">${c.humano ? "Devolver al asesor" : "Tomar"}</button></div>
+        ${contacto
+          ? `<span class="ci-st tc">${esc(TIPO_CONTACTO[tipoC] || "Contacto")}</span>${dueno ? '<button class="btn sm" id="cv-lead">Es un lead</button>' : ""}`
+          : `${dueno ? '<button class="btn sm ghost" id="cv-nolead">No es lead</button>' : ""}<button class="btn sm ${c.humano ? "" : "primary"}" id="cv-at">${c.humano ? "Devolver al asesor" : "Tomar"}</button>`}</div>
       ${c.traspaso ? `<div class="chat-alert">${ico("alert", 15)}<span><b>Te necesita.</b> ${esc(String(c.traspaso).replace(/^\[WhatsApp\]\s*/, ""))}</span></div>` : ""}
-      ${(() => { const actual = (k, fl) => c.unidad === k && (!fl || c.flujo === fl) ? "primary" : "";
+      ${contacto ? `<div class="clasificar"><span class="faint" style="font-size:12.5px">Contacto, no lead: el asesor no responde aquí y no cuenta en avisos. Puedes escribirle igual.</span></div>` : (() => { const actual = (k, fl) => c.unidad === k && (!fl || c.flujo === fl) ? "primary" : "";
         const botones = `<button class="btn sm ${actual("carclass")}" data-cls="carclass">Carclass</button><button class="btn sm ${actual("nom", "consignante")}" data-cls="nom" data-fl="consignante">NOM · vende su auto</button><button class="btn sm ${actual("nom", "comprador")}" data-cls="nom" data-fl="comprador">NOM · compra</button><button class="btn sm ${actual("carwash")}" data-cls="carwash">Carwash.hf</button><button class="btn sm ${actual("blackgps")}" data-cls="blackgps">BlackGPS</button><button class="btn sm ghost" data-cls="personal">Personal</button>
           <label class="check-row" style="font-size:12.5px;margin-left:4px"><input type="checkbox" id="cv-der" checked> Que lo atienda el asesor</label>`;
         return c.unidad
@@ -877,7 +889,18 @@ async function viewConversaciones(id) {
         <div class="chat-hint" id="cv-hint">Enter envía · Shift+Enter, salto de línea · al responder tú, el asesor queda en pausa 12 h</div>`
         : `<div class="chat-closed"><span>Pasaron más de 24 h desde el último mensaje del cliente: WhatsApp solo permite plantillas aprobadas.</span>${wa ? `<a class="btn sm primary" href="${wa}" target="_blank" rel="noopener">${ico("chat", 14)} Abrir en mi WhatsApp</a>` : ""}</div>`}</div>`;
     const box = $("#cv-m"); box.scrollTop = box.scrollHeight;
-    $("#cv-at").onclick = async () => { try { await rpc("app_conversacion_atender", { p_id: id, p_accion: c.humano ? "devolver" : "tomar" }); toast(c.humano ? "El asesor vuelve a atender" : "Tomaste la conversación: el asesor queda en pausa"); refrescar(); } catch (e) { toast(e.message, true); } };
+    if ($("#cv-nolead")) $("#cv-nolead").onclick = () => {
+      const root = modal("No es lead", `<p style="margin:0 0 10px">El chat pasa a «Contactos»: el asesor deja de responder, se cancelan sus borradores y seguimientos y, si se creó una oportunidad por error, queda descartada. Los próximos chats de este número nacen como contacto.</p>
+        <div class="clasificar" style="padding:0;border:0">${Object.entries(TIPO_CONTACTO).map(([k, t]) => `<button type="button" class="btn sm" data-tc="${k}">${t}</button>`).join("")}</div>`, null);
+      $$("[data-tc]", root).forEach((b) => b.onclick = async () => {
+        b.disabled = true;
+        try { await rpc("app_conversacion_contacto", { p_id: id, p_tipo: b.dataset.tc }); $("[data-x]", root).click(); toast(`Movido a Contactos · ${TIPO_CONTACTO[b.dataset.tc]}`); cargarAvisos(); refrescar(); }
+        catch (e) { b.disabled = false; toast(e.message, true); }
+      });
+    };
+    if ($("#cv-lead")) $("#cv-lead").onclick = () => modal("Es un lead", '<p style="margin:0">El chat vuelve a la bandeja de leads, sin línea asignada: clasifícalo después para que lo atienda el asesor o tú.</p>', async () => {
+      await rpc("app_conversacion_es_lead", { p_id: id }); toast("Vuelve a la bandeja de leads"); cargarAvisos(); refrescar(); }, "Es un lead");
+    if ($("#cv-at")) $("#cv-at").onclick = async () => { try { await rpc("app_conversacion_atender", { p_id: id, p_accion: c.humano ? "devolver" : "tomar" }); toast(c.humano ? "El asesor vuelve a atender" : "Tomaste la conversación: el asesor queda en pausa"); refrescar(); } catch (e) { toast(e.message, true); } };
     const clasificar = async (b) => {
       const dest = b.dataset.cls; b.disabled = true;
       // BlackGPS lo atiendes tú; el asesor solo atiende Carclass, NOM y Carwash.hf

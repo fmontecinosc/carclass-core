@@ -718,6 +718,7 @@ a.kpi:hover, a.ucard:hover, .ucard:hover { box-shadow: var(--shadow-hover); tran
 .ci-st.bad { background: var(--bad); color: #fff; }
 .ci-st.dotbad { color: var(--bad); padding-left: 0; } .ci-st.dotbad::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--bad); margin-right: 5px; vertical-align: 1px; }
 .ci-st.gold { background: var(--gold-050); color: var(--gold); }
+.ci-st.tc { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
 .c-av { position: relative; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13.5px; color: #fff; background: linear-gradient(135deg, color-mix(in srgb, var(--c) 82%, #fff), var(--c)); flex: none; }
 .c-av.none { background: var(--surface-2); color: var(--faint); border: 1px solid var(--border-2); }
 .c-av-dot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border-radius: 50%; background: var(--c); border: 2px solid var(--surface); }
