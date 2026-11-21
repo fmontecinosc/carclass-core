@@ -288,11 +288,11 @@ export async function pdfInforme(p: any, op: OpcionesInforme = {}): Promise<Uint
   {
     const auto = [v.marca, v.modelo, v.anio].filter(Boolean).join(" ");
     const wa = (op.whatsapp ?? "56986704745").replace(/\D/g, "");
-    const msg = `Hola, quiero agendar la visita a la oficina de Nor-Oriente Motors para mi ${auto}${p.folio ? ` (informe ${p.folio})` : ""}.`;
+    const msg = `Hola, quiero reservar la inspección y sesión de fotos para consignar mi ${auto}${p.folio ? ` (informe ${p.folio})` : ""}.`;
     const urlWa = `https://wa.me/${wa}?text=${encodeURIComponent(msg)}`;
-    const texto = `${pre ? "Confirmamos el valor con la inspección del vehículo" : "Inspección completa y fotos profesionales para la publicación"} en una visita de unas 2 horas a nuestra oficina en Puertas de Chicureo (Av. Puerta Oriente 361, oficina 409B).`;
-    const altoBtn = 22, anchoBtn = 178, gapB = 4;
-    const botones: [string, string, ReturnType<typeof rgb>][] = [["AGENDAR VISITA POR WHATSAPP", urlWa, GREEN]];
+    const texto = `${pre ? "Confirmamos el valor con la inspección completa del vehículo" : "Inspección completa y sesión de fotos profesionales para la publicación"}, en unas 2 horas. En tu casa (Chicureo, Lo Barnechea y Chicauma) o en nuestra oficina en Puertas de Chicureo.`;
+    const altoBtn = 22, anchoBtn = 212, gapB = 4;
+    const botones: [string, string, ReturnType<typeof rgb>][] = [["RESERVAR INSPECCIÓN Y SESIÓN DE FOTOS", urlWa, GREEN]];
     if (op.agenda_url && /^https:\/\//.test(op.agenda_url)) botones.push(["ELEGIR HORARIO EN EL CALENDARIO", op.agenda_url, K]);
     const anchoTxt = W - 10 * MM - anchoBtn - 6 * MM;
     const lin = partir(texto, sans, 8, anchoTxt);

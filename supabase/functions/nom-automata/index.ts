@@ -15,7 +15,7 @@ import { pdfInforme, subirInforme, nombreInforme } from "./informe.ts";
 
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { prepare: false, max: 3, idle_timeout: 20 });
 const AUTOR = "Agente IA";
-const VERSION = "1.1.1";
+const VERSION = "1.2.0";
 
 function seguroIgual(a: string, b: string) {
   if (!a || a.length !== b.length) return false;
@@ -126,7 +126,7 @@ async function sincronizarCalendario(): Promise<string[]> {
       await sql`update nom.visitas set gcal_estado = 'sin_conexion' where id = ${v.id}`;
       await tarea({
         titulo: `[NOM] Agendar en Google Calendar · visita ${v.nombre ?? ""}`.trim(),
-        descripcion: `Visita NOM ${new Date(v.inicio).toLocaleString("es-CL", { timeZone: "America/Santiago" })} (2 h) · ${v.vehiculo ?? ""} · ${v.telefono ?? ""} · ${v.email ?? "sin correo"}. El calendario aún no está conectado a Core.`,
+        descripcion: `Visita NOM ${v.lugar === "domicilio" ? "a domicilio (" + (v.direccion ?? "sin dirección") + ") " : ""}${new Date(v.inicio).toLocaleString("es-CL", { timeZone: "America/Santiago" })} (2 h) · ${v.vehiculo ?? ""} · ${v.telefono ?? ""} · ${v.email ?? "sin correo"}. El calendario aún no está conectado a Core.`,
         oportunidad_id: v.oportunidad_id, empresa_id: v.empresa_id,
       });
       out.push("visita sin calendario");
@@ -134,12 +134,12 @@ async function sincronizarCalendario(): Promise<string[]> {
     }
     try {
       const id = await crearEvento({
-        titulo: `NOM · Inspección y fotos · ${v.nombre ?? "Cliente"} · ${v.vehiculo ?? ""}`.trim(),
+        titulo: `NOM · Inspección y fotos${v.lugar === "domicilio" ? " a domicilio" : ""} · ${v.nombre ?? "Cliente"} · ${v.vehiculo ?? ""}`.trim(),
         inicio: new Date(v.inicio).toISOString(), fin: new Date(v.fin).toISOString(),
         descripcion: [`Cliente: ${v.nombre ?? "—"} · ${v.telefono ?? ""}`, `Auto: ${v.vehiculo ?? "—"}`,
           `Fee: $${Number(v.fee_monto).toLocaleString("es-CL")} (${v.fee_momento === "al_agendar" ? "al agendar" : "en la visita"}) · estado ${v.fee_estado}`,
           "Agendado por el asesor de WhatsApp (Carclass Core)."].join("\n"),
-        ubicacion: `${of?.direccion ?? ""}, ${of?.sector ?? "Chicureo"}, ${of?.comuna ?? "Colina"}`,
+        ubicacion: v.lugar === "domicilio" && v.direccion ? v.direccion : `${of?.direccion ?? ""}, ${of?.sector ?? "Chicureo"}, ${of?.comuna ?? "Colina"}`,
         invitado: v.email,
       });
       await sql`update nom.visitas set gcal_estado = 'creado', gcal_event_id = ${id}, gcal_error = null where id = ${v.id}`;

@@ -39,11 +39,13 @@ export const HERRAMIENTAS_NOM: Anthropic.Tool[] = [
   },
   {
     name: "nom_proponer_visita",
-    description: "NOM consignante con tasación ya enviada: devuelve 2 horarios libres para la visita de inspección y fotos en la oficina de Chicureo, la dirección, la duración, cómo se cobra el fee y qué debe traer el cliente.",
+    description: "NOM consignante con tasación ya enviada: devuelve 2 horarios libres para la inspección y sesión de fotos, en nuestra oficina en Puertas de Chicureo o en la casa del cliente (prueba a domicilio), con el fee que corresponde, la duración y qué preparar.",
     input_schema: {
       type: "object",
       properties: { desde: { type: "string", description: "Opcional: fecha mínima YYYY-MM-DD que pidió el cliente." },
-                    preferencia: { type: "string", enum: ["manana", "tarde", "cualquiera"] } },
+                    preferencia: { type: "string", enum: ["manana", "tarde", "cualquiera"] },
+                    lugar: { type: "string", enum: ["oficina", "domicilio"], description: "Dónde prefiere el cliente. Si aún no lo dijo, omítelo: la respuesta trae ambas alternativas." },
+                    ubicacion: { type: "string", description: "Comuna o sector del cliente si va a domicilio (define el fee)." } },
       additionalProperties: false,
     },
   },
@@ -54,6 +56,9 @@ export const HERRAMIENTAS_NOM: Anthropic.Tool[] = [
       type: "object",
       properties: {
         inicio: { type: "string", description: "Fecha y hora local de Chile, formato YYYY-MM-DDTHH:MM." },
+        lugar: { type: "string", enum: ["oficina", "domicilio"], description: "Por defecto oficina." },
+        direccion: { type: "string", description: "Obligatoria si es a domicilio: calle y número." },
+        comuna: { type: "string", description: "Comuna o sector, si es a domicilio." },
         nombre: { type: "string" },
         email: { type: "string", description: "Para enviarle la invitación del calendario (opcional)." },
       },
@@ -123,6 +128,13 @@ export function crearNom(sql: Sql, conv: Conv, escribir: boolean) {
           calendario = "cruzado con Google Calendar";
         } catch (e) { calendario = `no se pudo leer (${String((e as any)?.message ?? e).slice(0, 80)})`; }
       }
+      // Domicilio: solo semanas con cupo y dentro de la prueba
+      const dom = (await sql`select nom.visita_domicilio_cfg() as c`)[0].c ?? {};
+      if (i?.lugar === "domicilio") {
+        const ok: any[] = [];
+        for (const c of cupos) { const q = (await sql`select nom.cupo_domicilio(${c.inicio}) as q`)[0].q; if (q != null && q > 0) ok.push(c); }
+        cupos = ok;
+      }
       if (i?.preferencia === "manana") cupos = cupos.filter((c) => Number(c.local.slice(11, 13)) < 13);
       if (i?.preferencia === "tarde") cupos = cupos.filter((c) => Number(c.local.slice(11, 13)) >= 13);
       // Dos opciones en días distintos cuando se puede
@@ -139,16 +151,25 @@ export function crearNom(sql: Sql, conv: Conv, escribir: boolean) {
       ]);
       const o = of[0]?.valor ?? {}, a = auto[0]?.valor ?? {};
       const alAgendar = a.fee_momento === "al_agendar";
+      const feeOficina = Number(a.fee_monto ?? 50000);
+      const feeDom = i?.ubicacion ? Number((await sql`select nom.fee_visita('domicilio', ${i.ubicacion}) as f`)[0].f) : null;
+      const fee = i?.lugar === "domicilio" && feeDom ? feeDom : feeOficina;
+      const domicilio = dom?.activo ? {
+        disponible: true, zonas: dom.zonas, fee_en_zona: dom.fee_zona_clp ?? feeOficina, fee_fuera_de_zona: dom.fee_fuera_zona_clp ?? 75000,
+        fee_para_su_ubicacion: feeDom, requisitos: dom.requisitos ?? [], como_decirlo: dom.como_decirlo ?? null, prueba_hasta: dom.prueba_hasta ?? null,
+        regla: dom.regla_agente ?? null,
+      } : { disponible: false };
       return {
         ok: true,
         data: {
           opciones, sin_cupo_cercano: opciones.length === 0, calendario,
-          lugar: `${o.direccion}, ${o.sector}, ${o.comuna}`, duracion: "unas 2 horas",
+          lugar: i?.lugar === "domicilio" ? "en la casa del cliente (pide la dirección)" : `nuestra oficina en Puertas de Chicureo (${o.direccion}, ${o.comuna})`,
+          oficina: `${o.direccion}, ${o.sector}, ${o.comuna}`, domicilio, duracion: "unas 2 horas",
           que_hacemos: "inspección completa (estética, mecánica y documentos) y fotos profesionales para la publicación",
-          fee: { monto: a.fee_monto ?? 50000, momento: alAgendar ? "al_agendar" : "en_visita",
+          fee: { monto: fee, momento: alAgendar ? "al_agendar" : "en_visita",
                  como_decirlo: alAgendar
-                   ? `Para reservar la hora se transfieren $${Number(a.fee_monto ?? 50000).toLocaleString("es-CL")} por el servicio de inicio: inspección completa, fotos profesionales y publicación en los portales. Ese monto se descuenta de la comisión cuando vendemos tu auto.`
-                   : `El día de la visita se paga $${Number(a.fee_monto ?? 50000).toLocaleString("es-CL")} por el servicio de inicio, por transferencia: inspección completa, fotos profesionales y publicación en los portales. Ese monto se descuenta de la comisión cuando vendemos tu auto.` },
+                   ? `Para reservar la hora se transfieren $${fee.toLocaleString("es-CL")} por el servicio de inicio: inspección completa, fotos profesionales y publicación en los portales. Ese monto se descuenta de la comisión cuando vendemos tu auto.`
+                   : `El día de la visita se paga $${fee.toLocaleString("es-CL")} por el servicio de inicio, por transferencia: inspección completa, fotos profesionales y publicación en los portales. Ese monto se descuenta de la comisión cuando vendemos tu auto.` },
           datos_transferencia: alAgendar ? tr[0]?.v ?? null : null,
           preparacion: o.preparacion_cliente ?? [],
         },
@@ -158,8 +179,13 @@ export function crearNom(sql: Sql, conv: Conv, escribir: boolean) {
     async nom_reservar_visita(i: any): Promise<Resultado> {
       exigirNom();
       if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(String(i.inicio ?? ""))) return { ok: false, error: "Formato de inicio inválido (YYYY-MM-DDTHH:MM)" };
-      if (!escribir) return { ok: true, data: { simulado: true, cuando: i.inicio, estado: "reservada" } };
-      const r = (await sql`select core.api_nom_wa_reservar_visita(${conv.id}::uuid, ${sql.json({ inicio: i.inicio, nombre: i.nombre ?? null, email: i.email ?? null } as any)}, ${AUTOR}) as r`)[0].r;
+      if (i.lugar === "domicilio" && !String(i.direccion ?? "").trim()) return { ok: false, error: "Para la visita a domicilio pide la dirección (calle, número y comuna)." };
+      if (!escribir) {
+        const fee = Number((await sql`select nom.fee_visita(${i.lugar ?? "oficina"}, ${[i.direccion, i.comuna].filter(Boolean).join(", ") || null}) as f`)[0].f);
+        return { ok: true, data: { simulado: true, cuando: i.inicio, estado: "reservada", lugar: i.lugar ?? "oficina", fee: { monto: fee } } };
+      }
+      const r = (await sql`select core.api_nom_wa_reservar_visita(${conv.id}::uuid, ${sql.json({ inicio: i.inicio, nombre: i.nombre ?? null, email: i.email ?? null,
+        lugar: i.lugar ?? "oficina", direccion: i.direccion ?? null, comuna: i.comuna ?? null } as any)}, ${AUTOR}) as r`)[0].r;
       if (i.nombre || i.email) {
         await sql`update wa.conversaciones set ficha = ficha || ${sql.json({ ...(i.nombre ? { nombre: i.nombre } : {}), ...(i.email ? { email: i.email } : {}) } as any)} where id = ${conv.id}::uuid`;
       }
