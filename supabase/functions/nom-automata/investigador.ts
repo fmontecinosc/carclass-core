@@ -86,13 +86,14 @@ export async function pasoInvestigacion(client: Anthropic, modelo: string, v: Ve
   };
   const quedanB = Math.max(0, opts.maxBusquedas - est.uso.busquedas);
   const quedanL = Math.max(0, opts.maxLecturas - est.uso.lecturas);
-  const sinHerramientas = (quedanB === 0 && quedanL === 0) || est.vueltas + 1 >= opts.maxVueltas;
-  // Las herramientas siempre se declaran (el historial tiene bloques de ellas); en la etapa final no se pueden usar
+  // Las herramientas se declaran IGUALES en todas las etapas: si cambian, la API invalida el razonamiento (thinking)
+  // guardado de las etapas anteriores. El presupuesto total se controla con las instrucciones y con maxVueltas.
+  void quedanB; void quedanL;
   const tools: any[] = [
-    { type: "web_search_20260209", name: "web_search", max_uses: Math.max(1, Math.min(opts.porEtapa, quedanB)),
+    { type: "web_search_20260209", name: "web_search", max_uses: opts.porEtapa,
       user_location: { type: "approximate", city: "Santiago", region: "Región Metropolitana", country: "CL", timezone: "America/Santiago" } },
     // Mercado Libre bloquea la lectura automática: sus avisos se registran desde la búsqueda
-    { type: "web_fetch_20260209", name: "web_fetch", max_uses: Math.max(1, Math.min(opts.porEtapa, quedanL)), max_content_tokens: 6000,
+    { type: "web_fetch_20260209", name: "web_fetch", max_uses: opts.porEtapa, max_content_tokens: 6000,
       blocked_domains: ["mercadolibre.cl"] },
   ];
   const r: any = await client.beta.messages.create({
@@ -102,7 +103,6 @@ export async function pasoInvestigacion(client: Anthropic, modelo: string, v: Ve
     cache_control: { type: "ephemeral" },
     system: SISTEMA,
     tools,
-    ...(sinHerramientas || quedanB === 0 && quedanL === 0 ? { tool_choice: { type: "none" } } : {}),
     messages: est.mensajes,
   } as any);
   const u = r.usage ?? {};
