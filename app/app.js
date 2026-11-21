@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.10.1";
+const VERSION = "2.10.2";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -1176,7 +1176,7 @@ async function viewCot(id) {
     const v2 = q.items?.v === 2;
     P.innerHTML = `<div class="page-head no-print"><div><h1>Cotización ${esc(q.numero)}</h1><p><span class="pill ${COT_EST[q.estado] || ""}">${esc(q.estado)}</span> ${q.vista_en ? `· vista por el cliente ${hace(q.vista_en)}${q.vistas > 1 ? ` (${q.vistas} veces)` : ""}` : q.enviada_en ? "· enviada, aún no abierta" : "· borrador"}</p></div>
       <div class="actions">${q.empresa_id ? `<a class="btn" href="#/cliente/${q.empresa_id}">${ico("users", 15)} Ficha</a>` : ""}${v2 ? `<button class="btn" id="cq-edit">Editar</button>` : ""}${q.estado !== "borrador" ? `<button class="btn" id="cq-link">${ico("link", 15)} Copiar link</button>` : ""}
-        ${["enviada", "vista"].includes(q.estado) ? `<button class="btn" id="cq-ok">${ico("check", 15)} Aceptada</button><button class="btn ghost danger" id="cq-no">Rechazada</button>` : ""}<button class="btn primary" id="cq-pdf">${ico("dl", 15)} Descargar PDF</button></div></div>
+        ${["enviada", "vista"].includes(q.estado) ? `<button class="btn" id="cq-ok">${ico("check", 15)} Aceptada</button><button class="btn ghost danger" id="cq-no">Rechazada</button>` : ""}${q.unidad === "carclass" && q.estado !== "rechazada" ? `<a class="btn" href="${TOOLS.cotizador}/?cot=${encodeURIComponent(q.id)}" target="_blank" rel="noopener" title="Abre esta cotización en el cotizador para emitir la orden de ingreso y el acta de entrega">${ico("link", 15)} Orden de ingreso</a>` : ""}<button class="btn primary" id="cq-pdf">${ico("dl", 15)} Descargar PDF</button></div></div>
       ${v2 ? cotDoc(q, true) : `<div class="card card-b"><p class="muted">Cotización importada del cotizador anterior (${esc(q.unidad)}). Total neto ${clp(q.neto)}.</p></div>`}`;
     $("#cq-pdf").onclick = () => window.print();
     if ($("#cq-link")) $("#cq-link").onclick = () => copiar(linkPublico(q.token), "Link copiado");
