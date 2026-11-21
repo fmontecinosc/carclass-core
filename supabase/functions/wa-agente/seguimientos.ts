@@ -137,7 +137,26 @@ async function uno(sql: Sql, client: Anthropic, cfg: Record<string, string>, sys
     const pnid = c.phone_number_id || cfg.phone_number_id;
     for (let i = 0; i < mensajes.length; i++) {
       if (i > 0) await pausa();
-      const { wamid } = await enviarTexto(pnid, c.wa_usuario, mensajes[i]);
+      let wamid: string | null;
+      try {
+        ({ wamid } = await enviarTexto(pnid, c.wa_usuario, mensajes[i]));
+      } catch (e) {
+        // Un envío fallido no puede quedar en silencio (antes se reintentaba cada 10 min sin aviso): se registra el error
+        // y el texto queda como borrador para que Felipe lo envíe desde su WhatsApp, con aviso.
+        const msg = String((e as any)?.message ?? e).slice(0, 500);
+        await sql`insert into wa.agente_log (conversacion_id, modo, error) values (${c.id}::uuid, ${"seguimiento:" + modo}, ${msg})`;
+        if (/Kapso 402/.test(msg)) {
+          await sql`insert into wa.config (clave, valor) values ('kapso_limite_hasta', ${new Date(Date.now() + 24 * 3_600_000).toISOString()})
+                    on conflict (clave) do update set valor = excluded.valor`;
+        }
+        await sql`update wa.borradores set estado = 'vencido', resuelto_en = now(), resuelto_por = 'reemplazado'
+                  where conversacion_id = ${c.id}::uuid and estado = 'pendiente'`;
+        await sql`insert into wa.borradores (conversacion_id, mensajes, acciones)
+                  values (${c.id}::uuid, ${sql.json(mensajes.slice(i) as any)}, ${sql.json([{ herramienta: "seguimiento", input: { paso: s.canal, idea: s.idea, error_envio: msg }, resultado: { ok: false } }] as any)})`;
+        await sql`select core.push(${"Seguimiento sin enviar"}, ${nombre + " · WhatsApp rechazó el envío; revisa y envía desde Conversaciones"}, ${"#/conversaciones/" + c.id}, ${"wa_seg_err:" + s.id})`;
+        await fin("omitido");
+        return `seguimiento no enviado: ${msg.slice(0, 80)}`;
+      }
       await sql`insert into wa.mensajes (wamid, conversacion_id, direccion, tipo, texto, enviado_en)
                 values (${wamid}, ${c.id}::uuid, 'saliente_api', 'text', ${mensajes[i]}, now())`;
       if (c.oportunidad_id) {
