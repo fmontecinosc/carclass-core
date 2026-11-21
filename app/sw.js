@@ -1,6 +1,6 @@
 /* Carclass Core · service worker: app instalable, caché del cascarón y clic en avisos */
-const CACHE = "core-v2.9.0";
-const SHELL = ["./", "index.html", "app.css?v=2.9.0", "app.js?v=2.9.0", "informe-tasacion.js?v=2.9.0", "img/nom-logo.png", "manifest.webmanifest", "img/logo.png", "img/icon-192.png", "vendor/supabase.js?v=2.45.4"];
+const CACHE = "core-v2.9.1";
+const SHELL = ["./", "index.html", "app.css?v=2.9.1", "app.js?v=2.9.1", "informe-tasacion.js?v=2.9.1", "img/nom-logo.png", "manifest.webmanifest", "img/logo.png", "img/icon-192.png", "vendor/supabase.js?v=2.45.4"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", (e) => {

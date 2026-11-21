@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.9.0";
+const VERSION = "2.9.1";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -1150,9 +1150,10 @@ function modalTasacion(t, pre = {}) {
 async function viewTasacion(id, tab = "comparables") {
   setActive("tasaciones", "Tasación");
   const P = $("#page"); P.innerHTML = loading(6);
-  let d;
-  try { d = await rpc("app_nom_tasacion", { p_id: id }); } catch (e) { P.innerHTML = fail(e); return; }
+  let d, inv = null;
+  try { [d, inv] = await Promise.all([rpc("app_nom_tasacion", { p_id: id }), rpc("app_nom_investigacion", { p_id: id }).catch(() => null)]); } catch (e) { P.innerHTML = fail(e); return; }
   if (!d || !d.id) { P.innerHTML = `<div class="card">${empty("car", "Tasación no encontrada")}</div>`; return; }
+  const invActiva = inv && ["pendiente", "en_curso"].includes(inv.estado);
   setActive("tasaciones", d.folio);
   const editable = ["borrador", "calculada"].includes(d.estado), st = d.estadisticas || {}, av = d.avisos || [];
   const veh = [d.marca, d.modelo, d.version, d.anio].filter(Boolean).join(" ");
@@ -1162,13 +1163,16 @@ async function viewTasacion(id, tab = "comparables") {
   const marcaAj = (k) => aj[k] != null ? ' <span class="pill gold" title="Ajustado a mano; ver historial">ajustado</span>' : "";
   P.innerHTML = `<div class="page-head"><div><h1>${esc(veh)}</h1><p>${esc(d.folio)}${d.version_n > 1 ? ` · versión ${d.version_n}` : ""} · ${pillE(d.estado)} ${d.tipo === "pre_estimacion" ? '<span class="pill warn">Pre-estimación</span>' : '<span class="pill ok">Tasación respaldada</span>'}
       ${d.confianza ? `<span class="pill ${TAS_CONF[d.confianza][1]}">${TAS_CONF[d.confianza][0]}</span>` : ""} ${d.km != null ? "· " + int(d.km) + " km" : ""}${d.propietario ? ` · <a href="#/cliente/${d.propietario.id}">${esc(d.propietario.nombre)}</a>` : ""}</p></div>
-    <div class="actions">${editable ? `<button class="btn" id="tz-edit">Editar ficha</button><button class="btn primary" id="tz-calc">${ico("spark", 15)} Calcular</button>` : ""}
+    <div class="actions">${editable && d.puede_aprobar && !invActiva ? `<button class="btn" id="tz-inv">${ico("spark", 15)} ${av.length ? "Reinvestigar mercado" : "Investigar mercado con IA"}</button>` : ""}${editable ? `<button class="btn" id="tz-edit">Editar ficha</button><button class="btn primary" id="tz-calc">${ico("spark", 15)} Calcular</button>` : ""}
       ${d.estado === "calculada" ? `<button class="btn" id="tz-aj">Ajustar cifra</button>${d.puede_aprobar ? `<button class="btn primary" id="tz-apr">${ico("check", 15)} Revisar y aprobar</button>` : ""}` : ""}
       ${["aprobada", "enviada"].includes(d.estado) ? `<button class="btn primary" id="tz-env">${ico("chat", 15)} Enviar al cliente</button>` : ""}
       ${["calculada", "aprobada", "enviada"].includes(d.estado) ? `<button class="btn ghost" id="tz-ver">Nueva versión</button>` : ""}
       ${d.puede_aprobar && !["anulada", "reemplazada"].includes(d.estado) ? `<button class="btn ghost danger" id="tz-anu">Anular</button>` : ""}</div></div>
     ${(d.advertencias || []).length ? `<div class="alert" style="margin-bottom:14px">${ico("alert", 16)}<div>${d.advertencias.map((a) => `<div>${esc(a)}</div>`).join("")}</div></div>` : ""}
-    ${d.estado === "borrador" && !av.length ? `<div class="alert" style="margin-bottom:14px">${ico("spark", 16)}<div><b>Siguiente paso: investigar el mercado.</b> Pídele a tu agente de Claude «investiga el mercado para la tasación ${esc(d.folio)}» (usa las herramientas nom_* de Core y registra cada aviso con su URL y evidencia), o agrega avisos a mano.</div></div>` : ""}
+    ${invActiva ? `<div class="alert" style="margin-bottom:14px">${ico("spark", 16)}<div><b>Investigando el mercado${inv.etapas ? ` · etapa ${int(inv.etapas)}` : ""}.</b> Claude busca avisos comparables en Chileautos, Mercado Libre, Yapo y Kavak; toma unos minutos. Te aviso cuando la tasación esté lista para aprobar.${inv.error ? ` <span class="faint">Último reintento: ${esc(String(inv.error).slice(0, 120))}</span>` : ""}</div></div>`
+      : inv && inv.estado === "error" ? `<div class="alert" style="margin-bottom:14px">${ico("alert", 16)}<div><b>La investigación automática falló.</b> ${esc(String(inv.error || "").slice(0, 200))} Puedes reintentar o agregar avisos a mano.</div></div>`
+      : inv && inv.estado === "lista" && inv.notas ? `<div class="alert" style="margin-bottom:14px">${ico("spark", 16)}<div><b>Notas del investigador</b> (${int(inv.avisos ?? 0)} avisos, ${int(inv.verificados ?? 0)} verificados, USD ${esc(String(inv.costo_usd ?? "—"))}): ${esc(inv.notas)}</div></div>`
+      : d.estado === "borrador" && !av.length ? `<div class="alert" style="margin-bottom:14px">${ico("spark", 16)}<div><b>Siguiente paso: investigar el mercado.</b> Pulsa «Investigar mercado con IA» (busca avisos reales con su URL y evidencia) o agrega avisos a mano.</div></div>` : ""}
     <div class="kpis" style="margin-bottom:16px">${kpi("Rango de oferta comparable" + marcaAj("rango_oferta_min"), rng(d.rango_oferta_min, d.rango_oferta_max), st.precio_min ? `Avisos válidos: ${clpM(st.precio_min)} a ${clpM(st.precio_max)}` : "")}
       ${kpi("Valor comercial" + marcaAj("valor_comercial"), clp(d.valor_comercial), st.mediana_ajustada ? `Mediana ajustada ${clp(st.mediana_ajustada)}` : "")}
       ${kpi("Publicación sugerida" + marcaAj("precio_publicacion"), clp(d.precio_publicacion), st.publicacion_calculada && st.publicacion_calculada !== d.precio_publicacion ? `Cálculo: ${clp(st.publicacion_calculada)}` : "")}
@@ -1178,6 +1182,9 @@ async function viewTasacion(id, tab = "comparables") {
   const again = (t = tab) => viewTasacion(id, t);
   $$("#tz-tabs [data-tab]").forEach((b) => b.onclick = () => again(b.dataset.tab));
   if ($("#tz-edit")) $("#tz-edit").onclick = () => modalTasacion(d);
+  if ($("#tz-inv")) $("#tz-inv").onclick = async () => { try { await rpc("app_nom_investigar", { p_id: id }); toast("Investigación en marcha: te aviso cuando esté lista"); again(); } catch (e) { toast(e.message, true); } };
+  // Mientras investiga, la ficha se refresca sola cada 30 s (solo si sigue abierta)
+  if (invActiva) setTimeout(() => { if (location.hash === "#/tasacion/" + id) again(); }, 30000);
   if ($("#tz-calc")) $("#tz-calc").onclick = async () => { try { await rpc("app_nom_tasacion_calcular", { p_id: id }); toast("Tasación calculada"); again(); } catch (e) { toast(e.message, true); } };
   if ($("#tz-aj")) $("#tz-aj").onclick = () => modalAjuste(d, again);
   if ($("#tz-apr")) $("#tz-apr").onclick = () => modalAprobar(d, again);
