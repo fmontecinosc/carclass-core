@@ -56,7 +56,8 @@ El CRM y sistema de gestión propio del grupo empresarial **Carclass Group** (Fe
 - **Stock NOM vigente:** solo Toyota Corolla Cross (TDCG37). La Outlander se retiró el 18-nov. La web muestra otros autos para no verse vacía: el asesor dice que ya se vendieron.
 - **Direcciones ante clientes (Felipe 20-nov):** oficina «Av. Puerta Oriente 361, oficina 409B, Chicureo»; taller «complejo industrial Alto Portezuelo, en Quilicura» (El Juncal 240, bodega 16; Felipe 20-nov: se nombra el complejo primero y luego la comuna); la calle y bodega exactas al confirmar la reserva.
 - **Retiro a domicilio Carclass (Felipe 20-nov, `core_v44`):** sin costo extra solo en Chicureo y Lo Barnechea y solo para ventas con PPF desde $600.000; ahí el asesor puede decir «sin costo extra». **La condición es interna, no se menciona.** Otros servicios en la zona u otras zonas: se ofrece igual, sin hablar de costo, y se traspasa para confirmar según distancia.
-- **Asesor de WhatsApp:** fuente única en este repo (`supabase/functions/wa-agente`, `prompts/asesor-sistema.md`); `wa-simular` importa los mismos módulos y prueba prompts con `prompt_url` antes de subirlos. Webs y mensajes de entrada en `docs/webs-asesor.md`.
+- **Asesor de WhatsApp:** fuente única en este repo (`supabase/functions/wa-agente`, `prompts/asesor-sistema.md`); el simulador vive en la misma función (`/wa-agente/simular`, prompt de prueba en `wa.config.agente_prompt_prueba`). Webs y mensajes de entrada en `docs/webs-asesor.md`.
+- **Al cliente, documentos PDF (Felipe 21-nov):** cotizaciones, PPF por modelo e informes de tasación se envían como PDF por WhatsApp, nunca como link.
 
 ## 5. Estado de los datos (5-nov-2026)
 
@@ -216,6 +217,15 @@ Felipe guarda los documentos y la base del negocio en su Drive (fmontecinos@carc
 - Cotizador Carclass v2 versionado en `herramientas/cotizador-carclass/` (catálogo vivo con `app_catalogo`, IVA incluido por defecto, direcciones vigentes, lugar de recepción y entrega, PPF por modelo, venta en `fin.ventas` vía `app_fin_guardar`, A4 sin cortes y vista móvil a escala). El original cobraba 19% de IVA sobre precios con IVA.
 - Seguridad `core_v49`: `public.nom_inspecciones` ya no es legible ni editable por `anon` salvo inspecciones de las últimas 48 h, y `anon` no puede marcar pagos (se marcan con `app_ipc_marcar_pago`, solo dueño). Pendiente: pasar nom-inspeccion a login de Core, cerrar las ~30 tablas `public.*` abiertas a `authenticated`, retirar HQ (`tangerine-flan-697dfa`), cotizador-black, playbookblack y callhub-black. Revisión completa: plan de 5 fases (absorber playbooks, reporte al consignante y documentos Carclass en Core).
 - **El repo es público:** no versionar copias de herramientas con datos de clientes (el HQ trae 38 servicios reales).
+
+**21-nov (noche) · PDF al cliente, IPC cerrada, tasador y app 2.9.1:**
+- **Regla de Felipe: al cliente se le envían documentos PDF, nunca links de cotización ni de informe.** `crear_cotizacion` genera el PDF (`pdfCotizacion`, bucket `documentos/cotizaciones/…`, `crm.cotizaciones.pdf_url`) y wa-agente lo envía después del texto; se envía un documento por nombre y turno. El informe de tasación NOM aprobado sale en PDF (`nom-automata/informe.ts`, solo `nom.payload_cliente`) aunque NOM esté en `observar`: la aprobación de Felipe autoriza el envío.
+- IPC: `public.nom_inspecciones` solo para usuarios activos de Core (`core_v50`); nom-inspeccion v2 pide login de Core (supabase-js, token de sesión en vez de la clave anónima) y sigue funcionando sin conexión. Pago: `app_ipc_marcar_pago` (dueño).
+- Cotizador Carclass v2 publicado (cotizador-carclass.netlify.app). Publicar sitios: conector Netlify de claude.ai (`deploy-site` → `npx @netlify/mcp … --proxy-path …` desde la carpeta del sitio); no hace falta token de Netlify.
+- Simulador del asesor dentro de wa-agente: `POST /functions/v1/wa-agente/simular` con `prompt_clave` (clave de `wa.config`, p. ej. `agente_prompt_prueba`). La función `wa-simular` quedó retirada (410).
+- Tasador NOM (`core_v51`–`core_v53`, nom-automata 1.1.0): investigación de mercado **por etapas** (cron `nom-automata` cada minuto; cada etapa ≤ 4 búsquedas y 4 lecturas, estado en `nom.investigaciones.conversacion`); el investigador registra también los autos vistos en listados (no verificados). Si hay menos de 3 avisos verificados, `nom.calcular_base` usa los no verificados con peso 0,6 (`nom.tasador.peso_no_verificado`) y deja una pre-estimación de confianza baja con advertencia (aprobar exige excepción). App: botón «Investigar mercado con IA» (`app_nom_investigar`) y estado (`app_nom_investigacion`). Se borró la tasación de prueba del Mazda CX-5.
+- App Core 2.9.1 publicada en app.carclass.cl (módulo Tasaciones incluido).
+- Pendiente para el repo privado: el despliegue de wa-agente aún importa módulos desde raw.githubusercontent; nom-automata ya se sube con todos sus archivos. Falta un token de Supabase válido (`api.supabase.com` en Network secrets) para desplegar con la CLI.
 
 **Pendiente:**
 - Netlify: conectar el sitio carclass-core al repositorio (base `app`) para publicar con cada push; desde la nube de Claude la red bloquea Netlify.
