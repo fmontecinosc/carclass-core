@@ -121,7 +121,7 @@ export const HERRAMIENTAS: Anthropic.Tool[] = [
   },
   {
     name: "crear_cotizacion",
-    description: "Crea (o actualiza, si ya hay una abierta en esta conversación) la cotización de Carclass en Core con los ítems y precios que ya obtuviste de las herramientas. Devuelve número, vigencia y el link de la cotización para el cliente.",
+    description: "Crea (o actualiza, si ya hay una abierta en esta conversación) la cotización de Carclass en Core con los ítems y precios que ya obtuviste de las herramientas. Genera el PDF de la cotización, que se envía al cliente por WhatsApp después de tu mensaje. Devuelve número y vigencia.",
     input_schema: {
       type: "object",
       properties: {
