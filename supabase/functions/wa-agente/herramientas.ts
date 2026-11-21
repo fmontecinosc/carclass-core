@@ -478,22 +478,30 @@ export function crearEjecutor(o: OpcionesEjecutor) {
     },
 
     async consultar_stock_nom(i) {
+      // Presupuesto con holgura del 10%: el precio publicado es conversable y un comprador cerca del precio es un buen lead.
+      // Nunca se entrega el precio mínimo; los autos sobre el presupuesto van marcados.
+      const max = i.precio_max ? Number(i.precio_max) : null;
+      const tope = max ? Math.round(max * 1.10) : null;
       const consulta = (b: string | null) => sql`
-        select marca, modelo, version, anio, km, precio_publicado
+        select marca, modelo, version, anio, km, precio_publicado,
+               (${max}::bigint is not null and precio_publicado > ${max}::bigint) as sobre_presupuesto
         from ops.vehiculos
         where estado = 'disponible' and coalesce(precio_publicado, 0) > 0
           and (${b}::text is null or lower(marca || ' ' || modelo || ' ' || coalesce(version, '')) like ${b})
-          and (${i.precio_max ?? null}::bigint is null or precio_publicado <= ${i.precio_max ?? null})
+          and (${tope}::bigint is null or precio_publicado <= ${tope}::bigint)
         order by precio_publicado`;
       const b = i.busqueda ? `%${norm(String(i.busqueda))}%` : null;
       let filas = await consulta(b);
       // El stock no guarda el tipo (SUV, sedán, camioneta): si el texto no calza, se devuelve todo lo que entra en el presupuesto
-      let nota: string | undefined;
+      const notas: string[] = [];
       if (filas.length === 0 && b) {
         filas = await consulta(null);
-        nota = "La búsqueda por texto no calzó; estos son todos los autos disponibles dentro del presupuesto. Revisa tú cuáles corresponden a lo que pide (por ejemplo, Corolla Cross y Outlander son SUV).";
+        notas.push("La búsqueda por texto no calzó; estos son todos los autos disponibles dentro del presupuesto. Revisa tú cuáles corresponden a lo que pide (por ejemplo, Corolla Cross y Outlander son SUV).");
       }
-      return { ok: true, data: { autos: filas, ...(nota ? { nota } : {}) } };
+      if (filas.some((f: any) => f.sobre_presupuesto)) {
+        notas.push("Los autos con sobre_presupuesto = true pasan hasta un 10% el presupuesto del cliente. Puedes mostrarlos con su precio publicado y decir que el precio es conversable en la visita; nunca des un precio mínimo ni ofrezcas un descuento.");
+      }
+      return { ok: true, data: { autos: filas, ...(notas.length ? { nota: notas.join(" ") } : {}) } };
     },
 
     async crear_cotizacion(i) {
