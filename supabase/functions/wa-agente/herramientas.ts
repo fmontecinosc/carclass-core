@@ -428,7 +428,7 @@ export function crearEjecutor(o: OpcionesEjecutor) {
             carclass_protection_pack_laminas_4_micras: redondearMil((kit5g + cer4 + lam4) * desc),
             nota: "Paquetes con su descuento ya incluido. Sin descuentos adicionales.",
           } : null,
-          ppf_total: "requiere validación de Felipe",
+          ppf_total: "El PPF total es el completo exterior de esta planilla (va en el PDF): da ese valor si lo piden, sujeto a revisión del auto en la recepción. No traspases por eso.",
         },
       };
     },

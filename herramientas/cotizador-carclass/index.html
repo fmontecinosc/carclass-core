@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cotizador Carclass</title>
+<!-- v2 · 21-nov-2026: catálogo de Core, IVA incluido, direcciones vigentes, PPF por modelo, A4 sin cortes y vista móvil a escala -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -217,14 +218,35 @@
   .doc-footer .terms b{display:block;font-size:10.5px;letter-spacing:.06em;margin-bottom:5px;}
   .doc-footer .terms p{margin:0 0 7px;text-transform:none;font-size:9.5px;line-height:1.55;color:#333;letter-spacing:0;}
 
-  @media (max-width:980px){
+  @media screen and (max-width:980px){
     .app{grid-template-columns:1fr;height:auto;}
     .sidebar{border-right:none;border-bottom:1px solid var(--side-line);}
-    .preview-wrap{padding:20px 10px;}
-    .page{width:100%;min-height:auto;}
-    .doc-header{grid-template-columns:1fr;gap:4mm;}
-    .doc-header .fields{justify-self:start;text-align:left;}
+    .preview-wrap{padding:16px 8px;align-items:center;overflow-x:hidden;}
+    /* El documento conserva su ancho A4 y se escala completo a la pantalla (ver ajustarEscala) */
   }
+  /* Documento compacto: orden de ingreso y acta de entrega caben en una hoja con datos normales */
+  .page.compacto .doc-header{min-height:0;padding:5mm 12mm;}
+  .page.compacto .doc-header .logo img{height:17mm;}
+  .page.compacto .doc-header .lines{font-size:14px;}
+  .page.compacto .doc-header .fields .doctitle{font-size:19px;margin-bottom:4px;}
+  .page.compacto .page-body{padding:7mm 12mm 6mm;}
+  .page.compacto .info-grid{line-height:1.55;margin-bottom:10px;}
+  .page.compacto table.items tbody td{padding:6px 12px;}
+  .page.sin-desc table.items tbody td .sub{display:none;}
+  .page.compacto .doc-footer .terms p{margin-bottom:4px;}
+  .page.compacto .totals{margin-top:10px;}
+  .page.compacto .block-title{margin:12px 0 6px;padding-top:9px;}
+  .page.compacto .block-text{line-height:1.5;}
+  .page.compacto .signrow{margin-top:16px;}
+  .page.compacto .doc-footer{padding-top:12px;line-height:1.6;}
+  .info-block .ln span:last-child{overflow-wrap:anywhere;}
+  .ppf-res{display:grid;gap:8px;margin-top:8px;}
+  .ppf-card{border:1px solid var(--side-line);border-radius:8px;padding:10px;background:var(--side-panel);font-size:12.5px;}
+  .ppf-card b{display:block;margin-bottom:6px;}
+  .ppf-card .bt{display:flex;flex-wrap:wrap;gap:6px;}
+  .ppf-card button{background:#fff;border:1px solid var(--side-line);border-radius:6px;padding:5px 8px;font-size:11.5px;cursor:pointer;font-family:'Outfit',sans-serif;}
+  .ppf-card button:hover{border-color:var(--ink);}
+  .src-tag{font-size:10.5px;color:var(--side-dim);margin:-6px 0 10px;}
 
   @page{size:A4;margin:0;}
   @media print{
@@ -233,7 +255,9 @@
     .sidebar, .page-label, .drawer, .login, .toast{display:none !important;}
     .app{display:block;height:auto;}
     .preview-wrap{display:block;padding:0;background:#fff;gap:0;}
-    .page{width:210mm;min-height:297mm;box-shadow:none;}
+    .page{width:210mm;min-height:297mm;box-shadow:none;zoom:1 !important;}
+    .block-title,.info-grid,.qc-grid,.signrow,.totals,.doc-footer,table.items tr{break-inside:avoid;page-break-inside:avoid;}
+    .block-title{break-after:avoid;page-break-after:avoid;}
   }
 </style>
 </head>
@@ -329,7 +353,7 @@
         <select id="f_origen">
           <option value="">—</option>
           <option>Instagram</option><option>Meta Ads</option><option>WhatsApp directo</option><option>Referido</option>
-          <option>Cliente anterior</option><option>Grupo Chicureo</option><option>Campaña Tesla</option><option>Google</option><option>Web carclass.cl</option><option>NOM</option><option>Otro</option>
+          <option>Cliente anterior</option><option>Grupo Chicureo</option><option>Campaña Tesla</option><option>Google</option><option>Web carclass.cl</option><option>Asesor WhatsApp</option><option>NOM</option><option>Otro</option>
         </select>
       </div>
     </div>
@@ -353,8 +377,19 @@
         Esta cotización tiene PPF sin sellado cerámico. Lo recomendado es protegerlo completo: el cerámico cuida el resto de la carrocería y facilita el mantenimiento.
         <br><button type="button" onclick="addRecommendedCeramic()">Agregar Cerámico 4 años</button>
       </div>
+      <div class="src-tag" id="cat_src">Catálogo local (ingresa para usar el de Core)</div>
       <div class="search-field"><input type="text" id="search_serv" placeholder="Buscar servicio..." oninput="filterList()"></div>
       <div id="list_serv"></div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-title">PPF por modelo (planillas del taller)</div>
+      <div class="row2" style="grid-template-columns:1fr auto;">
+        <div class="field" style="margin-bottom:0;"><label for="ppf_q">Marca, modelo y año</label><input id="ppf_q" type="text" placeholder="Ej: BMW X3 2026" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarPPF();}"></div>
+        <button class="btn-save" type="button" style="align-self:end;height:38px;" onclick="buscarPPF()">Buscar</button>
+      </div>
+      <div class="hint" style="text-align:left;" id="ppf_hint">Precios públicos con IVA e instalación, en XPEL Xtreme y Ultimate Plus 8. Requiere ingresar.</div>
+      <div class="ppf-res" id="ppf_res"></div>
     </div>
 
     <div class="sec">
@@ -370,7 +405,7 @@
 
     <div class="sec">
       <div class="sec-title">Condiciones comerciales</div>
-      <label class="check"><input id="f_iva_incluido" type="checkbox"> Los precios ingresados ya incluyen IVA</label>
+      <label class="check"><input id="f_iva_incluido" type="checkbox" checked> Los precios ya incluyen IVA (los del catálogo Carclass siempre lo incluyen)</label>
       <div class="row2">
         <div class="field"><label for="f_descuento">Descuento (%)</label><input id="f_descuento" type="number" step="1" value="0" min="0" max="100"></div>
         <div class="field"><label for="f_iva">IVA (%)</label><input id="f_iva" type="number" step="0.1" value="19"></div>
@@ -378,6 +413,7 @@
       <div class="row2">
         <div class="field"><label for="f_pago">Forma de pago</label>
           <select id="f_pago">
+            <option value="RESERVA DE $50.000 (SE DESCUENTA DEL TOTAL). AL INGRESAR EL VEHÍCULO SE COMPLETA EL 50% DEL TOTAL Y EL SALDO SE PAGA CONTRA ENTREGA.">Reserva $50.000 + 50% al ingreso + saldo contra entrega</option>
             <option value="ABONO DEL 50% AL INGRESO A TALLER. EL SALDO DE 50% SE CANCELA CONTRA ENTREGA.">50/50 — Abono al ingreso, saldo contra entrega</option>
             <option value="PAGO DEL 100% AL MOMENTO DE INGRESAR A TALLER.">Pago 100% al ingreso</option>
             <option value="PAGO DEL 100% CONTRA ENTREGA DEL VEHÍCULO.">Pago 100% contra entrega</option>
@@ -385,13 +421,19 @@
             <option value="TARJETA DE CRÉDITO O DÉBITO AL MOMENTO DE LA ENTREGA.">Tarjeta de crédito / débito</option>
           </select>
         </div>
-        <div class="field"><label for="f_validez">Validez cotización (días)</label><input id="f_validez" type="number" value="10"></div>
+        <div class="field"><label for="f_validez">Validez cotización (días)</label><input id="f_validez" type="number" value="7"></div>
       </div>
     </div>
 
     <div class="sec stage2-only">
       <div class="sec-title">Recepción — Ingreso a Taller</div>
-      <div class="field"><label for="f_lugar_recepcion">Lugar de recepción</label><input id="f_lugar_recepcion" type="text" value="Oficina Carclass · Av. Puerta Oriente #361, Of. 409, Torre B, Chicureo"></div>
+      <div class="row2">
+        <div class="field"><label for="f_lugar_recepcion">Lugar de recepción</label>
+          <select id="f_lugar_recepcion"><option value="taller">Taller · Alto Portezuelo, Quilicura</option><option value="oficina">Oficina · Puerta Oriente, Chicureo</option><option value="domicilio">Retiro a domicilio</option></select></div>
+        <div class="field"><label for="f_lugar_entrega">Lugar de entrega</label>
+          <select id="f_lugar_entrega"><option value="taller">Taller · Alto Portezuelo, Quilicura</option><option value="oficina">Oficina · Puerta Oriente, Chicureo</option><option value="domicilio">Entrega a domicilio</option></select></div>
+      </div>
+      <div class="field"><label for="f_dir_domicilio">Dirección del cliente (retiro / entrega a domicilio)</label><input id="f_dir_domicilio" type="text" placeholder="Calle, número, comuna"></div>
       <div class="row2">
         <div class="field"><label for="f_fecha_ingreso">Fecha de ingreso</label><input id="f_fecha_ingreso" type="date"></div>
         <div class="field"><label for="f_fecha_entrega_est">Fecha estimada de entrega</label><input id="f_fecha_entrega_est" type="date"></div>
@@ -411,7 +453,7 @@
         <div class="field"><label for="f_recepciono">Recepcionó (Carclass)</label><input id="f_recepciono" type="text" value="Felipe Montecinos"></div>
         <div class="field"><label for="f_abono">Abono recibido (CLP)</label><input id="f_abono" type="number" step="1000" value="0"></div>
       </div>
-      <div class="field"><label for="f_taller">Taller asignado (interno, no se imprime)</label><input id="f_taller" type="text" value="Hiendcar · Quilicura"></div>
+      <div class="field"><label for="f_taller">Instalador (interno, no se imprime)</label><input id="f_taller" type="text" value="Hiendcar · Quilicura"></div>
       <div class="field"><label for="f_costo_partner">Costo partner (interno, CLP pagado al taller)</label><input id="f_costo_partner" type="number" step="1000" value="0"></div>
     </div>
 
@@ -440,8 +482,8 @@
           <select id="f_saldo_pagado"><option value="Sí">Sí</option><option value="No">No</option><option value="No aplica">No aplica</option></select>
         </div>
       </div>
-      <button class="btn-ghost" type="button" style="width:100%;" onclick="registerSale()">Registrar venta en Finanzas</button>
-      <div class="hint" id="sale_hint">Se registra una sola vez por orden, cuando está entregada.</div>
+      <button class="btn-ghost" type="button" style="width:100%;" onclick="registerSale()">Registrar venta en Finanzas de Core</button>
+      <div class="hint" id="sale_hint">Se registra una sola vez por orden, cuando está entregada: venta en Core y, si lo ingresaste, el costo del instalador ligado a esa venta.</div>
     </div>
 
     <div class="download-bar">
@@ -466,7 +508,16 @@ const LOGO_B64 = "data:image/webp;base64,UklGRgI7AABXRUJQVlA4WAoAAAAwAAAA7wAA7wA
 /* ================= CONFIG ================= */
 const SUPABASE_URL = 'https://tvjpwwwnpchecolcsnxp.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr';
-const ADDRESS = 'Av. Puerta Oriente #361, Of. 409, Torre B, Chicureo';
+// Direcciones ante clientes (Felipe 20-nov-2026): el taller se nombra primero
+const OFICINA = 'Av. Puerta Oriente 361, oficina 409B, Chicureo';
+const TALLER_CORTO = 'complejo industrial Alto Portezuelo, Quilicura';
+const TALLER_EXACTO = 'El Juncal 240, bodega 16, complejo industrial Alto Portezuelo, Quilicura';
+const LUGARES = {
+  taller: {corto:'Taller · Alto Portezuelo, Quilicura', doc:()=>'Taller Carclass · ' + TALLER_EXACTO},
+  oficina: {corto:'Oficina Carclass · Chicureo', doc:()=>'Oficina Carclass · ' + OFICINA},
+  domicilio: {corto:'A domicilio', doc:()=>'A domicilio' + (val('f_dir_domicilio') ? ' · ' + val('f_dir_domicilio') : '')},
+};
+const lugarDoc = (k)=> (LUGARES[k] || LUGARES.taller).doc();
 let sb = null;
 try { sb = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null; } catch(e){ sb = null; }
 let session = null;
@@ -474,46 +525,78 @@ let offline = false;
 
 /* ================= CATALOG =================
    Precios referenciales según carclass.cl (oct 2026). Se pueden editar caso a caso. */
-const CATALOG = [
-  {id:'pkg_protect', group:'Paquetes Carclass', pkg:true, name:'Carclass Protect +', desc:'Corrección de pintura + sellado cerámico 4 años + láminas de seguridad + coordinación e informe fotográfico', price:650000},
-  {id:'pkg_shield', group:'Paquetes Carclass', pkg:true, name:'Carclass Shield', desc:'PPF frontal (capó, paragolpes y retrovisores) + sellado cerámico 4 años + corrección de pintura + informe técnico de protección', price:1350000},
-  {id:'pkg_wheels', group:'Paquetes Carclass', pkg:true, name:'Carclass Wheels', desc:'Reparación y pintura de 4 llantas + sellado cerámico 1 año en carrocería + coordinación y entrega', price:700000},
-
-  {id:'cer_1', group:'Sellado Cerámico', ceramic:true, name:'Sellado Cerámico 1 año', desc:'Hidrofóbico, brillo profundo, limpieza interior básica', price:325000},
-  {id:'cer_4', group:'Sellado Cerámico', ceramic:true, name:'Sellado Cerámico 4 años', desc:'Dureza 9H, efecto espejo, máxima resistencia UV, limpieza interior detallada', price:450000},
-  {id:'cer_8', group:'Sellado Cerámico', ceramic:true, name:'Sellado Cerámico 8 años', desc:'Capa elite de larga duración, incluye corrección de pintura', price:750000},
-  {id:'cer_multi', group:'Sellado Cerámico', name:'Cerámico Multisuperficies (vidrios, llantas, plásticos)', price:150000},
-  {id:'cer_interior', group:'Sellado Cerámico', name:'Cerámico Interior (cuero / tapiz)', price:150000},
-
-  {id:'ppf_reducido', group:'PPF', ppf:true, name:'PPF Frontal Reducido', desc:'Paragolpes delantero completo y faros delanteros', price:650000},
-  {id:'ppf_kit', group:'PPF', ppf:true, name:'PPF Kit Frontal', desc:'Paragolpes y capó completo, tapabarros delanteros, faros y espejos', price:990000},
-  {id:'ppf_total', group:'PPF', ppf:true, name:'PPF Total', desc:'Carrocería 100% cubierta, todos los paneles, sellado cerámico bonificado', price:4550000},
-  {id:'ppf_franja', group:'PPF', ppf:true, name:'PPF Franja de Capó', price:350000},
-  {id:'ppf_techo', group:'PPF', ppf:true, name:'PPF Techo', price:450000},
-  {id:'ppf_manillas', group:'PPF', ppf:true, name:'PPF Manillas (juego 4 un.)', price:90000},
-  {id:'ppf_marcos', group:'PPF', ppf:true, name:'PPF Marcos de Ventanas', price:280000},
-  {id:'ppf_espejos', group:'PPF', ppf:true, name:'PPF Espejos (par)', price:90000},
-
-  {id:'lam_seguridad', group:'Láminas de Seguridad', name:'Láminas de Seguridad', price:225000},
-  {id:'lam_full', group:'Láminas de Seguridad', name:'Láminas de Seguridad Full (incl. parabrisas)', price:380000},
-  {id:'lam_nano', group:'Láminas de Seguridad', name:'Nano Cerámico Premium (control solar)', price:450000},
-
-  {id:'wpf_parabrisas', group:'WPF', name:'WPF Parabrisas Completo', price:500000},
-  {id:'wpf_faros', group:'WPF', name:'WPF Faros (par)', price:150000},
-
-  {id:'corr_intermedia', group:'Corrección y Detailing', name:'Corrección de Pintura Intermedia', price:175000},
-  {id:'corr_2etapas', group:'Corrección y Detailing', name:'Corrección de Pintura — 2 Etapas', price:450000},
-  {id:'det_ext', group:'Corrección y Detailing', name:'Detailing Premium Exterior', price:120000},
-  {id:'det_int', group:'Corrección y Detailing', name:'Detailing Premium Interior', price:140000},
-  {id:'det_full', group:'Corrección y Detailing', name:'Detailing Full (Exterior + Interior)', price:220000},
-
-  {id:'pdr_panel', group:'Desabolladura y Pintura', name:'Desabolladura sin Pintura — PDR (por panel)', price:80000},
-  {id:'pint_panel', group:'Desabolladura y Pintura', name:'Pintura de Panel', price:180000},
-  {id:'pulido_faros', group:'Desabolladura y Pintura', name:'Pulido de Faros (par)', price:60000},
-
-  {id:'llanta_cosmetica', group:'Llantas', name:'Reparación Cosmética de Llanta (c/u)', price:45000},
-  {id:'llanta_pintura', group:'Llantas', name:'Pintura de Llanta (c/u)', price:60000},
+// Respaldo sin conexión: crm.catalogo de Carclass al 21-nov-2026 (precios con IVA). Con sesión se usa app_catalogo('carclass').
+let CATALOG = [
+  {id:'protect_plus', group:'Paquetes Carclass', pkg:true, name:'Carclass Protect+', desc:'Corrección de pintura + sellado cerámico 4 años + láminas de seguridad + coordinación e informe fotográfico', price:650000},
+  {id:'shield', group:'Paquetes Carclass', pkg:true, ceramic:true, name:'Carclass Shield', desc:'PPF frontal XPEL Xtreme (capó, parachoques, tapabarros, focos y espejos) + sellado cerámico 4 años + corrección + informe técnico. Valor por modelo: usa «PPF por modelo»', price:1350000},
+  {id:'protection_pack', group:'Paquetes Carclass', pkg:true, ceramic:true, name:'Carclass Protection Pack', desc:'Láminas de seguridad + PPF frontal XPEL Xtreme + sellado cerámico 4 años, en una sola visita. Valor por modelo: usa «PPF por modelo»', price:1590000},
+  {id:'ceramico_1', group:'Sellado Cerámico', ceramic:true, name:'Sellado cerámico 1 año', desc:'XPEL Fusion Plus, con descontaminación y corrección de pintura previa. Incluye detailing interior', price:350000},
+  {id:'ceramico_4', group:'Sellado Cerámico', ceramic:true, name:'Sellado cerámico 4 años', desc:'XPEL Fusion Plus, con descontaminación y corrección de pintura previa. Incluye detailing interior', price:450000},
+  {id:'ceramico_8', group:'Sellado Cerámico', ceramic:true, name:'Sellado cerámico 8 años', desc:'XPEL Fusion Plus, con descontaminación y corrección de pintura previa. Incluye detailing interior', price:750000},
+  {id:'ppf_frontal', group:'PPF', ppf:true, name:'PPF kit frontal', desc:'XPEL Xtreme: parachoques, capó, tapabarros, focos y espejos. Referencial: el valor exacto sale de «PPF por modelo»', price:990000},
+  {id:'ppf_frontal_reducido', group:'PPF', ppf:true, name:'PPF frontal reducido', desc:'Solo si el cliente lo pide (no público desde 17-nov-2026)', price:650000},
+  {id:'ppf_total', group:'PPF', ppf:true, name:'PPF total', desc:'XPEL Xtreme, vehículo completo, sellado cerámico bonificado. Referencial', price:4550000},
+  {id:'ppf_interior', group:'PPF', name:'PPF interior kit full (pantallas y piano black)', desc:'Desde, según modelo', price:100000},
+  {id:'wpf', group:'PPF', name:'WPF parabrisas', desc:'Film protector de parabrisas', price:500000},
+  {id:'laminas', group:'Láminas de Seguridad', name:'Láminas de seguridad 4 micras (recomendada)', desc:'Laterales + luneta, $225.000 a $250.000 según modelo', price:225000},
+  {id:'laminas_8', group:'Láminas de Seguridad', name:'Láminas de seguridad 8 micras', desc:'Laterales + luneta, $300.000 a $325.000 según modelo; parabrisas como adicional', price:300000},
+  {id:'detailing_interior', group:'Detailing', name:'Detailing interior personalizado', desc:'Solo interior, con lavado exterior básico de cortesía', price:175000},
+  {id:'llantas', group:'Llantas, desabolladura y pintura', name:'Reparación y pintura de llantas', desc:'Desde; requiere validación del especialista', price:350000},
+  {id:'pdr', group:'Llantas, desabolladura y pintura', name:'Desabolladura y pintura', desc:'Aproximado; se evalúa con fotos y especialista', price:325000},
 ];
+const GRUPO = (c)=> /^(protect_plus|shield|protection_pack|wheels)$/.test(c) ? 'Paquetes Carclass' : /^ceramico|^mant_ceramico/.test(c) ? 'Sellado Cerámico'
+  : /^ppf|^wpf/.test(c) ? 'PPF' : /^laminas/.test(c) ? 'Láminas de Seguridad' : /^detailing|^correccion/.test(c) ? 'Detailing' : 'Llantas, desabolladura y pintura';
+const ORDEN_GRUPOS = ['Paquetes Carclass','Sellado Cerámico','PPF','Láminas de Seguridad','Detailing','Llantas, desabolladura y pintura'];
+async function cargarCatalogoCore(){
+  if(!sb || !session) return;
+  const {data, error} = await sb.rpc('app_catalogo', {p_unidad:'carclass'});
+  if(error || !Array.isArray(data) || !data.length) { el('cat_src').textContent = 'Catálogo local (no se pudo leer Core)'; return; }
+  const lista = data.filter(c=>c.codigo !== 'retiro').map(c=>({ id:c.codigo, group:GRUPO(c.codigo), pkg:/^(protect_plus|shield|protection_pack)$/.test(c.codigo),
+    ceramic:/^ceramico|^(shield|protection_pack)$/.test(c.codigo), ppf:/^ppf_(frontal|total)/.test(c.codigo), name:c.nombre, desc:c.descripcion||'', price:Number(c.precio)||0 }));
+  lista.sort((a,b)=> ORDEN_GRUPOS.indexOf(a.group) - ORDEN_GRUPOS.indexOf(b.group));
+  CATALOG = lista;
+  el('cat_src').textContent = 'Catálogo de Carclass Core · ' + lista.length + ' servicios vigentes';
+  renderList(el('search_serv').value); renderPreview();
+}
+
+/* ================= PPF POR MODELO ================= */
+const KIT_TXT = {kit_frontal:'Kit frontal completo', completo_exterior:'Completo exterior', kit_frontal_reducido:'Kit frontal reducido'};
+const KIT_DESC = {kit_frontal:'Capó, guardabarros, espejos, parachoques y focos delanteros', completo_exterior:'Todas las piezas pintadas del auto', kit_frontal_reducido:'Parachoques y focos, capó y guardabarros parciales'};
+let ppfCache = [];
+async function buscarPPF(){
+  const q = el('ppf_q').value.trim();
+  if(!q) return;
+  if(!sb || !session){ toast('Ingresa para buscar las planillas PPF'); return; }
+  el('ppf_res').innerHTML = '<div class="hint" style="text-align:left;">Buscando…</div>';
+  const {data, error} = await sb.rpc('app_ppf_modelos', {p_q:q});
+  if(error){ el('ppf_res').innerHTML = `<div class="hint" style="text-align:left;">No se pudo buscar: ${esc(error.message)}</div>`; return; }
+  ppfCache = data || [];
+  if(!ppfCache.length){ el('ppf_res').innerHTML = '<div class="hint" style="text-align:left;">Sin planilla para ese modelo: usa el valor referencial del catálogo y pide la planilla a Hiendcar.</div>'; return; }
+  const cer4 = (CATALOG.find(c=>c.id==='ceramico_4')||{}).price || 450000;
+  const lam4 = (CATALOG.find(c=>c.id==='laminas')||{}).price || 225000;
+  const r1000 = (n)=> Math.round(n/1000)*1000;
+  el('ppf_res').innerHTML = ppfCache.map((p,i)=>{
+    const x = p.kits.xtreme||{}, u = p.kits.ultimate_plus_8||{};
+    const b = (lin, k, v)=> v ? `<button type="button" onclick="agregarPPF(${i},'${lin}','${k}')">${lin==='xtreme'?'Xtreme':'Ultimate'} · ${KIT_TXT[k]} ${fmtCLP(v)}</button>` : '';
+    const sh = x.kit_frontal ? r1000((x.kit_frontal + cer4)*0.95) : 0, pp = x.kit_frontal ? r1000((x.kit_frontal + cer4 + lam4)*0.95) : 0;
+    return `<div class="ppf-card"><b>${esc(p.modelo)} <span style="font-weight:400;color:var(--side-dim)">· planilla ${esc((p.fecha||'').slice(0,7))}</span></b>
+      <div class="bt">${b('xtreme','kit_frontal',x.kit_frontal)}${b('xtreme','completo_exterior',x.completo_exterior)}${b('ultimate','kit_frontal',u.kit_frontal)}${b('ultimate','completo_exterior',u.completo_exterior)}
+      ${sh ? `<button type="button" onclick="agregarPaquetePPF(${i},'shield',${sh})">Shield ${fmtCLP(sh)}</button><button type="button" onclick="agregarPaquetePPF(${i},'protection_pack',${pp})">Protection Pack ${fmtCLP(pp)}</button>` : ''}
+      ${b('xtreme','kit_frontal_reducido',x.kit_frontal_reducido)}</div></div>`;
+  }).join('');
+}
+function agregarPPF(i, lin, k){
+  const p = ppfCache[i]; const v = (lin==='xtreme' ? p.kits.xtreme : p.kits.ultimate_plus_8)[k];
+  customItems.push({id:'custom_'+(customSeq++), name:`PPF XPEL ${lin==='xtreme'?'Xtreme':'Ultimate Plus 8'} · ${KIT_TXT[k]}`, desc:`${KIT_DESC[k]}. Modelo: ${p.modelo}`, price:v, qty:1, group:'PPF'});
+  renderCustomList(); markDirty(); renderPreview(); toast('PPF agregado');
+}
+function agregarPaquetePPF(i, cod, v){
+  const p = ppfCache[i];
+  const nombre = cod==='shield' ? 'Carclass Shield' : 'Carclass Protection Pack';
+  const desc = cod==='shield' ? 'PPF kit frontal XPEL Xtreme + sellado cerámico 4 años + corrección + informe técnico' : 'PPF kit frontal XPEL Xtreme + sellado cerámico 4 años + láminas de seguridad 4 micras';
+  customItems.push({id:'custom_'+(customSeq++), name:nombre, desc:`${desc}. Modelo: ${p.modelo}`, price:v, qty:1, group:'Paquetes Carclass'});
+  renderCustomList(); markDirty(); renderPreview(); toast(nombre + ' agregado');
+}
 
 const QC_POINTS = [
   'Brillo uniforme en toda la carrocería',
@@ -543,7 +626,7 @@ let ordersCache = [];
 
 const FIELD_IDS = ['f_num','f_fecha','f_ejecutivo','f_nombre','f_telefono','f_email','f_origen',
   'f_marca','f_modelo','f_anio','f_color','f_patente','f_descuento','f_iva','f_iva_incluido','f_pago','f_validez',
-  'f_lugar_recepcion','f_fecha_ingreso','f_fecha_entrega_est','f_km_ingreso','f_combustible','f_fotos_ingreso','f_objetos','f_obs_ingreso','f_recepciono','f_abono','f_taller','f_costo_partner',
+  'f_lugar_recepcion','f_lugar_entrega','f_dir_domicilio','f_fecha_ingreso','f_fecha_entrega_est','f_km_ingreso','f_combustible','f_fotos_ingreso','f_objetos','f_obs_ingreso','f_recepciono','f_abono','f_taller','f_costo_partner',
   'f_qc_por','f_fecha_entrega','f_km_salida','f_garantia','f_mantenimiento','f_obs_entrega','f_entrego','f_saldo_pagado','f_estado'];
 
 /* ================= HELPERS ================= */
@@ -651,12 +734,12 @@ function setItemPrice(id, v){
 
 /* PPF solo: permitido, pero se sugiere cerámico */
 function hasPPFWithoutCeramic(){
-  const hasPPF = CATALOG.some(i=>i.ppf && i.id!=='ppf_total' && (qtyState[i.id]||0)>0);
-  const hasCer = CATALOG.some(i=>(i.ceramic || i.pkg) && (qtyState[i.id]||0)>0) || (qtyState['ppf_total']||0)>0;
+  const hasPPF = CATALOG.some(i=>i.ppf && i.id!=='ppf_total' && (qtyState[i.id]||0)>0) || customItems.some(c=>c.group==='PPF' && /^PPF XPEL/.test(c.name));
+  const hasCer = CATALOG.some(i=>(i.ceramic || i.pkg) && (qtyState[i.id]||0)>0) || (qtyState['ppf_total']||0)>0 || customItems.some(c=>c.group==='Paquetes Carclass');
   return hasPPF && !hasCer;
 }
 function addRecommendedCeramic(){
-  qtyState['cer_4'] = Math.max(1, qtyState['cer_4']||0);
+  qtyState['ceramico_4'] = Math.max(1, qtyState['ceramico_4']||0);
   renderList(el('search_serv').value); markDirty(); renderPreview();
 }
 
@@ -741,7 +824,7 @@ function buildLines(){
     }
   });
   customItems.forEach(c=>{
-    lines.push({group:'Ítems personalizados', name:c.name, desc:'', qty:c.qty, price:c.price, total:c.qty*c.price});
+    lines.push({group:c.group||'Ítems personalizados', name:c.name, desc:c.desc||'', qty:c.qty, price:c.price, total:c.qty*c.price});
   });
   return lines;
 }
@@ -774,6 +857,7 @@ function updateSummaryBar(){
 
 /* ================= DOC BUILD ================= */
 function groupedRowsHtml(lines){
+  lines = [...lines].sort((a,b)=>{ const ia = ORDEN_GRUPOS.indexOf(a.group), ib = ORDEN_GRUPOS.indexOf(b.group); return (ia<0?99:ia) - (ib<0?99:ib); });
   if(lines.length===0) return `<tr class="empty-row"><td colspan="4">Sin servicios seleccionados. Agrega ítems desde el panel izquierdo.</td></tr>`;
   let html = '', lastGroup = null;
   lines.forEach(l=>{
@@ -818,7 +902,7 @@ function buildDocContent(){
   if(currentStage === 'cotiza'){
     termsHtml = `<p>EL PRESENTE PRESUPUESTO ES VÁLIDO POR UN PLAZO DE ${esc(validez)} DÍAS. LOS VALORES SON REFERENCIALES Y SE CONFIRMAN AL MOMENTO DE RECIBIR EL VEHÍCULO Y EVALUAR PRESENCIALMENTE SU ESTADO.</p>
       <p>AL MOMENTO DE INGRESAR A TALLER SE SOLICITA ${esc(pago)}</p>
-      <p>LA RECEPCIÓN Y ENTREGA DEL VEHÍCULO SE REALIZAN EN NUESTRA OFICINA DE CHICUREO: ${esc(ADDRESS.toUpperCase())}.</p>
+      <p>RECEPCIÓN Y ENTREGA EN NUESTRO TALLER DEL COMPLEJO INDUSTRIAL ALTO PORTEZUELO, EN QUILICURA, O EN NUESTRA OFICINA DE ${esc(OFICINA.toUpperCase())}, PREVIA COORDINACIÓN. RETIRO A DOMICILIO SEGÚN ZONA.</p>
       <p>RESPECTO A INSUMOS O REPUESTOS ESPECIALES, SE SOLICITA EL PAGO DE LA TOTALIDAD DE ESTOS UNA VEZ APROBADO EL PRESUPUESTO E INGRESADO EL VEHÍCULO A TALLER.</p>`;
   }
 
@@ -829,7 +913,7 @@ function buildDocContent(){
       <div class="block-title">Datos de recepción</div>
       <div class="info-grid">
         <div class="info-block">
-          <div class="ln"><span>Lugar de recepción</span><span>${esc(val('f_lugar_recepcion')||'—')}</span></div>
+          <div class="ln"><span>Lugar de recepción</span><span>${esc(lugarDoc(val('f_lugar_recepcion')))}</span></div>
           <div class="ln"><span>Fecha de ingreso</span><span>${fmtDate(val('f_fecha_ingreso'))}</span></div>
           <div class="ln"><span>Fecha estimada de entrega</span><span>${fmtDate(val('f_fecha_entrega_est'))}</span></div>
           <div class="ln"><span>Kilometraje de ingreso</span><span>${esc(val('f_km_ingreso')||'—')}</span></div>
@@ -861,7 +945,7 @@ function buildDocContent(){
       <div class="info-grid">
         <div class="info-block">
           <div class="ln"><span>Fecha de entrega</span><span>${fmtDate(val('f_fecha_entrega'))}</span></div>
-          <div class="ln"><span>Lugar de entrega</span><span>Oficina Carclass Chicureo</span></div>
+          <div class="ln"><span>Lugar de entrega</span><span>${esc(lugarDoc(val('f_lugar_entrega')))}</span></div>
           <div class="ln"><span>Kilometraje de salida</span><span>${esc(val('f_km_salida')||'—')}</span></div>
         </div>
         <div class="info-block">
@@ -934,8 +1018,8 @@ function buildDocContent(){
           <div>@carclass.cl</div>
           <div>76.898.699-1</div>
           <div>Protección y estética vehicular premium</div>
-          <div>Av. Puerta Oriente #361, Of. 409, Torre B</div>
-          <div>Chicureo</div>
+          <div>Oficina: Puerta Oriente 361, of. 409B, Chicureo</div>
+          <div>Taller: Alto Portezuelo, Quilicura</div>
           <div>fmontecinos@carclass.cl</div>
         </div>
         <div class="terms">
@@ -947,9 +1031,20 @@ function buildDocContent(){
 }
 
 function renderPreview(){
-  el('page_doc').innerHTML = buildDocContent();
+  const page = el('page_doc');
+  page.classList.add('compacto');
+  page.classList.toggle('sin-desc', currentStage !== 'cotiza');
+  page.innerHTML = buildDocContent();
   updateSummaryBar();
+  ajustarEscala();
 }
+// En pantallas angostas el A4 (794 px) se muestra completo a escala, en vez de cortarse a la derecha
+function ajustarEscala(){
+  const page = el('page_doc'), wrap = el('preview_wrap');
+  const ancho = wrap.clientWidth - 16;
+  page.style.zoom = (window.matchMedia('(max-width:980px)').matches && ancho < 794) ? String(Math.max(0.3, ancho / 794)) : '';
+}
+window.addEventListener('resize', ajustarEscala);
 
 /* ================= SERIALIZE ================= */
 function collectState(){
@@ -965,6 +1060,7 @@ function applyState(d){
   customSeq = s.customSeq || (customItems.length+1);
   qcState = s.qcState || {};
   Object.entries(s.fields||{}).forEach(([id,v])=>setVal(id, v));
+  ['f_lugar_recepcion','f_lugar_entrega'].forEach(id=>{ if(!LUGARES[val(id)]) setVal(id, /chicureo|oriente/i.test(String((s.fields||{})[id]||'')) ? 'oficina' : 'taller'); });
   el('search_serv').value = '';
   renderList(); renderCustomList(); renderQC();
   switchStage(s.stage || 'cotiza');
@@ -1057,7 +1153,7 @@ async function openOrder(id){
 function openDrawer(){ el('drawer').classList.add('open'); loadOrders(); }
 function closeDrawer(){ el('drawer').classList.remove('open'); }
 
-/* Registro de venta: una fila por línea en car_ventas, con el total prorrateado */
+/* Registro de venta en Finanzas de Core (fin.ventas) y costo del instalador ligado (fin.costos). Solo quien ve finanzas. */
 async function registerSale(){
   if(!sb || !session){ toast('Ingresa para registrar la venta'); return; }
   if(val('f_estado')!=='entregada'){ toast('Marca la orden como Entregada antes de registrar la venta'); return; }
@@ -1065,26 +1161,27 @@ async function registerSale(){
   const ok = await saveOrder(true);
   if(!ok){ toast('Guarda la orden antes de registrar la venta'); return; }
   const t = computeTotals();
-  if(!t.lines.length || t.subtotal<=0){ toast('La orden no tiene servicios'); return; }
-  const factor = t.totalCLP / t.subtotal;
-  const costoPartner = Math.round(parseFloat(val('f_costo_partner'))||0);
+  if(!t.lines.length || t.totalCLP<=0){ toast('La orden no tiene servicios'); return; }
   const fecha = val('f_fecha_entrega') || new Date().toISOString().slice(0,10);
-  const cliente = val('f_nombre') || null;
-  const vehiculo = [val('f_marca'), val('f_modelo'), val('f_anio')].filter(Boolean).join(' ') || null;
-  const rows = t.lines.map((l,i)=>{
-    const bruto = Math.round(l.total * factor);
-    const costo = i===0 ? costoPartner : 0;
-    return {fecha, cliente_txt:cliente, vehiculo, servicio: l.qty>1 ? `${l.name} x${l.qty}` : l.name, categoria:l.group,
-      precio_bruto: bruto, costo, estado:'completado',
-      medio_pago: (val('f_pago')||'').slice(0,60), notas: 'Orden ' + val('f_num') + (costo ? ' · costo partner total de la orden en esta línea' : '')};
-  });
-  const ins = await sb.from('car_ventas').insert(rows);
-  if(ins.error){ toast('No se pudo registrar la venta: ' + ins.error.message); return; }
+  const vehiculo = [val('f_marca'), val('f_modelo'), val('f_anio')].filter(Boolean).join(' ');
+  const servicios = t.lines.map(l=>l.qty>1 ? `${l.name} x${l.qty}` : l.name).join(' · ');
+  const cobrado = val('f_saldo_pagado')==='Sí';
+  const v = await sb.rpc('app_fin_guardar', {p:{tabla:'ventas', datos:{unidad:'carclass', fecha, descripcion:`${servicios}${vehiculo ? ' · '+vehiculo : ''}`.slice(0,300),
+    modalidad:'servicio', monto:Math.round(t.totalCLP), afecto_iva:true, estado_cobro: cobrado ? 'cobrado' : 'pendiente', fecha_cobro: cobrado ? fecha : null,
+    cliente: val('f_nombre') || null, documento: val('f_num'), origen:'cotizador'}}});
+  if(v.error){ toast('No se pudo registrar la venta: ' + v.error.message); return; }
+  const ventaId = v.data && (v.data.id || v.data.venta_id);
+  const costo = Math.round(parseFloat(val('f_costo_partner'))||0);
+  if(costo > 0){
+    const c = await sb.rpc('app_fin_guardar', {p:{tabla:'costos', datos:{unidad:'carclass', venta_id: ventaId || null, fecha, tipo:'directo', categoria:'partner',
+      descripcion:`Instalación orden ${val('f_num')}`, proveedor: (val('f_taller')||'Hiendcar').split('·')[0].trim(), monto:costo, afecto_iva:true, documento: val('f_num'), estado_pago:'pendiente'}}});
+    if(c.error) toast('Venta registrada, pero el costo no: ' + c.error.message);
+  }
   const upd = await sb.from('car_ordenes').update({venta_registrada:true}).eq('id', currentId);
-  if(upd.error){ toast('Venta registrada, pero no se pudo marcar la orden. Avisa antes de reintentar.'); return; }
+  if(upd.error){ toast('Venta registrada en Core, pero no se pudo marcar la orden. Avisa antes de reintentar.'); return; }
   ventaRegistrada = true;
-  el('sale_hint').textContent = 'Venta registrada en Finanzas.';
-  toast('Venta registrada en Finanzas');
+  el('sale_hint').textContent = 'Venta registrada en Finanzas de Core.';
+  toast('Venta registrada en Finanzas de Core');
 }
 
 /* ================= ACTIONS ================= */
@@ -1097,10 +1194,11 @@ function newOrder(){
   qtyState = {}; priceState = {}; customItems = []; customSeq = 1; qcState = {};
   currentId = null; ventaRegistrada = false;
   const defaults = {
-    f_ejecutivo:'Felipe Montecinos', f_descuento:'0', f_iva:'19', f_validez:'10', f_iva_incluido:false,
-    f_lugar_recepcion:'Oficina Carclass · ' + ADDRESS, f_recepciono:'Felipe Montecinos', f_abono:'0', f_taller:'Hiendcar · Quilicura', f_costo_partner:'0',
+    f_ejecutivo:'Felipe Montecinos', f_descuento:'0', f_iva:'19', f_validez:'7', f_iva_incluido:true,
+    f_lugar_recepcion:'taller', f_lugar_entrega:'taller', f_dir_domicilio:'', f_recepciono:'Felipe Montecinos', f_abono:'0', f_taller:'Hiendcar · Quilicura', f_costo_partner:'0',
     f_qc_por:'Felipe Montecinos', f_entrego:'Felipe Montecinos', f_estado:'cotizada', f_fotos_ingreso:false
   };
+  el('f_pago').selectedIndex = 0;
   ['f_nombre','f_telefono','f_email','f_origen','f_marca','f_modelo','f_anio','f_color','f_patente','f_fecha_ingreso','f_fecha_entrega_est','f_km_ingreso','f_objetos','f_obs_ingreso','f_fecha_entrega','f_km_salida'].forEach(id=>setVal(id,''));
   Object.entries(defaults).forEach(([k,v])=>setVal(k,v));
   el('sale_hint').textContent = 'Se registra una sola vez por orden, cuando está entregada.';
@@ -1129,7 +1227,7 @@ el('login_form').addEventListener('submit', async (e)=>{
   if(!sb){ el('l_err').textContent = 'No se pudo cargar la conexión. Revisa internet o usa el modo sin conexión.'; return; }
   const {data, error} = await sb.auth.signInWithPassword({email: el('l_email').value.trim(), password: el('l_pass').value});
   if(error){ el('l_err').textContent = 'Correo o contraseña incorrectos.'; return; }
-  session = data.session; offline = false; setUserBar(); showLogin(false); toast('Conectado');
+  session = data.session; offline = false; setUserBar(); showLogin(false); toast('Conectado'); cargarCatalogoCore();
 });
 el('l_offline').addEventListener('click', ()=>{ offline = true; showLogin(false); setUserBar(); setStatus('Modo sin conexión: no se guarda', 'warn'); });
 
@@ -1143,7 +1241,7 @@ init();
   const {data} = await sb.auth.getSession();
   session = data.session;
   setUserBar();
-  if(!session) showLogin(true);
+  if(!session) showLogin(true); else cargarCatalogoCore();
   sb.auth.onAuthStateChange((_ev, s)=>{ session = s; setUserBar(); });
 })();
 </script>
