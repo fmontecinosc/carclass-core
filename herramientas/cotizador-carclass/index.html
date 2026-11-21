@@ -388,7 +388,7 @@
         <div class="field" style="margin-bottom:0;"><label for="ppf_q">Marca, modelo y año</label><input id="ppf_q" type="text" placeholder="Ej: BMW X3 2026" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarPPF();}"></div>
         <button class="btn-save" type="button" style="align-self:end;height:38px;" onclick="buscarPPF()">Buscar</button>
       </div>
-      <div class="hint" style="text-align:left;" id="ppf_hint">Precios públicos con IVA e instalación, en XPEL Xtreme y Ultimate Plus 8. Requiere ingresar.</div>
+      <div class="hint" style="text-align:left;" id="ppf_hint">Precios públicos con IVA e instalación, en XPEL Gloss y XPEL Ultimate. Requiere ingresar.</div>
       <div class="ppf-res" id="ppf_res"></div>
     </div>
 
@@ -528,14 +528,14 @@ let offline = false;
 // Respaldo sin conexión: crm.catalogo de Carclass al 21-nov-2026 (precios con IVA). Con sesión se usa app_catalogo('carclass').
 let CATALOG = [
   {id:'protect_plus', group:'Paquetes Carclass', pkg:true, name:'Carclass Protect+', desc:'Corrección de pintura + sellado cerámico 4 años + láminas de seguridad + coordinación e informe fotográfico', price:650000},
-  {id:'shield', group:'Paquetes Carclass', pkg:true, ceramic:true, name:'Carclass Shield', desc:'PPF frontal XPEL Xtreme (capó, parachoques, tapabarros, focos y espejos) + sellado cerámico 4 años + corrección + informe técnico. Valor por modelo: usa «PPF por modelo»', price:1350000},
-  {id:'protection_pack', group:'Paquetes Carclass', pkg:true, ceramic:true, name:'Carclass Protection Pack', desc:'Láminas de seguridad + PPF frontal XPEL Xtreme + sellado cerámico 4 años, en una sola visita. Valor por modelo: usa «PPF por modelo»', price:1590000},
+  {id:'shield', group:'Paquetes Carclass', pkg:true, ceramic:true, name:'Carclass Shield', desc:'PPF frontal XPEL Gloss (capó, parachoques, tapabarros, focos y espejos) + sellado cerámico 4 años + corrección + informe técnico. Valor por modelo: usa «PPF por modelo»', price:1350000},
+  {id:'protection_pack', group:'Paquetes Carclass', pkg:true, ceramic:true, name:'Carclass Protection Pack', desc:'Láminas de seguridad + PPF frontal XPEL Gloss + sellado cerámico 4 años, en una sola visita. Valor por modelo: usa «PPF por modelo»', price:1590000},
   {id:'ceramico_1', group:'Sellado Cerámico', ceramic:true, name:'Sellado cerámico 1 año', desc:'XPEL Fusion Plus, con descontaminación y corrección de pintura previa. Incluye detailing interior', price:350000},
   {id:'ceramico_4', group:'Sellado Cerámico', ceramic:true, name:'Sellado cerámico 4 años', desc:'XPEL Fusion Plus, con descontaminación y corrección de pintura previa. Incluye detailing interior', price:450000},
   {id:'ceramico_8', group:'Sellado Cerámico', ceramic:true, name:'Sellado cerámico 8 años', desc:'XPEL Fusion Plus, con descontaminación y corrección de pintura previa. Incluye detailing interior', price:750000},
-  {id:'ppf_frontal', group:'PPF', ppf:true, name:'PPF kit frontal', desc:'XPEL Xtreme: parachoques, capó, tapabarros, focos y espejos. Referencial: el valor exacto sale de «PPF por modelo»', price:990000},
+  {id:'ppf_frontal', group:'PPF', ppf:true, name:'PPF kit frontal', desc:'XPEL Gloss: parachoques, capó, tapabarros, focos y espejos. Referencial: el valor exacto sale de «PPF por modelo»', price:990000},
   {id:'ppf_frontal_reducido', group:'PPF', ppf:true, name:'PPF frontal reducido', desc:'Solo si el cliente lo pide (no público desde 17-nov-2026)', price:650000},
-  {id:'ppf_total', group:'PPF', ppf:true, name:'PPF total', desc:'XPEL Xtreme, vehículo completo, sellado cerámico bonificado. Referencial', price:4550000},
+  {id:'ppf_total', group:'PPF', ppf:true, name:'PPF total', desc:'XPEL Gloss, vehículo completo, sellado cerámico bonificado. Referencial', price:4550000},
   {id:'ppf_interior', group:'PPF', name:'PPF interior kit full (pantallas y piano black)', desc:'Desde, según modelo', price:100000},
   {id:'wpf', group:'PPF', name:'WPF parabrisas', desc:'Film protector de parabrisas', price:500000},
   {id:'laminas', group:'Láminas de Seguridad', name:'Láminas de seguridad 4 micras (recomendada)', desc:'Laterales + luneta, $225.000 a $250.000 según modelo', price:225000},
@@ -576,24 +576,24 @@ async function buscarPPF(){
   const lam4 = (CATALOG.find(c=>c.id==='laminas')||{}).price || 225000;
   const r1000 = (n)=> Math.round(n/1000)*1000;
   el('ppf_res').innerHTML = ppfCache.map((p,i)=>{
-    const x = p.kits.xtreme||{}, u = p.kits.ultimate_plus_8||{};
-    const b = (lin, k, v)=> v ? `<button type="button" onclick="agregarPPF(${i},'${lin}','${k}')">${lin==='xtreme'?'Xtreme':'Ultimate'} · ${KIT_TXT[k]} ${fmtCLP(v)}</button>` : '';
+    const x = p.kits.gloss||p.kits.xtreme||{}, u = p.kits.ultimate||p.kits.ultimate_plus_8||{};
+    const b = (lin, k, v)=> v ? `<button type="button" onclick="agregarPPF(${i},'${lin}','${k}')">${lin==='gloss'?'Gloss':'Ultimate'} · ${KIT_TXT[k]} ${fmtCLP(v)}</button>` : '';
     const sh = x.kit_frontal ? r1000((x.kit_frontal + cer4)*0.95) : 0, pp = x.kit_frontal ? r1000((x.kit_frontal + cer4 + lam4)*0.95) : 0;
     return `<div class="ppf-card"><b>${esc(p.modelo)} <span style="font-weight:400;color:var(--side-dim)">· planilla ${esc((p.fecha||'').slice(0,7))}</span></b>
-      <div class="bt">${b('xtreme','kit_frontal',x.kit_frontal)}${b('xtreme','completo_exterior',x.completo_exterior)}${b('ultimate','kit_frontal',u.kit_frontal)}${b('ultimate','completo_exterior',u.completo_exterior)}
+      <div class="bt">${b('gloss','kit_frontal',x.kit_frontal)}${b('gloss','completo_exterior',x.completo_exterior)}${b('ultimate','kit_frontal',u.kit_frontal)}${b('ultimate','completo_exterior',u.completo_exterior)}
       ${sh ? `<button type="button" onclick="agregarPaquetePPF(${i},'shield',${sh})">Shield ${fmtCLP(sh)}</button><button type="button" onclick="agregarPaquetePPF(${i},'protection_pack',${pp})">Protection Pack ${fmtCLP(pp)}</button>` : ''}
-      ${b('xtreme','kit_frontal_reducido',x.kit_frontal_reducido)}</div></div>`;
+      ${b('gloss','kit_frontal_reducido',x.kit_frontal_reducido)}</div></div>`;
   }).join('');
 }
 function agregarPPF(i, lin, k){
-  const p = ppfCache[i]; const v = (lin==='xtreme' ? p.kits.xtreme : p.kits.ultimate_plus_8)[k];
-  customItems.push({id:'custom_'+(customSeq++), name:`PPF XPEL ${lin==='xtreme'?'Xtreme':'Ultimate Plus 8'} · ${KIT_TXT[k]}`, desc:`${KIT_DESC[k]}. Modelo: ${p.modelo}`, price:v, qty:1, group:'PPF'});
+  const p = ppfCache[i]; const v = (lin==='gloss' ? (p.kits.gloss||p.kits.xtreme) : (p.kits.ultimate||p.kits.ultimate_plus_8))[k];
+  customItems.push({id:'custom_'+(customSeq++), name:`PPF XPEL ${lin==='gloss'?'Gloss':'Ultimate'} · ${KIT_TXT[k]}`, desc:`${KIT_DESC[k]}. Modelo: ${p.modelo}`, price:v, qty:1, group:'PPF'});
   renderCustomList(); markDirty(); renderPreview(); toast('PPF agregado');
 }
 function agregarPaquetePPF(i, cod, v){
   const p = ppfCache[i];
   const nombre = cod==='shield' ? 'Carclass Shield' : 'Carclass Protection Pack';
-  const desc = cod==='shield' ? 'PPF kit frontal XPEL Xtreme + sellado cerámico 4 años + corrección + informe técnico' : 'PPF kit frontal XPEL Xtreme + sellado cerámico 4 años + láminas de seguridad 4 micras';
+  const desc = cod==='shield' ? 'PPF kit frontal XPEL Gloss + sellado cerámico 4 años + corrección + informe técnico' : 'PPF kit frontal XPEL Gloss + sellado cerámico 4 años + láminas de seguridad 4 micras';
   customItems.push({id:'custom_'+(customSeq++), name:nombre, desc:`${desc}. Modelo: ${p.modelo}`, price:v, qty:1, group:'Paquetes Carclass'});
   renderCustomList(); markDirty(); renderPreview(); toast(nombre + ' agregado');
 }

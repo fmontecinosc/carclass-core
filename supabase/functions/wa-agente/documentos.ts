@@ -216,8 +216,8 @@ export async function pdfPpf(d: DatosPpf): Promise<Uint8Array> {
   const x1 = M, w1 = W - 2 * cW - 2 * gap, xG = x1 + w1 + gap, xU = xG + cW + gap;
   y = cabeceraTabla(lz, y, [
     { x: x1, w: w1, t: "COBERTURA" },
-    { x: xG, w: cW, t: "XPEL XTREME", sub: "brillante · 7,1 mil", der: true },
-    { x: xU, w: cW, t: "ULTIMATE PLUS 8", sub: "brillante · 7,6 mil", der: true },
+    { x: xG, w: cW, t: "XPEL GLOSS", sub: "brillante · recomendada", der: true },
+    { x: xU, w: cW, t: "XPEL ULTIMATE", sub: "Ultimate Plus 8 · línea superior", der: true },
   ]);
   for (const [i, f] of d.filas.entries()) {
     const det = partir(f.detalle, reg, 8.3, w1 - 20);
@@ -234,7 +234,7 @@ export async function pdfPpf(d: DatosPpf): Promise<Uint8Array> {
   y -= 26;
 
   if (d.paquetes.length) {
-    y = tituloBloque(lz, y, "Paquetes Carclass con PPF XPEL Xtreme", DORADO);
+    y = tituloBloque(lz, y, "Paquetes Carclass con PPF XPEL Gloss", DORADO);
     for (const p of d.paquetes) {
       const det = partir(p.detalle, reg, 8.3, W - 150);
       const alto = 26 + det.length * 10.5;
@@ -270,7 +270,7 @@ function serviciosDe(lineas: LineaCot[]): string[] {
     const n = l.nombre.toLowerCase(); // solo el nombre: la descripción menciona marcas e incluidos
     if (/protection pack/.test(n)) { s.add("PPF"); s.add("Sellado cerámico"); s.add("Láminas de seguridad"); continue; }
     if (/shield/.test(n)) { s.add("PPF"); s.add("Sellado cerámico"); continue; }
-    if (/ppf|xtreme|ultimate|stealth|film/.test(n)) s.add("PPF");
+    if (/ppf|gloss|xtreme|ultimate|stealth|film/.test(n)) s.add("PPF");
     if (/cer[aá]mic/.test(n)) s.add("Sellado cerámico");
     if (/l[aá]min/.test(n)) s.add("Láminas de seguridad");
     if (/detail|pulid|interior/.test(n)) s.add("Detailing");

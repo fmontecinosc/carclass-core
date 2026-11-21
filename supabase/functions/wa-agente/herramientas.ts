@@ -94,7 +94,7 @@ export const HERRAMIENTAS: Anthropic.Tool[] = [
   },
   {
     name: "enviar_cotizacion_ppf",
-    description: "Arma y envía al cliente el PDF de cotización de PPF de su modelo: kit frontal completo y completo exterior en XPEL Xtreme y Ultimate Plus 8 (precios públicos de la planilla del taller), más Shield y Protection Pack. Solo si consultar_ppf_modelo encontró planilla. El documento se envía solo después de tu mensaje.",
+    description: "Arma y envía al cliente el PDF de cotización de PPF de su modelo: kit frontal completo y completo exterior en XPEL Gloss y XPEL Ultimate (Ultimate Plus 8) (precios públicos de la planilla del taller), más Shield y Protection Pack. Solo si consultar_ppf_modelo encontró planilla. El documento se envía solo después de tu mensaje.",
     input_schema: {
       type: "object",
       properties: {
@@ -394,7 +394,7 @@ export function crearEjecutor(o: OpcionesEjecutor) {
             instruccion: "No tenemos la planilla de este modelo. Da el kit frontal como valor estimado («aproximadamente» o «desde»), di que confirmas el valor exacto con el taller y le escribes apenas lo tengas, y sigue la conversación (no traspases ni envíes PDF). Ya quedó la tarea para pedir la planilla.",
             estimado: {
               base: med[0]?.n >= 2 ? `mediana de ${med[0].n} planillas de la misma marca` : "valor referencial del catálogo",
-              ppf_kit_frontal_xtreme: kit5,
+              ppf_kit_frontal_gloss: kit5,
               carclass_shield: redondearMil((kit5 + cer4) * 0.95),
               carclass_protection_pack_laminas_4_micras: redondearMil((kit5 + cer4 + lam4) * 0.95),
             },
@@ -459,7 +459,7 @@ export function crearEjecutor(o: OpcionesEjecutor) {
       enviados.add(archivo);
       const hoy = partesChile(ahora).fecha, vig = sumarDias(hoy, 7);
       const larga = (f: string) => new Intl.DateTimeFormat("es-CL", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" }).format(new Date(`${f}T12:00:00Z`));
-      const resumen = { vehiculo, modelo_planilla: d.modelo_planilla, kit_frontal: { xtreme: g.kit_frontal_5_piezas, ultimate_plus_8: u.kit_frontal_5_piezas }, completo_exterior: { xtreme: g.completo_exterior_wpf, ultimate_plus_8: u.completo_exterior_wpf }, paquetes: pq };
+      const resumen = { vehiculo, modelo_planilla: d.modelo_planilla, kit_frontal: { gloss: g.kit_frontal_5_piezas, ultimate: u.kit_frontal_5_piezas }, completo_exterior: { gloss: g.completo_exterior_wpf, ultimate: u.completo_exterior_wpf }, paquetes: pq };
       if (!escribir) return { ok: true, data: { simulado: true, documento: nombreArchivo(vehiculo), resumen, instruccion: "El PDF se envía después de tu mensaje. No repitas en el texto toda la tabla: menciona el kit frontal recomendado y di que en el documento van las dos calidades y los paquetes." } };
       const numero = `CC-PPF-${hoy.replace(/-/g, "").slice(2)}-${String(Math.floor(Math.random() * 900) + 100)}`;
       const bytes = await pdfPpf({ numero, fecha: larga(hoy), vigencia: larga(vig), cliente: (conv.ficha?.nombre as string) ?? conv.nombre, vehiculo, filas, paquetes, estimado: false });
