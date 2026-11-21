@@ -186,7 +186,7 @@ export const HERRAMIENTAS: Anthropic.Tool[] = [
   },
   {
     name: "programar_seguimiento",
-    description: "Programa los seguimientos de una cotización enviada (23 h, día 3, día 7; día 10 se marca perdida).",
+    description: "Programa los seguimientos según el plan de la unidad (Carclass: 23 h, día 3, día 7, día 10 se marca perdida; BlackGPS: día 1, 4, 10 y 21). Úsala al enviar una cotización, cuando el cliente pide tiempo o, en BlackGPS, cuando la conversación queda en pausa.",
     input_schema: {
       type: "object",
       properties: { idea: { type: "string", description: "Qué aporte nuevo conviene en el seguimiento." } },
@@ -449,6 +449,14 @@ export function crearEjecutor(o: OpcionesEjecutor) {
         { nombre: "Carclass Protection Pack", detalle: "Shield + láminas de seguridad 4 micras, en una sola visita.", precio: pq.carclass_protection_pack_laminas_4_micras },
       ] : [];
       const vehiculo = [i.marca, i.modelo, i.anio].filter(Boolean).join(" ");
+      // Un solo PDF por auto y conversación (en el mismo turno o en los últimos 7 días)
+      const archivo = nombreArchivo(vehiculo);
+      const enviados: Set<string> = ((conv as any).ppf_enviados ??= new Set<string>());
+      const yaEnviado = enviados.has(archivo) || (escribir && (await sql`
+        select 1 from wa.mensajes where conversacion_id = ${conv.id}::uuid and tipo = 'document'
+          and texto like ${"[Documento] " + archivo + "%"} and enviado_en > now() - interval '7 days' limit 1`).length > 0);
+      if (yaEnviado) return { ok: true, data: { ya_enviado: true, instruccion: "Este PDF ya se le envió al cliente: no lo menciones como nuevo ni lo reenvíes." } };
+      enviados.add(archivo);
       const hoy = partesChile(ahora).fecha, vig = sumarDias(hoy, 7);
       const larga = (f: string) => new Intl.DateTimeFormat("es-CL", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" }).format(new Date(`${f}T12:00:00Z`));
       const resumen = { vehiculo, modelo_planilla: d.modelo_planilla, kit_frontal: { xtreme: g.kit_frontal_5_piezas, ultimate_plus_8: u.kit_frontal_5_piezas }, completo_exterior: { xtreme: g.completo_exterior_wpf, ultimate_plus_8: u.completo_exterior_wpf }, paquetes: pq };
@@ -637,7 +645,8 @@ export function crearEjecutor(o: OpcionesEjecutor) {
     },
 
     async programar_seguimiento(i) {
-      const plan = await parametro(sql, "carclass.seguimiento");
+      // Plan por unidad (carclass.seguimiento, blackgps.seguimiento…); si la unidad no tiene, el de Carclass
+      const plan = (await parametro(sql, `${conv.unidad ?? "carclass"}.seguimiento`)) ?? (await parametro(sql, "carclass.seguimiento"));
       const pasos = (plan?.pasos ?? []) as any[];
       if (!escribir) return { ok: true, data: { simulado: true, pasos: pasos.length } };
       await sql`update wa.seguimientos set estado = 'cancelado' where conversacion_id = ${conv.id}::uuid and estado = 'pendiente'`;

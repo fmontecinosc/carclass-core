@@ -146,8 +146,13 @@ async function uno(sql: Sql, client: Anthropic, cfg: Record<string, string>, sys
     await fin("enviado");
     return "seguimiento enviado";
   }
-  if (modo === "borrador" && ventanaAbierta) {
-    await sql`insert into wa.borradores (conversacion_id, mensajes, acciones) values (${c.id}::uuid, ${sql.json(mensajes as any)}, ${sql.json([] as any)})`;
+  // En borrador Felipe lo envía desde su WhatsApp (coexistencia): ahí no rige la ventana de 24 h de la API
+  if (modo === "borrador") {
+    await sql`update wa.borradores set estado = 'vencido', resuelto_en = now(), resuelto_por = 'reemplazado'
+              where conversacion_id = ${c.id}::uuid and estado = 'pendiente'`;
+    await sql`insert into wa.borradores (conversacion_id, mensajes, acciones)
+              values (${c.id}::uuid, ${sql.json(mensajes as any)}, ${sql.json([{ herramienta: "seguimiento", input: { paso: s.canal, idea: s.idea }, resultado: { ok: true } }] as any)})`;
+    await sql`select core.push(${"Seguimiento propuesto"}, ${nombre + " · revisa y envía desde Conversaciones"}, ${"#/conversaciones/" + c.id}, ${"wa_seg:" + s.id})`;
     await fin("enviado");
     return "seguimiento en borrador";
   }
