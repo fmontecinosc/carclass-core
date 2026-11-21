@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.9.1";
+const VERSION = "2.9.2";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -42,6 +42,30 @@ const CANALES = [["whatsapp", "WhatsApp"], ["meta", "Meta Ads"], ["google", "Goo
 const CANAL_TXT = Object.fromEntries([...CANALES, ["asisma", "Asisma"], ["prospeccion_blackgps", "Prospección BlackGPS"], ["landing", "Landing"]]);
 
 let ME = null;
+let PARAM = {}; // core.parametros (app_parametros): fuente única de horarios, políticas y comisiones
+const P = (k) => PARAM[k] || {};
+const DIAS_ORD = ["lun", "mar", "mie", "jue", "vie", "sab", "dom"];
+const DIA_LARGO = { lun: "lunes", mar: "martes", mie: "miércoles", jue: "jueves", vie: "viernes", sab: "sábado", dom: "domingo" };
+const diaCod = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").slice(0, 3);
+function diasAbiertos(spec) { // "vie-dom", "lun-sab", "lun,mie,vie" → códigos de día
+  const out = new Set();
+  String(spec || "lun-dom").split(",").forEach((seg) => { const [a, b] = seg.split(/[-–]/).map(diaCod); const i = DIAS_ORD.indexOf(a), j = b ? DIAS_ORD.indexOf(b) : i; if (i < 0 || j < 0) return; for (let k = i; ; k = (k + 1) % 7) { out.add(DIAS_ORD[k]); if (k === j) break; } });
+  return out;
+}
+function horarioTxt(h) { // {dias:"vie-dom", apertura, cierre}
+  if (!h || !h.dias) return "";
+  const segs = String(h.dias).split(",").map((seg) => seg.split(/[-–]/).map((d) => DIA_LARGO[diaCod(d)] || d).join(" a ")).join(", ");
+  return `${segs}${h.apertura ? `, ${h.apertura} a ${h.cierre}` : ""}`;
+}
+const cwNeg = () => P("carwash.negocio");
+const cwHorario = () => horarioTxt(cwNeg().horario) || "según agenda";
+const cwAbreEl = (fecha) => diasAbiertos(cwNeg().horario?.dias).has(DIAS_ORD[(parseD(fecha).getDay() + 6) % 7]);
+const clpTxt = (n) => "$" + Number(n || 0).toLocaleString("es-CL");
+function comisionNomTxt() {
+  const c = P("nom.comision"); if (!c.pct_hasta_umbral) return "Comisión según política vigente.";
+  return `Comisión ${c.pct_hasta_umbral}% de los primeros ${clpM(c.umbral_clp)} y ${c.pct_sobre_umbral}% del exceso; mínimo ${clpTxt(c.minimo_clp)}.${c.fee_entrada_clp ? ` Fee de entrada ${clpTxt(c.fee_entrada_clp)} en la visita${c.fee_descontable_de_comision ? ", descontable de la comisión" : ""}.` : ""}`;
+}
+function retiroTxt() { const r = P("carclass.retiro"); const z = r.comunas_sin_costo || r.zonas || []; return z.length ? `retiro y entrega a domicilio sin costo en ${z.join(" y ")}${r.aplica_a ? ` (${r.aplica_a})` : ""}; otras zonas, se evalúa según distancia` : "retiro a domicilio según zona"; }
 let AVISOS = [];
 let installPrompt = null;
 
@@ -49,10 +73,10 @@ let installPrompt = null;
 // Core gestiona completo Carclass, NOM y Carwash.hf. BlackGPS: solo setter hasta la reunión; desde ahí manda Asisma.
 const LINEAS = [
   ["", "Grupo", "Tres unidades. Un mismo respaldo."],
+  ["blackgps", "BlackGPS", "Setter hasta la reunión · luego manda Asisma."],
   ["carclass", "Carclass", "Tu auto, en manos correctas."],
   ["nom", "NOM", "Más confianza. Mejor decisión."],
   ["carwash", "Carwash.hf", "Lavado y cuidado en Huertos Familiares."],
-  ["blackgps", "BlackGPS", "Setter hasta la reunión · luego manda Asisma."],
 ];
 let UNI = "";
 const enLinea = (u) => !UNI || u === UNI || (UNI === "blackgps" && u === "somosb2b");
@@ -170,9 +194,10 @@ function setTema(t) { document.documentElement.dataset.theme = t; lsSet("cc_tema
 function viewLogin(msg = "") {
   $("#app").innerHTML = `
   <div class="login">
+    <div class="login-scene" aria-hidden="true"><span class="grid"></span><span class="ring r1"></span><span class="ring r2"></span><span class="beam"></span></div>
     <section class="login-brand">
       <div class="logo-row">${logoDisc()}<div><b>Carclass Core</b><small>Carclass Group</small></div></div>
-      <div style="position:relative;z-index:1">
+      <div>
         <h1>Todo el grupo, <em>en un solo lugar</em>.</h1>
         <p class="lead">El CRM de Carclass, Carwash.hf, NOM, BlackGPS y somosB2B. Leads, clientes, agenda y resultados conectados a tus agentes.</p>
         <ul class="benefits">
@@ -184,19 +209,20 @@ function viewLogin(msg = "") {
       <div class="foot">© ${new Date().getFullYear()} Carclass Group · Huertos Familiares, Tiltil</div>
     </section>
     <section class="login-form">
-      <form id="f-login" autocomplete="on" novalidate>
-        <div><h2>Bienvenido de nuevo</h2></div>
-        <p class="sub">Ingresa con tu correo y contraseña.</p>
+      <form id="f-login" class="login-card" autocomplete="on" novalidate>
+        <div class="login-head">${logoDisc()}<div class="name">Carclass Core</div><div class="bar"></div><div class="tag">Gestión integral de Carclass Group</div></div>
+        <h2>Iniciar sesión</h2>
+        <p class="sub">Accede a tu espacio de trabajo.</p>
         <div class="field"><label for="l-email">Correo electrónico</label><input class="input" id="l-email" type="email" autocomplete="email" placeholder="nombre@carclass.cl" required></div>
-        <div class="field"><label for="l-pass">Contraseña</label><div class="pass-wrap"><input class="input" id="l-pass" type="password" autocomplete="current-password" required><button type="button" class="btn ghost sm icon" id="l-eye" aria-label="Mostrar contraseña">${ico("eye", 16)}</button></div></div>
+        <div class="field"><label for="l-pass">Contraseña</label><div class="pass-wrap"><input class="input" id="l-pass" type="password" autocomplete="current-password" required><button type="button" class="btn ghost sm icon" id="l-eye" aria-label="Mostrar contraseña">${ico("eye", 18)}</button></div></div>
         <div class="login-opts"><label class="check-row"><input type="checkbox" id="l-rec" ${recordar() ? "checked" : ""}> Recordar dispositivo</label><a href="#" id="l-reset">¿Olvidaste tu contraseña?</a></div>
         <div class="err" id="l-err">${esc(msg)}</div>
         <button class="btn primary" type="submit" id="l-btn">Ingresar</button>
-        <p class="login-note">Acceso solo para el equipo de Carclass Group.</p>
+        <p class="login-note">Acceso privado · Carclass Core ${VERSION}</p>
       </form>
     </section>
   </div>`;
-  $("#l-eye").onclick = () => { const p = $("#l-pass"); const show = p.type === "password"; p.type = show ? "text" : "password"; $("#l-eye").innerHTML = ico(show ? "eyeoff" : "eye", 16); };
+  $("#l-eye").onclick = () => { const p = $("#l-pass"); const show = p.type === "password"; p.type = show ? "text" : "password"; $("#l-eye").innerHTML = ico(show ? "eyeoff" : "eye", 18); };
   $("#f-login").onsubmit = async (e) => {
     e.preventDefault();
     const email = $("#l-email").value.trim(), pass = $("#l-pass").value;
@@ -398,7 +424,8 @@ async function viewDashboard(params) {
     catch (e) { toast(e.message, true); }
   };
   try {
-    const [d, L] = await Promise.all([rpc("app_dashboard2", { p_desde: d0, p_hasta: d1, p_unidad: u || null }), rpc("app_lineas", { p_desde: d0, p_hasta: d1 })]);
+    const [d, L, BU] = await Promise.all([rpc("app_dashboard2", { p_desde: d0, p_hasta: d1, p_unidad: u || null }), rpc("app_lineas", { p_desde: d0, p_hasta: d1 }), ME.ve_finanzas && (!u || u === "blackgps") ? rpc("app_bgps_ventas_unicas", { p_meses: 6 }).catch(() => null) : null]);
+    if (L.blackgps && BU) L.blackgps.unicas = BU;
     $("#dash").innerHTML = (u ? unidadDash(u, L) : holdingDash(L)) + comercialDash(d, u);
     bindLineas($("#dash"));
     $$("#dash [data-cotnueva]").forEach((b) => b.onclick = () => modalNuevaCotizacion());
@@ -412,6 +439,14 @@ function metaBar(v, meta, fmt = int, label = "") {
   const pct = meta ? Math.max(0, Math.min(100, (Number(v || 0) / meta) * 100)) : 0;
   return `<div class="meta">${label ? `<div class="meta-k">${label}</div>` : ""}<div class="meta-l"><span><b>${fmt(v || 0)}</b> <span class="faint">de ${fmt(meta)}</span></span><span class="${pct >= 100 ? "ok-t" : pct < 40 ? "bad-t" : ""}">${Math.round(pct)}%</span></div><div class="meta-t"><i style="width:${pct}%"></i></div></div>`;
 }
+const TIPO_UNICA = { equipos: "Equipos y cámaras", instalaciones: "Instalaciones", desinstalaciones: "Desinstalaciones", servicios: "Otros servicios", otros: "Notas de crédito y otros" };
+const mesNombre = (iso) => parseD(iso).toLocaleDateString("es-CL", { month: "long" });
+function unicasMes(U) { // ventas BlackGPS no MRR del mes en curso
+  if (!U) return null;
+  const hoy = new Date(), clave = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-01`;
+  return (U.meses || []).find((m) => m.mes === clave) || { mes: clave, total: 0, n: 0, por_tipo: {} };
+}
+const unicasDetalle = (m) => Object.entries(m.por_tipo || {}).sort((a, b) => b[1] - a[1]).map(([t, v]) => `${TIPO_UNICA[t] || t} ${clpM(v)}`).join(" · ");
 const mini = (l, v, s = "") => `<div class="mini"><span class="l">${l}</span><b>${v}</b>${s ? `<span class="s">${s}</span>` : ""}</div>`;
 function lineCard(u, body, alertas) {
   const lin = LINEAS.find(([k]) => k === u);
@@ -429,14 +464,14 @@ function holdingDash(L) {
     const alto = (b.riesgo || []).filter((r) => r.riesgo === "alto").length; if (alto) al.push(`${alto} cliente${alto > 1 ? "s" : ""} con riesgo alto de fuga`);
     if (c.vencidas) al.push(`${int(c.vencidas)} próximas acciones vencidas`);
     cards.push(lineCard("blackgps", `${metaBar(b.equipos, metaV(L, "blackgps.equipos"), int, "Equipos facturando · meta diciembre")}
-      <div class="minis">${b.mrr != null ? mini("MRR", clpM(b.mrr)) : ""}${mini("Clientes", int(b.clientes))}${mini("Llamadas hoy", `${int(b.llamadas_hoy)}<span class="faint">/${metaV(L, "blackgps.llamadas_dia")}</span>`)}${mini("Reuniones 7 días", int(b.reuniones_7d))}</div>`, al));
+      <div class="minis">${b.mrr != null ? mini("MRR", clpM(b.mrr)) : ""}${mini("Clientes", int(b.clientes))}${mini("Llamadas hoy", `${int(b.llamadas_hoy)}<span class="faint">/${metaV(L, "blackgps.llamadas_dia")}</span>`)}${mini("Reuniones 7 días", int(b.reuniones_7d))}</div>${(() => { const m = unicasMes(b.unicas); return m ? `<div class="unicas"><div class="l">Ventas únicas de ${mesNombre(m.mes)} <span class="faint">· fuera del MRR</span></div><b>${clpM(m.total)}</b>${m.total ? `<span class="s">${esc(unicasDetalle(m))}</span>` : '<span class="s">Sin instalaciones ni equipos facturados este mes</span>'}</div>` : ""; })()}`, al));
   }
   if (L.carclass) {
     const k = L.carclass, c = C.carclass || {}, al = [], dv = diasDesde(k.ultima_venta);
     if (k.venta_mes != null && dv != null && dv > 30) al.push(`Última venta registrada hace ${dv} días (${fecha(k.ultima_venta)})`);
     if (!c.abiertas) al.push("Sin oportunidades abiertas en Core");
     if (k.sin_seguimiento) al.push(`${k.sin_seguimiento} cotizaciones sin seguimiento en 48 h`);
-    cards.push(lineCard("carclass", `${k.venta_mes != null ? metaBar(k.venta_mes, metaV(L, "carclass.venta_mes"), clpM, "Venta del mes · meta $6 MM") : ""}
+    cards.push(lineCard("carclass", `${k.venta_mes != null ? metaBar(k.venta_mes, metaV(L, "carclass.venta_mes"), clpM, `Venta del mes · meta ${clpM(metaV(L, "carclass.venta_mes"))}`) : ""}
       <div class="minis">${mini("Cotizaciones abiertas", int(k.cot_pendientes), k.cot_vistas ? `${k.cot_vistas} vistas` : "")}${mini("Agendados", int(k.agendados))}${mini("En taller", int(k.en_taller))}${k.ticket_12m != null ? mini("Ticket 12 meses", clpM(k.ticket_12m)) : ""}</div>`, al));
   }
   if (L.nom) {
@@ -450,12 +485,12 @@ function holdingDash(L) {
   }
   if (L.carwash) {
     const w = L.carwash, c = C.carwash || {}, al = [], cap = metaV(L, "carwash.capacidad_dia") || 4;
-    const ag = (w.agenda_7d || []).reduce((a, d) => a + d.n, 0);
+    const ag = (w.agenda_7d || []).reduce((a, d) => a + d.n, 0), abiertos = (w.agenda_7d || []).filter((d) => cwAbreEl(d.fecha)).length;
     if (!w.atendidos_30d) al.push("Sin servicios registrados en 30 días");
-    cards.push(lineCard("carwash", `${metaBar(ag, cap * 7, int, `Ocupación próximos 7 días · ${cap} autos por día`)}
+    cards.push(lineCard("carwash", `${metaBar(ag, cap * abiertos, int, `Ocupación próximos 7 días · ${abiertos} días de atención × ${cap} autos`)}
       <div class="minis">${mini("Atendidos 30 días", int(w.atendidos_30d))}${w.venta_mes != null ? mini("Venta del mes", clpM(w.venta_mes)) : ""}${mini("Por recomprar", int(w.recompra))}${mini("En bandeja", int(c.bandeja))}</div>`, al));
   }
-  const ORD = ["carclass", "nom", "carwash", "blackgps"], k = (h) => ORD.indexOf(h.match(/data-go-linea="(\w+)"/)[1]);
+  const ORD = LINEAS.map(([k]) => k).filter(Boolean) /* prioridad del Cerebro: BlackGPS, Carclass, NOM, Carwash.hf */, k = (h) => ORD.indexOf(h.match(/data-go-linea="(\w+)"/)[1]);
   return `<div class="ucards">${cards.sort((x, y) => k(x) - k(y)).join("")}</div>`;
 }
 const ETAPAS = {
@@ -494,7 +529,11 @@ function unidadDash(u, L) {
     <div class="kpis">${b.mrr != null ? `<div class="kpi"><span class="l">MRR</span><span class="v">${clpM(b.mrr)}</span><span class="s">${clp(b.equipos ? b.mrr / b.equipos : 0)} por equipo</span></div>` : ""}
       <div class="kpi"><span class="l">Clientes activos</span><span class="v">${int(b.clientes)}</span><span class="s">${int(b.equipos)} equipos</span></div>
       <div class="kpi"><span class="l">Actividad 7 días</span><span class="v">${int(b.llamadas_7d)}</span><span class="s">llamadas · ${int(b.reuniones_7d)} reuniones</span></div>
-      <a class="kpi" href="#/bandeja"><span class="l">Por revisar y entrantes</span><span class="v ${C.bandeja ? "warn" : ""}">${int(C.bandeja)}</span><span class="s">${int(C.vencidas)} acciones vencidas</span></a></div>
+      <a class="kpi" href="#/bandeja"><span class="l">Por revisar y entrantes</span><span class="v ${C.bandeja ? "warn" : ""}">${int(C.bandeja)}</span><span class="s">${int(C.vencidas)} acciones vencidas</span></a>
+      ${b.unicas ? (() => { const m = unicasMes(b.unicas); return `<div class="kpi"><span class="l">Ventas únicas de ${mesNombre(m.mes)}</span><span class="v">${clpM(m.total)}</span><span class="s">${int(m.n)} facturas fuera del MRR · licencias del mes ${clpM(b.unicas.licencias_mes)}</span></div>`; })() : ""}</div>
+    ${b.unicas ? (() => { const U = b.unicas, max = Math.max(1, ...(U.meses || []).map((m) => m.total)); return `<div class="grid2">
+      <section class="card"><div class="card-h"><h3>Ventas únicas por mes</h3><span class="r faint" style="font-size:12px">equipos, cámaras, instalaciones y desinstalaciones</span></div><div class="card-b bars">${(U.meses || []).length ? U.meses.map((m) => `<div class="bar-row" title="${esc(unicasDetalle(m))}"><span class="lab" style="text-transform:capitalize">${mesNombre(m.mes)}</span><span class="bar-track"><i style="width:${Math.max(0, (m.total / max) * 100)}%;background:var(--u-blackgps)"></i></span><span class="n">${clpM(m.total)}</span></div>`).join("") : '<div class="muted">Sin ventas únicas en los últimos meses.</div>'}</div></section>
+      <section class="card"><div class="card-h"><h3>Facturas únicas de ${mesNombre(unicasMes(U).mes)}</h3><span class="badge">${(U.mes_actual || []).length}</span></div><div class="card-b" style="display:grid;gap:8px;font-size:13px">${(U.mes_actual || []).length ? U.mes_actual.map((f) => `<div class="row" style="gap:10px;align-items:flex-start"><span class="pill">${esc(TIPO_UNICA[f.tipo] || f.tipo)}</span><div style="flex:1;min-width:0"><b>${f.documento ? "Factura " + esc(f.documento) : "Sin folio"}</b> · ${fecha(f.fecha)}<div class="muted" style="font-size:12px">${esc((f.detalle || "").replace(/^Factura (N° )?\d+ ?·? ?/, ""))}</div></div><b style="white-space:nowrap">${clp(f.monto)}</b></div>`).join("") : '<div class="muted">Sin facturas fuera del MRR este mes.</div>'}</div></section></div>`; })() : ""}
     <div class="grid2">
       ${embudoCard("Embudo BlackGPS · somosB2B", ETAPAS.blackgps, C.por_etapa || [], "#/embudo/blackgps")}
       ${b.top ? `<section class="card"><div class="card-h"><h3>Concentración de la cartera</h3><span class="r faint" style="font-size:12px">sobre 20% es riesgo estructural</span></div><div class="card-b bars">${b.top.map((t) => `<a class="bar-row" href="#/cliente/${t.empresa_id}"><span class="lab">${esc(t.empresa)}</span><span class="bar-track"><i style="width:${Math.min(100, t.pct * 3)}%;background:${t.pct > 20 ? "var(--bad)" : "var(--c, var(--brand))"}"></i></span><span class="n">${String(t.pct).replace(".", ",")}%</span></a>`).join("")}</div></section>` : ""}
@@ -539,15 +578,15 @@ function unidadDash(u, L) {
     <div class="grid2">${embudoCard("Consignantes", ETAPAS.consignante, porF("consignante"), "#/embudo/nom/consignante")}${embudoCard("Compradores", ETAPAS.comprador, porF("comprador"), "#/embudo/nom/comprador")}</div>`;
   }
   if (u === "carwash" && L.carwash) {
-    const w = L.carwash, cap = metaV(L, "carwash.capacidad_dia") || 4, ag = (w.agenda_7d || []).reduce((a, d) => a + d.n, 0);
-    return `${uBand(u, metaBar(ag, cap * 7, int, `Ocupación de los próximos 7 días · ${cap} autos por día`))}
+    const w = L.carwash, cap = metaV(L, "carwash.capacidad_dia") || 4, ag = (w.agenda_7d || []).reduce((a, d) => a + d.n, 0), abiertos = (w.agenda_7d || []).filter((d) => cwAbreEl(d.fecha)).length;
+    return `${uBand(u, metaBar(ag, cap * abiertos, int, `Ocupación de los próximos 7 días · ${abiertos} días de atención × ${cap} autos · ${cwHorario()}`))}
     <div class="kpis">
       <div class="kpi"><span class="l">Atendidos 30 días</span><span class="v">${int(w.atendidos_30d)}</span><span class="s">servicios cerrados</span></div>
       ${w.venta_mes != null ? `<div class="kpi"><span class="l">Venta del mes</span><span class="v">${clpM(w.venta_mes)}</span><span class="s">con IVA</span></div>` : ""}
       <div class="kpi"><span class="l">Por recomprar</span><span class="v">${int(w.recompra)}</span><span class="s">clientes sin volver en 30 días</span></div>
       <a class="kpi" href="#/bandeja"><span class="l">En bandeja</span><span class="v">${int(C.bandeja)}</span><span class="s">esperando coordinación</span></a>
     </div>
-    <div class="grid2"><section class="card"><div class="card-h"><h3>Agenda de la semana</h3><span class="r faint" style="font-size:12px">máximo ${cap} por día</span></div><div class="card-b bars">${(w.agenda_7d || []).map((d) => `<div class="bar-row"><span class="lab" style="text-transform:capitalize">${parseD(d.fecha).toLocaleDateString("es-CL", { weekday: "short", day: "numeric" })}</span><span class="bar-track"><i style="width:${Math.min(100, (d.n / cap) * 100)}%;background:${d.n >= cap ? "var(--bad)" : "var(--u-carwash)"}"></i></span><span class="n">${d.n}/${cap}</span></div>`).join("")}</div></section>
+    <div class="grid2"><section class="card"><div class="card-h"><h3>Agenda de la semana</h3><span class="r faint" style="font-size:12px">máximo ${cap} por día</span></div><div class="card-b bars">${(w.agenda_7d || []).map((d) => { const ab = cwAbreEl(d.fecha); return `<div class="bar-row"${ab ? "" : ' style="opacity:.45"'}><span class="lab" style="text-transform:capitalize">${parseD(d.fecha).toLocaleDateString("es-CL", { weekday: "short", day: "numeric" })}</span><span class="bar-track"><i style="width:${ab ? Math.min(100, (d.n / cap) * 100) : 0}%;background:${d.n >= cap || (!ab && d.n) ? "var(--bad)" : "var(--u-carwash)"}"></i></span><span class="n">${ab ? `${d.n}/${cap}` : d.n ? `${d.n} · cerrado` : "cerrado"}</span></div>`; }).join("")}</div></section>
       ${embudoCard("Embudo Carwash.hf", ETAPAS.carwash, C.por_etapa || [], "#/embudo/carwash")}</div>`;
   }
   return "";
@@ -899,8 +938,12 @@ async function viewAgenda(params) {
 const COT_UNIDADES = ["carclass", "carwash"];
 const COT_EST = { borrador: "", enviada: "info", vista: "gold", aceptada: "ok", rechazada: "bad", vencida: "warn" };
 const DEF_NOTAS = {
-  carclass: "Valores con IVA incluido. Precio final sujeto a evaluación presencial del vehículo. Pago 50/50: mitad para reservar y mitad a la entrega. Recepción en Chicureo o retiro a domicilio. Incluye corrección de pintura en todo plan de cerámico, garantía XPEL y acta de entrega.",
-  carwash: "Valores «desde», con IVA incluido, según el tamaño del vehículo. Servicio en 4 Oriente #278, Huertos Familiares, de lunes a sábado de 9:00 a 17:00. Pago al momento de la entrega.",
+  get carclass() {
+    const pg = P("carclass.transferencia").pago || {}, res = pg.reserva_monto;
+    const pago = res ? `Reserva de ${clpTxt(res)}${pg.reserva_abonable ? " (se abona al total)" : ""}; en la recepción se completa el 50% del total y el saldo se paga a la entrega.${pg.cancelacion ? " " + pg.cancelacion + "." : ""}` : "Pago 50/50: mitad al reservar y mitad a la entrega.";
+    return `Valores con IVA incluido. Precio final sujeto a evaluación presencial del vehículo. ${pago} Recepción en nuestro taller de Quilicura o en nuestra oficina de Chicureo, con previa coordinación. Incluye corrección de pintura en todo plan de cerámico, garantía XPEL y acta de entrega.`.replace(/\.\./g, ".");
+  },
+  get carwash() { const n = cwNeg(); return `Valores «desde», con IVA incluido, según el tamaño del vehículo. Servicio en ${n.direccion || "Huertos Familiares"}, ${cwHorario()}. Pago al momento de la entrega.`; },
 };
 const MARCA = {
   carclass: ["Carclass", "Tu auto, en manos correctas.", "Instalador oficial XPEL · desde 2017"],
@@ -981,11 +1024,11 @@ async function modalCotizador({ oportunidad_id, unidad, cliente, cot = null, aft
     if (unidad === "carclass") {
       if (cods.includes("ppf_frontal") && !cods.some((c) => ["ceramico_1", "ceramico_4", "protect_plus", "shield"].includes(c))) reglas.push("El PPF nunca se cotiza solo: agrega cerámico, corrección y láminas de seguridad.");
       if (lineas.length > 4) reglas.push("Muchas opciones enfrían al cliente: deja una recomendada y una alternativa.");
-      if (total >= 600000 && !cods.includes("retiro")) reglas.push("Venta de mayor valor: puedes ofrecer retiro y entrega a domicilio sin costo en Chicureo, Las Condes o Lo Barnechea.");
+      if (total >= (P("carclass.retiro").desde_monto || 600000) && !cods.includes("retiro")) reglas.push(`Venta de mayor valor: puedes ofrecer ${retiroTxt()}.`);
       if (lineas.some((l) => cat.find((c) => c.codigo === l.codigo)?.aproximado)) reglas.push("Incluye valores aproximados (cerámico, PPF total o desabolladura): se confirman con el cliente y el vehículo.");
       if (lineas.some((l) => cat.find((c) => c.codigo === l.codigo)?.requiere_humano)) reglas.push("Desabolladura y personalización las evalúa una persona con fotos y el especialista antes de enviar.");
     }
-    if (unidad === "carclass" && lineas.some((l) => { const c = cat.find((x) => x.codigo === l.codigo); return c && l.precio < c.precio; })) reglas.push("Hay descuento: evítalo si puedes. Hasta 5% solo si el cliente lo exige para cerrar; más que eso requiere tu aprobación.");
+    if (unidad === "carclass" && lineas.some((l) => { const c = cat.find((x) => x.codigo === l.codigo); return c && l.precio < c.precio; })) reglas.push(Number(P("carclass.descuento").max_pct_sin_aprobacion || 0) > 0 ? `Hay descuento: hasta ${P("carclass.descuento").max_pct_sin_aprobacion}% sin aprobación; más que eso requiere tu aprobación.` : "Hay descuento: la política vigente es sin rebajas en venta unitaria (los paquetes ya traen su −5%). Cualquier descuento es decisión tuya.");
     if (unidad === "carwash") {
       if (lineas.some((l) => { const c = cat.find((x) => x.codigo === l.codigo); return c && l.precio < c.precio; })) reglas.push("Carwash.hf no hace descuentos: usa los precios del catálogo.");
       if (lineas.some((l) => cat.find((c) => c.codigo === l.codigo)?.requiere_humano)) reglas.push("Pulidos, cerámico e interior: confirma el valor con el auto a la vista antes de enviar.");
@@ -2028,8 +2071,8 @@ function modalLead(pre = {}) {
     if (u === "carclass") return `<div class="xbox"><div class="lbl">Auto y servicio</div><div class="row">${f("x-marca", "Marca")}${f("x-modelo", "Modelo")}${f("x-anio", "Año", 'type="number" min="1980" max="2030"', "flex:0 1 90px")}${f("x-pat", "Patente", "", "flex:0 1 110px")}</div>${sel("x-serv", "Servicio de interés", SERV_CARCLASS)}<div class="hint">Pide fotos del auto para la pre-evaluación remota. Pintura y desabolladura las cotiza una persona con el especialista.</div></div>`;
     if (u === "carwash") return `<div class="xbox"><div class="lbl">Vehículo y servicio</div><div class="row">${f("x-marca", "Marca y modelo", 'placeholder="Ej: Toyota Hilux"')}${sel("x-tipo", "Tamaño", ["Pequeño y mediano (citycar, sedán, SUV compacto)", "SUV y pickup mediana (Hilux, L200, Ranger)", "Pickup XL o SUV 3 corridas (F-150, Ram, Tahoe)", "Van, furgón o flota (lo cotiza Felipe)"])}</div>
       <div class="row">${sel("x-serv", "Servicio", ["Lavado Boutique", "Lavado Básico (solo exterior)", "Lavado Técnico", "Pulido Básico", "Limpieza Interior + Tapicería", "Pulido Intermedio + Sellado Sintético", "Pulido + Sellado Cerámico", "No sabe aún"])}${f("x-fecha", "Fecha deseada", 'type="date"', "flex:0 1 160px")}</div>
-      <div class="hint">WhatsApp Carwash.hf +56 9 4619 6226 · 4 Oriente #278, Huertos Familiares · lunes a sábado 9:00 a 17:00 · máximo 4 autos por día · sin domicilio. Lista oficial con precios «desde» según tamaño; en pulidos, cerámico e interior se confirma el estado del auto.</div></div>`;
-    if (u === "nom" && fl === "consignante") return `<div class="xbox"><div class="lbl">Auto a consignar</div><div class="row">${f("x-marca", "Marca")}${f("x-modelo", "Modelo")}${f("x-anio", "Año", 'type="number" min="1990" max="2030"', "flex:0 1 90px")}${f("x-km", "Km", 'type="number" min="0"', "flex:0 1 110px")}</div><div class="row">${f("x-precio", "Precio esperado", 'type="number" min="0" step="100000"')}${sel("x-docs", "Documentos y prendas", ["Por confirmar", "Al día y sin prendas", "Tiene prenda", "Documentos pendientes"])}</div><div class="hint">Califica si es 2015 o más, sin prendas y con precio dentro de ±10% del mercado. Comisión 5% (3% sobre $20 MM; mínimo $500.000 bajo $10 MM). Exclusividad 45 días.</div></div>`;
+      <div class="hint">WhatsApp Carwash.hf +56 9 4619 6226 · ${esc(cwNeg().direccion || "Huertos Familiares")} · ${esc(cwHorario())} · máximo ${cwNeg().capacidad_diaria || 4} autos por día · sin domicilio. Lista oficial con precios «desde» según tamaño; en pulidos, cerámico e interior se confirma el estado del auto.</div></div>`;
+    if (u === "nom" && fl === "consignante") return `<div class="xbox"><div class="lbl">Auto a consignar</div><div class="row">${f("x-marca", "Marca")}${f("x-modelo", "Modelo")}${f("x-anio", "Año", 'type="number" min="1990" max="2030"', "flex:0 1 90px")}${f("x-km", "Km", 'type="number" min="0"', "flex:0 1 110px")}</div><div class="row">${f("x-precio", "Precio esperado", 'type="number" min="0" step="100000"')}${sel("x-docs", "Documentos y prendas", ["Por confirmar", "Al día y sin prendas", "Tiene prenda", "Documentos pendientes"])}</div><div class="hint">Califica si es ${P("nom.automatizacion").anio_minimo || 2015} o más, sin prendas y con precio dentro de ±10% del mercado. ${esc(comisionNomTxt())} Exclusividad 45 días.</div></div>`;
     if (u === "nom") return `<div class="xbox"><div class="lbl">Lo que busca</div><div class="row">${f("x-interes", "Auto de interés", 'placeholder="Ej: Corolla Cross o SUV hasta $17 MM"')}${f("x-pres", "Presupuesto", 'type="number" min="0" step="500000"', "flex:0 1 150px")}${sel("x-pago", "Pago", ["Por confirmar", "Contado", "Financiamiento", "Con auto en parte de pago"], "flex:0 1 200px")}</div><div class="hint">Visita y test drive solo con calificados (plazo menor a 30 días). Reserva mínima $200.000.</div></div>`;
     return `<div class="xbox"><div class="lbl">Empresa</div><div class="row">${f("ld-emp", "Empresa", `value="${esc(pre.empresa || "")}"`)}${f("ld-rut", "RUT", `placeholder="76.123.456-7" value="${esc(pre.rut ? fmtRut(pre.rut) : "")}"`, "flex:0 1 150px")}${f("ld-flota", "Flota", 'type="number" min="0"', "flex:0 1 100px")}</div><div class="row">${f("ld-rubro", "Rubro")}${f("ld-cargo", "Cargo del contacto")}</div><div class="hint">Filtro BlackGPS: flotas de 10 o más vehículos. Desde la reunión en adelante manda Asisma.</div></div>`;
   };
@@ -2183,7 +2226,7 @@ async function render() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) { ME = null; viewLogin(); return; }
   if (!ME) {
-    try { ME = await rpc("app_yo"); } catch { ME = null; }
+    try { [ME, PARAM] = await Promise.all([rpc("app_yo"), rpc("app_parametros").catch(() => ({}))]); PARAM = PARAM || {}; } catch { ME = null; }
     if (!ME) {
       $("#app").innerHTML = `<div class="login-form" style="min-height:100vh"><div class="card" style="max-width:420px">${empty("team", "Tu usuario no tiene acceso a Carclass Core", "Pídele a Felipe que te habilite.")}<div style="text-align:center;padding:0 0 20px"><button class="btn" id="lo">Salir</button></div></div></div>`;
       $("#lo").onclick = async () => { await sb.auth.signOut(); render(); }; return;

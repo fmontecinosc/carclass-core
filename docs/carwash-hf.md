@@ -9,7 +9,7 @@
 ## 1. Qué es Carwash.hf
 
 - Lavado y estética automotriz B2C en **Huertos Familiares, Tiltil** (Región Metropolitana, Chile). Submarca de Carclass Group, gestionada como unidad separada (prioridad 4 del holding).
-- Dirección: **4 Oriente #278, Huertos Familiares, Tiltil**. Horario: **lunes a sábado, 9:00 a 17:00**.
+- Dirección: **4 Oriente #278, Huertos Familiares, Tiltil**. Horario: **viernes a domingo, 10:00 a 17:00** (temporal desde el 12-nov-2026, hasta tener estructura y equipo; vive en `core.parametros['carwash.negocio'].horario` y la app lo lee de ahí).
 - Promesa del catálogo: "Más que un lavado, una experiencia premium, en Huertos Familiares".
 - Líneas: lavado de vehículos, limpieza de tapiz, pulido, sellado cerámico.
 - Clientes: vecinos de Huertos Familiares, Alto El Manzano, Santa Matilde, Diray, Tiltil, Lampa y Colina; trabajadores de faena con camioneta propia; flotas pequeñas (minería, ingeniería, transporte de personal).
@@ -102,7 +102,7 @@ Motivos de pérdida (lista fija): precio · competencia · sin respuesta tras co
   "negocio": {
     "nombre": "Carwash.hf",
     "direccion": "4 Oriente #278, Huertos Familiares, Tiltil",
-    "horario": { "dias": "lun-sab", "apertura": "09:00", "cierre": "17:00" },
+    "horario": { "dias": "vie-dom", "apertura": "10:00", "cierre": "17:00", "nota": "temporal" },
     "capacidad_diaria": 4,
     "moneda": "CLP",
     "iva_incluido": true
