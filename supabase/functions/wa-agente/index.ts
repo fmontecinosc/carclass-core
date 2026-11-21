@@ -28,6 +28,20 @@ function seguroIgual(a: string, b: string) {
   return d === 0;
 }
 
+// Límite del plan de Kapso (402): se marca en wa.config por 24 h. Pasado ese plazo el asesor vuelve a intentar enviar;
+// si Kapso sigue sin cupo, ese turno queda como borrador y se marca otras 24 h (un aviso por día). Si Felipe sube de plan,
+// basta borrar la clave «kapso_limite_hasta» para volver a enviar de inmediato.
+const esLimiteKapso = (e: unknown) => /Kapso 402/.test(String((e as any)?.message ?? e));
+const kapsoBloqueado = (cfg: Record<string, string>) => !!cfg.kapso_limite_hasta && new Date(cfg.kapso_limite_hasta) > new Date();
+async function marcarKapsoBloqueado() {
+  const hasta = new Date(Date.now() + 24 * 3_600_000).toISOString();
+  await sql`insert into wa.config (clave, valor) values ('kapso_limite_hasta', ${hasta})
+            on conflict (clave) do update set valor = excluded.valor`;
+  await sql`select core.push('WhatsApp sin cupo en Kapso',
+    'Se agotó el plan de Kapso (2.000 mensajes/mes en el gratuito). El asesor deja borradores en Conversaciones para que los envíes desde tu teléfono.',
+    '#/conversaciones', ${"kapso_limite:" + new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date())})`;
+}
+
 const ahoraChile = () =>
   new Intl.DateTimeFormat("es-CL", { timeZone: TZ, weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date());
 
@@ -96,8 +110,10 @@ async function procesar(convId: string, desde: Date, cfg: Record<string, string>
   if (c.agente_activo === false) return quitar("tomada por humano");
   if (c.agente_pausado_hasta && new Date(c.agente_pausado_hasta) > new Date()) return quitar("pausado");
   if (!c.ventana_hasta || new Date(c.ventana_hasta) <= new Date()) return quitar("ventana de 24 h cerrada");
-  const modo: string = (await sql`select wa.modo_agente(${c.unidad ?? "carclass"}) as m`)[0].m;
+  let modo: string = (await sql`select wa.modo_agente(${c.unidad ?? "carclass"}) as m`)[0].m;
   if (modo === "apagado") return quitar("apagado");
+  // Kapso sin cupo (plan agotado): mientras dure el bloqueo, «activo» trabaja como «borrador» (Felipe envía desde su teléfono)
+  if (modo === "activo" && kapsoBloqueado(cfg)) modo = "borrador";
 
   const historial = await armarHistorial(convId);
   if (!historial) return quitar("nada que responder");
@@ -140,7 +156,18 @@ async function procesar(convId: string, desde: Date, cfg: Record<string, string>
       for (let i = 0; i < salida.mensajes.length; i++) {
         if (i > 0) await pausa();
         const texto = salida.mensajes[i];
-        const { wamid } = await enviarTexto(pnid, c.wa_usuario, texto);
+        let wamid: string | null;
+        try {
+          ({ wamid } = await enviarTexto(pnid, c.wa_usuario, texto));
+        } catch (e) {
+          if (!esLimiteKapso(e)) throw e;
+          // Sin cupo en Kapso: lo que falta queda como borrador para enviarlo desde el teléfono, y se avisa una vez
+          await sql`insert into wa.borradores (conversacion_id, mensajes, acciones)
+                    values (${convId}::uuid, ${sql.json(salida.mensajes.slice(i) as any)}, ${sql.json(salida.acciones as any)})`;
+          await marcarKapsoBloqueado();
+          await quitar("kapso sin cupo: borrador");
+          return "kapso sin cupo · borrador guardado";
+        }
         await sql`insert into wa.mensajes (wamid, conversacion_id, direccion, tipo, texto, enviado_en)
                   values (${wamid}, ${convId}::uuid, 'saliente_api', 'text', ${texto}, now())`;
         if (c.oportunidad_id) {

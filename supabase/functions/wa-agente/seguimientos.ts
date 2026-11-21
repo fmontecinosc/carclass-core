@@ -89,8 +89,10 @@ async function uno(sql: Sql, client: Anthropic, cfg: Record<string, string>, sys
     await sql`update wa.seguimientos set cuando = ${new Date(new Date(c.agente_pausado_hasta).getTime() + 5 * 60_000)} where id = ${s.id}`;
     return "pospuesto: pausa";
   }
-  const modo: string = (await sql`select wa.modo_agente(${c.unidad ?? "carclass"}) as m`)[0].m;
+  let modo: string = (await sql`select wa.modo_agente(${c.unidad ?? "carclass"}) as m`)[0].m;
   if (modo === "apagado") { await fin("cancelado"); return "cancelado: asesor apagado"; }
+  // Kapso sin cupo (ver index.ts): el seguimiento queda como borrador para enviarlo desde el teléfono
+  if (modo === "activo" && cfg.kapso_limite_hasta && new Date(cfg.kapso_limite_hasta) > new Date()) modo = "borrador";
   const nombre = c.nombre ?? c.telefono_norm ?? "cliente";
 
   if (s.canal === "marcar_perdida") {
