@@ -151,9 +151,18 @@ async function procesar(convId: string, desde: Date, cfg: Record<string, string>
         const doc = (a.resultado?.data as any)?.documento;
         if (!a.resultado?.ok || !doc?.url) continue;
         await pausa(1500, 2500);
-        const { wamid } = await enviarDocumento(pnid, c.wa_usuario, doc.url, doc.nombre);
-        await sql`insert into wa.mensajes (wamid, conversacion_id, direccion, tipo, texto, enviado_en)
-                  values (${wamid}, ${convId}::uuid, 'saliente_api', 'document', ${`[Documento] ${doc.nombre} · ${doc.url}`}, now())`;
+        // Un fallo aquí no debe reintentar el turno (el texto ya salió): se deja tarea con el link para enviarlo a mano
+        try {
+          const { wamid } = await enviarDocumento(pnid, c.wa_usuario, doc.url, doc.nombre);
+          await sql`insert into wa.mensajes (wamid, conversacion_id, direccion, tipo, texto, enviado_en)
+                    values (${wamid}, ${convId}::uuid, 'saliente_api', 'document', ${`[Documento] ${doc.nombre} · ${doc.url}`}, now())`;
+        } catch (e) {
+          await sql`select core.api_crear_tarea(${sql.json({
+            titulo: `[WhatsApp] Enviar PDF a ${c.nombre ?? c.telefono_norm ?? ""}`,
+            descripcion: `El asesor no pudo enviar ${doc.nombre}. Envíalo a mano: ${doc.url} · Error: ${String((e as any)?.message ?? e).slice(0, 200)}`,
+            unidad: c.unidad ?? "carclass", responsable: "Felipe", prioridad: "alta", oportunidad_id: c.oportunidad_id ?? null, empresa_id: c.empresa_id ?? null,
+          } as any)}, 'Agente IA')`;
+        }
       }
       await sql`update wa.conversaciones set ultima_salida = now() where id = ${convId}::uuid`;
     } else if (modo === "borrador") {
