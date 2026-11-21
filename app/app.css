@@ -574,7 +574,13 @@ h2.sec .faint { font-weight: 500; font-size: 13px; }
 /* v2.8.3 · playbook comercial en Ayuda */
 details.pb { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; background: var(--surface); }
 details.pb > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; }
-
+/* v2.9 · tasador NOM */
+.tz-tbl td { vertical-align: top; }
+.tz-tbl .input.sm { height: 30px; font-size: 12px; padding: 0 8px; }
+.tz-off { opacity: .62; }
+.tz-off:hover { opacity: 1; }
+@media print { .nomr-pg { page: nomr; } }
+@page nomr { size: A4; margin: 0; }
 /* ===== Refresh 2.9 · estética alineada al login (verde profundo + dorado) ===== */
 :root { --r: 16px; --r-sm: 10px; --gold-2: #C9A24F; --gold-hi: #e9cf8f;
   --bg: #f1f4f2;

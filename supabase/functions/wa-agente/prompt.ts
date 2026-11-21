@@ -1,4 +1,3 @@
-// COPIA de wa-agente (proyecto carclass-whatsapp) tomada el 18-11-2026 solo para simulaciones de wa-simular. No editar aquí: la fuente es el repo carclass-whatsapp.
 // Prompt de sistema del asesor. Fuente: prompts/asesor-sistema.md → scripts/sync-prompt.ps1 genera
 // supabase/prompt/agente_prompt.sql, que guarda el texto en wa.config (clave agente_prompt).
 // Es fijo (sin datos variables) para que el prompt caching funcione; el contexto va en el último turno.

@@ -1,0 +1,19 @@
+{
+  "folio": "NOM-TAS-2026-11-17-DEMO", "version": 1, "tipo": "tasacion", "estado": "aprobada",
+  "emitido_en": "2026-11-17T15:00:00-03:00", "ciudad": "Santiago", "vigencia_hasta": "2026-12-02",
+  "vehiculo": {"marca": "Volkswagen", "modelo": "Nivus", "version": "Comfortline 1.0 TSI AT 4x2", "anio": 2022, "motor": "1.0 TSI",
+    "transmision": "Automática", "traccion": "4x2", "carroceria": "SUV", "combustible": "Bencina", "km": 82000, "color": "Plateado",
+    "patente": "DEMO-00", "duenos": "Único dueño", "llaves": "2 llaves", "equipamiento": null},
+  "valores": {"rango_oferta": [11200000, 12000000], "valor_comercial": 11500000, "precio_publicacion": 11790000, "cierre": [11000000, 11400000],
+    "confianza": "medio", "comercialidad": 4, "comercialidad_txt": "BUENA COMERCIALIDAD"},
+  "textos": {"resumen": "SUV de buena demanda en el segmento. El antecedente de único dueño y sus dos llaves favorece su presentación comercial.",
+    "criterios": "La recomendación considera año, versión Comfortline, kilometraje declarado, referencias comparables y atributos informados. El valor final depende del estado estético, mecánico, documental y de la demanda al momento de comercializar.",
+    "analisis": "Los valores de los avisos muestran el rango de oferta de vehículos Comfortline cercanos en equipamiento, pero con diferencias de año y kilometraje. Son precios publicados, no operaciones de venta confirmadas, y algunos pueden depender de financiamiento.",
+    "alcance": null},
+  "consulta": {"en": "2026-11-17T14:20:00-03:00", "fuentes": "chileautos", "cobertura": "la Región Metropolitana"},
+  "comparables": [
+    {"n":1,"titulo":"Nivus Comfortline AT 2022","version":"Comfortline AT","anio":2022,"km":116616,"ubicacion":"DF Autos · Las Condes","precio":11480000,"portal":"chileautos","url":"https://demo.nom.test/aviso/1","diferencias":"Misma versión y año; 34.616 km más que la unidad tasada.","financiamiento":false},
+    {"n":2,"titulo":"Nivus Comfortline AT 2021","version":"Comfortline AT","anio":2021,"km":58000,"ubicacion":"Piretta Automobile · Vitacura","precio":11990000,"portal":"chileautos","url":"https://demo.nom.test/aviso/2","diferencias":"Un año más antiguo y 24.000 km menos; el aviso indica una llave.","financiamiento":false},
+    {"n":3,"titulo":"Nivus Comfortline AT 2023","version":"Comfortline AT","anio":2023,"km":39000,"ubicacion":"Royal Car · Vitacura","precio":12970000,"portal":"chileautos","url":"https://demo.nom.test/aviso/3","diferencias":"Un año más nuevo y menor kilometraje; oferta ligada a financiamiento.","financiamiento":true}
+  ]
+}

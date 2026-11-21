@@ -1,4 +1,3 @@
-// COPIA de wa-agente (proyecto carclass-whatsapp) tomada el 18-11-2026 solo para simulaciones de wa-simular. No editar aquí: la fuente es el repo carclass-whatsapp.
 // Cerebro del asesor: (contexto, historial) → { mensajes[], acciones[] }.
 // No sabe de WhatsApp ni de la base: recibe el cliente de Claude, las herramientas y un ejecutor.
 // Así lo usan igual wa-agente (producción) y scripts/eval.ts (simulación).
@@ -95,7 +94,7 @@ export async function pensar(e: EntradaCerebro): Promise<SalidaCerebro> {
       fallbacks: "default",
       output_config: { effort: "medium" },
       system: [{ type: "text", text: e.system, cache_control: { type: "ephemeral" } }],
-      tools: e.herramientas as any,
+      ...(e.herramientas.length ? { tools: e.herramientas as any } : {}),
       messages: mensajes,
     } as any) as Anthropic.Beta.BetaMessage;
 

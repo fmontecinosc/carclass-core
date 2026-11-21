@@ -1,8 +1,9 @@
-// COPIA de wa-agente (proyecto carclass-whatsapp) tomada el 18-11-2026 solo para simulaciones de wa-simular. No editar aquí: la fuente es el repo carclass-whatsapp.
 // Herramientas del asesor: definiciones (para Claude) e implementación contra Carclass Core.
 // En modo simulación (eval) las de solo lectura consultan la base real y las de escritura no tocan nada.
 import type Anthropic from "npm:@anthropic-ai/sdk@0.136.0";
 import type postgres from "npm:postgres@3.4.4";
+import { HERRAMIENTAS_NOM, NOM_SOLO_LECTURA, crearNom } from "./nom.ts";
+import { pdfPpf, pdfCotizacion, subirDocumento, nombreArchivo } from "./documentos.ts";
 
 type Sql = ReturnType<typeof postgres>;
 export type Resultado = { ok: boolean; data?: unknown; error?: string };
@@ -92,6 +93,21 @@ export const HERRAMIENTAS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "enviar_cotizacion_ppf",
+    description: "Arma y envía al cliente el PDF de cotización de PPF de su modelo: kit frontal completo y completo exterior en XPEL Xtreme y Ultimate Plus 8 (precios públicos de la planilla del taller), más Shield y Protection Pack. Solo si consultar_ppf_modelo encontró planilla. El documento se envía solo después de tu mensaje.",
+    input_schema: {
+      type: "object",
+      properties: {
+        marca: { type: "string" },
+        modelo: { type: "string" },
+        anio: { type: "integer" },
+        incluir_reducido: { type: "boolean", description: "Solo si el cliente pidió el kit frontal reducido." },
+      },
+      required: ["marca", "modelo"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "consultar_stock_nom",
     description: "Autos disponibles en NOM (marca, modelo, año, km, precio publicado). Nunca menciones autos que no salgan de aquí.",
     input_schema: {
@@ -105,7 +121,7 @@ export const HERRAMIENTAS: Anthropic.Tool[] = [
   },
   {
     name: "crear_cotizacion",
-    description: "Crea la cotización de Carclass en Core con los ítems y precios que ya obtuviste de las herramientas. Devuelve número y vigencia.",
+    description: "Crea (o actualiza, si ya hay una abierta en esta conversación) la cotización de Carclass en Core con los ítems y precios que ya obtuviste de las herramientas. Genera el PDF de la cotización, que se envía al cliente por WhatsApp después de tu mensaje. Devuelve número y vigencia.",
     input_schema: {
       type: "object",
       properties: {
@@ -170,7 +186,7 @@ export const HERRAMIENTAS: Anthropic.Tool[] = [
   },
   {
     name: "programar_seguimiento",
-    description: "Programa los seguimientos de una cotización enviada (23 h, día 3, día 7; día 10 se marca perdida).",
+    description: "Programa los seguimientos según el plan de la unidad (Carclass: 23 h, día 3, día 7, día 10 se marca perdida; BlackGPS: día 1, 4, 10 y 21). Úsala al enviar una cotización, cuando el cliente pide tiempo o, en BlackGPS, cuando la conversación queda en pausa.",
     input_schema: {
       type: "object",
       properties: { idea: { type: "string", description: "Qué aporte nuevo conviene en el seguimiento." } },
@@ -210,6 +226,8 @@ export const HERRAMIENTAS: Anthropic.Tool[] = [
       additionalProperties: false,
     },
   },
+  // NOM consignante (Fase 2): tasación, visita en Chicureo y fee
+  ...HERRAMIENTAS_NOM,
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -314,7 +332,10 @@ export function crearEjecutor(o: OpcionesEjecutor) {
         from crm.catalogo
         where activo and unidad = ${i.unidad} and (${i.codigo ?? null}::text is null or codigo = ${i.codigo ?? null})
         order by orden`;
-      return { ok: true, data: { moneda: "CLP con IVA", items: filas } };
+      // Página web del servicio (carclass.enlaces): para compartirla una vez si el cliente no llegó desde ahí
+      const enlaces = await parametro(sql, "carclass.enlaces");
+      const items = filas.map((f: any) => ({ ...f, enlace: enlaces?.por_codigo?.[f.codigo] ?? null }));
+      return { ok: true, data: { moneda: "CLP con IVA", items } };
     },
 
     async consultar_ppf_modelo(i) {
@@ -332,18 +353,51 @@ export function crearEjecutor(o: OpcionesEjecutor) {
         where not es_pieza
           and not exists (select 1 from unnest(${ws}::text[]) w where position(w in replace(modelo_norm, ' ', '')) = 0)
         order by fecha_planilla desc nulls last`;
-      let filas = await buscar(palabras);
-      // Sin calce exacto: se prueba sin la marca (las planillas a veces la abrevian)
-      if (filas.length === 0 && palabras.length > 1) filas = await buscar(palabras.slice(1));
+      // Calce por palabra completa: «x3» no debe calzar con «ix3» ni «cx3» con «cx30». Se aceptan palabras sueltas
+      // o pares unidos del nombre de la planilla («cx 5» = «cx5»); si ninguna planilla calza así, se usa el calce amplio.
+      const exactas = (fs: any[], ws: string[]) => fs.filter((f) => {
+        const t = String(f.modelo_norm).split(" ");
+        const set = new Set([...t, ...t.slice(1).map((x, k) => t[k] + x)]);
+        return ws.every((w) => set.has(w));
+      });
+      const afinar = (fs: any[], ws: string[]) => { const e = exactas(fs, ws); return e.length ? e : fs; };
+      let filas = afinar(await buscar(palabras), palabras);
+      // Sin calce: se prueba sin la marca (las planillas a veces la abrevian)
+      if (filas.length === 0 && palabras.length > 1) filas = afinar(await buscar(palabras.slice(1)), palabras.slice(1));
       const cat = await sql`select codigo, precio from crm.catalogo where activo and unidad = 'carclass' and codigo in ('ceramico_4','laminas','laminas_8','ppf_frontal','ppf_frontal_reducido','shield','protection_pack')`;
       const precio = (c: string) => Number(cat.find((x: any) => x.codigo === c)?.precio ?? 0);
       if (filas.length === 0) {
+        // Estimado: mediana del kit frontal Gloss de la misma marca en planillas recientes; si no hay, el referencial del catálogo
+        const marca = normModelo(String(i.marca ?? "")).split(" ")[0] ?? "";
+        const med = marca ? await sql`
+          select percentile_cont(0.5) within group (order by precio_publico)::int kit5, count(*)::int n
+          from crm.ppf_modelos where not es_pieza and material = 'gloss' and kit = 'kit_frontal_5' and precio_publico > 0
+            and split_part(modelo_norm, ' ', 1) = ${marca} and fecha_planilla >= current_date - interval '3 years'` : [];
+        const kit5 = med[0]?.n >= 2 ? redondearMil(Number(med[0].kit5)) : precio("ppf_frontal");
+        const cer4 = precio("ceramico_4"), lam4 = precio("laminas");
+        const vehiculo = [i.marca, i.modelo, i.anio].filter(Boolean).join(" ");
+        if (escribir) {
+          const titulo = `[PPF] Pedir planilla a Hiendcar · ${vehiculo}`;
+          const ya = await sql`select 1 from ops.tareas where titulo = ${titulo} and estado in ('pendiente','en_curso') limit 1`.catch(() => []);
+          if (ya.length === 0) {
+            await sql`select core.api_crear_tarea(${sql.json({
+              titulo, descripcion: `El cliente ${conv.nombre ?? conv.telefono_norm ?? ""} pidió PPF para un ${vehiculo} y no hay planilla de ese modelo. El asesor le dio un valor estimado; pide la planilla a Hiendcar y confirma el valor al cliente.`,
+              unidad: "carclass", responsable: "Felipe", vence: partesChile(ahora).fecha, prioridad: "alta",
+              oportunidad_id: conv.oportunidad_id, empresa_id: conv.empresa_id,
+            } as any)}, ${AUTOR})`;
+          }
+        }
         return {
           ok: true,
           data: {
             encontrado: false,
-            instruccion: "No hay planilla para este modelo: da el valor referencial como 'desde', di que Felipe confirma el valor exacto hoy y traspasa con motivo 'cotizar PPF para modelo sin planilla'.",
-            referencial_desde: { ppf_kit_frontal: precio("ppf_frontal"), ppf_frontal_reducido: precio("ppf_frontal_reducido"), shield: precio("shield"), protection_pack: precio("protection_pack") },
+            instruccion: "No tenemos la planilla de este modelo. Da el kit frontal como valor estimado («aproximadamente» o «desde»), di que confirmas el valor exacto con el taller y le escribes apenas lo tengas, y sigue la conversación (no traspases ni envíes PDF). Ya quedó la tarea para pedir la planilla.",
+            estimado: {
+              base: med[0]?.n >= 2 ? `mediana de ${med[0].n} planillas de la misma marca` : "valor referencial del catálogo",
+              ppf_kit_frontal_xtreme: kit5,
+              carclass_shield: redondearMil((kit5 + cer4) * 0.95),
+              carclass_protection_pack_laminas_4_micras: redondearMil((kit5 + cer4 + lam4) * 0.95),
+            },
           },
         };
       }
@@ -374,7 +428,51 @@ export function crearEjecutor(o: OpcionesEjecutor) {
             carclass_protection_pack_laminas_4_micras: redondearMil((kit5g + cer4 + lam4) * desc),
             nota: "Paquetes con su descuento ya incluido. Sin descuentos adicionales.",
           } : null,
-          ppf_total: "requiere validación de Felipe",
+          ppf_total: "El PPF total es el completo exterior de esta planilla (va en el PDF): da ese valor si lo piden, sujeto a revisión del auto en la recepción. No traspases por eso.",
+        },
+      };
+    },
+
+    async enviar_cotizacion_ppf(i) {
+      const r: any = await impl.consultar_ppf_modelo(i);
+      const d = r?.data;
+      if (!d?.encontrado) return { ok: false, error: "No hay planilla de este modelo: da el valor estimado de consultar_ppf_modelo en el texto, sin PDF." };
+      const g = d.xpel_gloss, u = d.xpel_ultimate_o_stealth_solo_si_lo_pide;
+      const filas = [
+        ...(i.incluir_reducido ? [{ nombre: "Kit frontal reducido", detalle: "Parachoques delantero y focos, con capó y guardabarros parciales.", gloss: g.kit_frontal_reducido, ultimate: u.kit_frontal_reducido }] : []),
+        { nombre: "Kit frontal completo", detalle: "Capó, guardabarros, espejos, parachoques y focos delanteros.", gloss: g.kit_frontal_5_piezas, ultimate: u.kit_frontal_5_piezas },
+        { nombre: "Completo exterior", detalle: "Todas las piezas pintadas del auto.", gloss: g.completo_exterior_wpf, ultimate: u.completo_exterior_wpf },
+      ].filter((f) => f.gloss || f.ultimate);
+      const pq = d.paquetes;
+      const paquetes = pq ? [
+        { nombre: "Carclass Shield", detalle: "Kit frontal completo + sellado cerámico 4 años con corrección de pintura e informe técnico.", precio: pq.carclass_shield },
+        { nombre: "Carclass Protection Pack", detalle: "Shield + láminas de seguridad 4 micras, en una sola visita.", precio: pq.carclass_protection_pack_laminas_4_micras },
+      ] : [];
+      const vehiculo = [i.marca, i.modelo, i.anio].filter(Boolean).join(" ");
+      // Un solo PDF por auto y conversación (en el mismo turno o en los últimos 7 días)
+      const archivo = nombreArchivo(vehiculo);
+      const enviados: Set<string> = ((conv as any).ppf_enviados ??= new Set<string>());
+      const yaEnviado = enviados.has(archivo) || (escribir && (await sql`
+        select 1 from wa.mensajes where conversacion_id = ${conv.id}::uuid and tipo = 'document'
+          and texto like ${"[Documento] " + archivo + "%"} and enviado_en > now() - interval '7 days' limit 1`).length > 0);
+      if (yaEnviado) return { ok: true, data: { ya_enviado: true, instruccion: "Este PDF ya se le envió al cliente: no lo menciones como nuevo ni lo reenvíes." } };
+      enviados.add(archivo);
+      const hoy = partesChile(ahora).fecha, vig = sumarDias(hoy, 7);
+      const larga = (f: string) => new Intl.DateTimeFormat("es-CL", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" }).format(new Date(`${f}T12:00:00Z`));
+      const resumen = { vehiculo, modelo_planilla: d.modelo_planilla, kit_frontal: { xtreme: g.kit_frontal_5_piezas, ultimate_plus_8: u.kit_frontal_5_piezas }, completo_exterior: { xtreme: g.completo_exterior_wpf, ultimate_plus_8: u.completo_exterior_wpf }, paquetes: pq };
+      if (!escribir) return { ok: true, data: { simulado: true, documento: nombreArchivo(vehiculo), resumen, instruccion: "El PDF se envía después de tu mensaje. No repitas en el texto toda la tabla: menciona el kit frontal recomendado y di que en el documento van las dos calidades y los paquetes." } };
+      const numero = `CC-PPF-${hoy.replace(/-/g, "").slice(2)}-${String(Math.floor(Math.random() * 900) + 100)}`;
+      const bytes = await pdfPpf({ numero, fecha: larga(hoy), vigencia: larga(vig), cliente: (conv.ficha?.nombre as string) ?? conv.nombre, vehiculo, filas, paquetes, estimado: false });
+      const url = await subirDocumento(nombreArchivo(vehiculo), bytes);
+      if (conv.oportunidad_id) {
+        await sql`insert into crm.actividades (oportunidad_id, empresa_id, tipo, resultado, nota, autor)
+                  values (${conv.oportunidad_id}::uuid, ${conv.empresa_id}::uuid, 'whatsapp', 'enviado', ${`Cotización PPF ${numero} (${vehiculo}, planilla «${d.modelo_planilla}»): ${url}`}, ${AUTOR})`;
+      }
+      return {
+        ok: true,
+        data: {
+          documento: { url, nombre: nombreArchivo(vehiculo), numero }, resumen,
+          instruccion: "El PDF se envía después de tu mensaje. No repitas en el texto toda la tabla: menciona el kit frontal recomendado y di que en el documento van las dos calidades y los paquetes.",
         },
       };
     },
@@ -403,24 +501,58 @@ export function crearEjecutor(o: OpcionesEjecutor) {
       if (items.length === 0) return { ok: false, error: "Sin ítems" };
       const total = items.reduce((s: number, x: any) => s + Number(x.precio) * Number(x.cantidad), 0);
       const vigencia = sumarDias(partesChile(ahora).fecha, 7);
-      if (!escribir) return { ok: true, data: { simulado: true, numero: "CC-SIM-0001", total, vigencia } };
-      const anio = partesChile(ahora).fecha.slice(0, 4);
-      const ult = await sql`select count(*)::int n from crm.cotizaciones where unidad = 'carclass' and numero like ${"CC-" + anio + "-%"}`;
-      const numero = `CC-${anio}-${String((ult[0]?.n ?? 0) + 1).padStart(4, "0")}`;
-      const token = crypto.randomUUID().replace(/-/g, "");
-      const r = await sql`
-        insert into crm.cotizaciones (oportunidad_id, empresa_id, unidad, numero, fecha, vigencia, items, total, neto, estado, token, creado_por, notas)
-        values (${conv.oportunidad_id}::uuid, ${conv.empresa_id}::uuid, 'carclass', ${numero}, ${partesChile(ahora).fecha}::date, ${vigencia}::date,
-                ${sql.json({ vehiculo: i.vehiculo ?? null, items } as any)}, ${total}, ${Math.round(total / 1.19)},
-                ${o.modo === "activo" ? "enviada" : "borrador"}, ${token}, ${AUTOR}, ${i.notas ?? null})
-        returning id`;
-      await moverEtapa("cotizado", { monto_estimado: total, proxima_accion: "Seguimiento de cotización" });
+      const INSTR = "El PDF de la cotización se envía solo, después de tu mensaje. Di en una línea que le envías la cotización con el total y la vigencia de 7 días; nunca pegues links ni copies el detalle completo.";
+      if (!escribir) return { ok: true, data: { simulado: true, numero: "CC-2611-SIM", total, vigencia, documento_simulado: "Cotizacion-CC-2611-SIM.pdf", instruccion: INSTR } };
+      // Nombre visible de cada línea: el del catálogo si viene el código
+      const cods = items.map((x: any) => x.codigo).filter(Boolean);
+      const cat = cods.length ? await sql`select codigo, nombre, descripcion from crm.catalogo where unidad = 'carclass' and codigo = any(${cods})` : [];
+      const lineas = items.map((x: any) => {
+        const c: any = cat.find((k: any) => k.codigo === x.codigo);
+        return { codigo: x.codigo ?? null, nombre: c?.nombre ?? x.descripcion, descripcion: c ? x.descripcion : null, cantidad: Number(x.cantidad), precio: Number(x.precio) };
+      });
+      const itemsJson = { v: 2, lineas, auto: i.vehiculo ?? null, origen: "asesor" };
+      const estado = o.modo === "activo" ? "enviada" : "borrador";
+      // Si en esta conversación ya hay una cotización abierta de los últimos 7 días, se actualiza (mismo número y link)
+      const abierta = conv.oportunidad_id ? await sql`
+        select id, numero, token from crm.cotizaciones
+        where oportunidad_id = ${conv.oportunidad_id}::uuid and unidad = 'carclass' and estado in ('borrador','enviada','vista')
+          and fecha >= ${partesChile(ahora).fecha}::date - 7
+        order by creado_en desc limit 1` : [];
+      let id: string, numero: string, token: string;
+      if (abierta.length) {
+        ({ id, numero, token } = abierta[0] as any);
+        await sql`update crm.cotizaciones set items = ${sql.json(itemsJson as any)}, total = ${total}, neto = ${Math.round(total / 1.19)},
+                    vigencia = ${vigencia}::date, notas = ${i.notas ?? null}, token = coalesce(token, ${crypto.randomUUID().replace(/-/g, "")}),
+                    estado = case when estado = 'vista' then 'vista' else ${estado} end,
+                    enviada_en = case when ${estado} = 'enviada' then coalesce(enviada_en, now()) else enviada_en end
+                  where id = ${id}::uuid`;
+        token = token ?? (await sql`select token from crm.cotizaciones where id = ${id}::uuid`)[0].token;
+      } else {
+        const yymm = partesChile(ahora).fecha.slice(2, 7).replace("-", "");
+        const n = await sql`select count(*)::int + 1 n from crm.cotizaciones where unidad = 'carclass' and date_trunc('month', fecha) = date_trunc('month', ${partesChile(ahora).fecha}::date)`;
+        numero = `CC-${yymm}-${String(n[0].n).padStart(3, "0")}`;
+        token = crypto.randomUUID().replace(/-/g, "");
+        const r = await sql`
+          insert into crm.cotizaciones (oportunidad_id, empresa_id, unidad, numero, fecha, vigencia, items, total, neto, estado, token, creado_por, notas, enviada_en)
+          values (${conv.oportunidad_id}::uuid, ${conv.empresa_id}::uuid, 'carclass', ${numero}, ${partesChile(ahora).fecha}::date, ${vigencia}::date,
+                  ${sql.json(itemsJson as any)}, ${total}, ${Math.round(total / 1.19)}, ${estado}, ${token}, ${AUTOR}, ${i.notas ?? null},
+                  ${estado === "enviada" ? sql`now()` : null})
+          returning id`;
+        id = r[0].id;
+      }
+      await moverEtapa("cotizado", { monto_estimado: total, proxima_accion: `Seguimiento de cotización ${numero}` });
+      // PDF de la cotización: se envía por WhatsApp después del texto (Felipe 21-nov-2026: al cliente PDF, no links)
+      const larga = (f: string) => new Intl.DateTimeFormat("es-CL", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" }).format(new Date(`${f}T12:00:00Z`));
+      const bytes = await pdfCotizacion({
+        numero, fecha: larga(partesChile(ahora).fecha), vigencia: larga(vigencia), cliente: (conv.ficha?.nombre as string) ?? conv.nombre,
+        vehiculo: i.vehiculo ?? null, lineas: lineas.map((l: any) => ({ nombre: l.nombre, descripcion: l.descripcion, cantidad: l.cantidad, precio: l.precio })), total, notas: i.notas ?? null,
+      });
+      const archivo = `Cotizacion-${numero}.pdf`;
+      const url = await subirDocumento(archivo, bytes, "cotizaciones");
+      await sql`update crm.cotizaciones set pdf_url = ${url} where id = ${id}::uuid`;
       return {
         ok: true,
-        data: {
-          numero, total, vigencia, cotizacion_id: r[0].id,
-          instruccion: "Aún no hay página pública de cotización: escribe en el mensaje el detalle (servicio y precio con IVA) y el número de cotización.",
-        },
+        data: { numero, total, vigencia, cotizacion_id: id, actualizada: abierta.length > 0, documento: { url, nombre: archivo, numero }, instruccion: INSTR },
       };
     },
 
@@ -475,10 +607,11 @@ export function crearEjecutor(o: OpcionesEjecutor) {
           lugares,
           horario_recepcion: recepcion?.horario,
           plazos_aproximados_dias: plazos ? { ceramico: plazos.ceramico, ppf_frontal: plazos.ppf_frontal, ppf_total: plazos.ppf_total, laminas: plazos.laminas, nota: "aproximados, según el vehículo" } : null,
-          retiro: retiro ? { comunas_sin_costo: retiro.comunas_sin_costo, desde_monto: retiro.desde_monto, otras_comunas: "Felipe confirma el costo" } : null,
+          // La condición de costo del retiro es interna: el asesor la aplica, pero nunca la menciona al cliente
+          retiro: retiro ? { zonas: retiro.zonas ?? retiro.comunas_sin_costo, regla_interna: retiro.regla_agente, como_decirlo: retiro.como_decirlo ?? null } : null,
           pago: transferencia?.pago ?? null,
           datos_transferencia: datos,
-          regla: "Con clientes de Carclass nunca menciones NOM: di 'nuestra oficina ubicada en Puerta Oriente 361, Chicureo'.",
+          regla: recepcion?.regla_cliente ?? "Con clientes de Carclass nunca menciones NOM: di «nuestra oficina».",
         },
       };
     },
@@ -521,7 +654,8 @@ export function crearEjecutor(o: OpcionesEjecutor) {
     },
 
     async programar_seguimiento(i) {
-      const plan = await parametro(sql, "carclass.seguimiento");
+      // Plan por unidad (carclass.seguimiento, blackgps.seguimiento…); si la unidad no tiene, el de Carclass
+      const plan = (await parametro(sql, `${conv.unidad ?? "carclass"}.seguimiento`)) ?? (await parametro(sql, "carclass.seguimiento"));
       const pasos = (plan?.pasos ?? []) as any[];
       if (!escribir) return { ok: true, data: { simulado: true, pasos: pasos.length } };
       await sql`update wa.seguimientos set estado = 'cancelado' where conversacion_id = ${conv.id}::uuid and estado = 'pendiente'`;
@@ -570,10 +704,12 @@ export function crearEjecutor(o: OpcionesEjecutor) {
     },
   };
 
+  Object.assign(impl, crearNom(sql, conv, escribir));
+
   return async function ejecutar(nombre: string, input: unknown): Promise<Resultado> {
     const f = impl[nombre];
     if (!f) return { ok: false, error: `Herramienta desconocida: ${nombre}` };
-    if (o.modo === "observar" && !simular && !["asignar_unidad", "actualizar_ficha", "consultar_catalogo", "consultar_ppf_modelo", "consultar_stock_nom", "traspasar_humano", "marcar_personal"].includes(nombre)) {
+    if (o.modo === "observar" && !simular && !["asignar_unidad", "actualizar_ficha", "consultar_catalogo", "consultar_ppf_modelo", "consultar_stock_nom", "traspasar_humano", "marcar_personal", ...NOM_SOLO_LECTURA].includes(nombre)) {
       return { ok: false, error: "Modo observar: esta acción no está habilitada; traspasa a Felipe." };
     }
     try {
