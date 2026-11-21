@@ -43,7 +43,7 @@ export const HERRAMIENTAS: Anthropic.Tool[] = [
       type: "object",
       properties: {
         unidad: { type: "string", enum: ["carclass", "nom", "blackgps", "carwash"] },
-        flujo: { type: "string", enum: ["consignante", "comprador"], description: "Solo para NOM." },
+        flujo: { type: "string", enum: ["consignante", "comprador", "compra_directa"], description: "Solo para NOM. compra_directa: quiere vender ya (oferta de compra) o dejar su auto en parte de pago." },
       },
       required: ["unidad"],
       additionalProperties: false,
