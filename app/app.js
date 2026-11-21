@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.10.3";
+const VERSION = "2.10.4";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -727,7 +727,7 @@ async function waEnviar(body) {
   if (!session) throw new Error("Tu sesión expiró: vuelve a ingresar.");
   const r = await fetch(`${SB_URL}/functions/v1/wa-enviar`, { method: "POST", headers: { Authorization: `Bearer ${session.access_token}`, apikey: SB_KEY, "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok || !j.ok) throw new Error(j.error || `No se pudo enviar (${r.status})`);
+  if (!r.ok || !j.ok) { const e = new Error(r.status === 402 || /limit|cupo/i.test(j.error || "") ? "Kapso sin cupo: WhatsApp no está enviando por la API" : (j.error || `No se pudo enviar (${r.status})`)); e.kapso = r.status === 402 || /limit|cupo/i.test(j.error || ""); throw e; }
   return j;
 }
 const borradorTxt = (b) => (Array.isArray(b.mensajes) ? b.mensajes : []).map((x) => typeof x === "string" ? x : x?.texto || x?.text || x?.body || "").filter(Boolean);
@@ -790,6 +790,7 @@ async function viewConversaciones(id) {
     <div class="chat-layout ${id ? "con-chat" : ""}">
       <section class="card chat-list"><div class="chat-list-h"><div class="seg" id="cv-tabs">${[["mios", "Míos"], ["asesor", "Asesor IA"], ["todas", "Todas"]].map(([k, t]) => `<button class="${k === tab ? "on" : ""}" data-tab="${k}">${t} <span class="badge" id="cv-n-${k}"></span></button>`).join("")}</div></div><div class="chat-list-b" id="cv-l">${loading(5)}</div></section>
       <section class="card chat-pane" id="cv-c">${id ? loading(6) : ""}</section></div>`;
+  $(".chat-layout", P).insertAdjacentHTML("beforebegin", '<div id="cv-kapso"></div>');
   // el asesor atiende Carclass, NOM y los chats nuevos aún sin clasificar (él mismo los clasifica o los marca personales)
   // wa-agente solo atiende chats «lead» o «sin_unidad» de sus líneas, sin pausa y con modo que responde o propone
   const esAsesor = (c) => ["lead", "sin_unidad"].includes(c.estado) && (!c.unidad || ["carclass", "nom", "carwash"].includes(c.unidad))
@@ -800,7 +801,9 @@ async function viewConversaciones(id) {
   const MODO_OPC = [["activo", "Responde solo"], ["borrador", "Propone borradores"], ["observar", "Solo observa"], ["apagado", "Apagado"]];
   let MODOS_INFO = null;
   const cargarModos = async () => { try { MODOS_INFO = await rpc("app_asesor_modos"); MODOS = MODOS_INFO.modos || {}; } catch { MODOS_INFO = null; }
-    const dot = $("#cv-cfg-dot"); if (dot) dot.className = "cv-cfg-dot " + (MODOS_INFO && !MODOS_INFO.programado ? "off" : Object.values(MODOS).includes("activo") ? "on" : ""); };
+    const dot = $("#cv-cfg-dot"); if (dot) dot.className = "cv-cfg-dot " + (MODOS_INFO && !MODOS_INFO.programado ? "off" : Object.values(MODOS).includes("activo") ? "on" : "");
+    const kp = $("#cv-kapso"), lim = MODOS_INFO?.kapso_limite_hasta;
+    if (kp) kp.innerHTML = lim ? `<div class="alert" style="border-color:var(--bad);margin-bottom:12px">${ico("alert", 16)}<div><b>WhatsApp no está enviando por la API (Kapso sin cupo del plan).</b> El asesor deja borradores en vez de responder y los envíos desde Core no salen. Responde desde tu WhatsApp: en cada chat y borrador está el botón «Abrir en mi WhatsApp». Se reintenta solo el ${fechaHora(lim)}; se resuelve subiendo el plan de Kapso.</div></div>` : ""; };
   cargarModos();
   $("#cv-cfg").onclick = async () => {
     await cargarModos(); const m = MODOS_INFO || { modos: {} };
@@ -895,7 +898,15 @@ async function viewConversaciones(id) {
     const enviar = async (body, btn, ok) => {
       if (btn) btn.disabled = true;
       try { const r = await waEnviar(body); toast(ok(r)); refrescar(); cargarAvisos(); }
-      catch (e) { toast(e.message, true); if (btn) btn.disabled = false; }
+      catch (e) {
+        if (btn) btn.disabled = false;
+        if (!e.kapso) return toast(e.message, true);
+        // Kapso sin cupo: se ofrece enviar el mismo texto desde el WhatsApp del teléfono
+        const txt = (body.mensajes || borradorTxt((d.borradores || []).find((x) => x.id === body.borrador_id) || {})).join("\n\n");
+        const link = waLink(c.telefono, txt);
+        modal("WhatsApp sin cupo en Kapso", `<p style="margin:0 0 10px">El mensaje no salió: Kapso, la conexión de WhatsApp por API, llegó al límite de su plan. Envíalo desde tu WhatsApp; al enviarlo, el asesor queda en pausa en este chat.</p>${link ? `<a class="btn primary" href="${link}" target="_blank" rel="noopener">${ico("chat", 15)} Abrir en mi WhatsApp con el mensaje</a>` : '<p class="faint">Este chat no tiene un teléfono válido.</p>'}`, null);
+        cargarModos();
+      }
     };
     $$("[data-env]").forEach((b) => b.onclick = () => enviar({ borrador_id: b.dataset.env }, b, (r) => `Enviado (${r.enviados} mensaje${r.enviados > 1 ? "s" : ""})`));
     $$("[data-edit]").forEach((b) => b.onclick = () => {
