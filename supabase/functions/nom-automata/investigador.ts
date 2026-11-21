@@ -105,6 +105,13 @@ export async function pasoInvestigacion(client: Anthropic, modelo: string, v: Ve
     tools,
     messages: mensajes,
   } as any);
+  // Normaliza historiales antiguos: mensajes seguidos del asistente se unen en uno
+  est.mensajes = est.mensajes.reduce((acc: any[], m: any) => {
+    const prev = acc[acc.length - 1];
+    if (prev && prev.role === "assistant" && m.role === "assistant" && Array.isArray(prev.content) && Array.isArray(m.content)) prev.content = [...prev.content, ...m.content];
+    else acc.push(m);
+    return acc;
+  }, []);
   let r: any;
   try {
     r = await pedir(est.mensajes);
