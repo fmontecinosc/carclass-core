@@ -10,7 +10,7 @@ returns text[] language sql immutable set search_path to '' as $function$
     when p_unidad in ('blackgps','somosb2b') then array['pre_revision','por_contactar','en_prospeccion','reunion_por_agendar','en_asisma','onboarding']
     when p_unidad = 'carclass' then array['nuevo','calificando','pre_evaluado','cotizado','negociando','agendado','en_taller','entregado']
     when p_unidad = 'carwash'  then array['nuevo','coordinando','agendado','atendido']
-    when p_unidad = 'nom' and p_flujo = 'comprador' then array['nuevo','calificando','presentado','visita_agendada','negociando','reservado','entregado']
+    when p_unidad = 'nom' and p_flujo in ('comprador','compradores') then array['nuevo','calificando','presentado','visita_agendada','negociando','reservado','entregado']
     when p_unidad = 'nom' and p_flujo = 'compra_directa' then array['nuevo','calificando','tasado','oferta_enviada','aceptada','inspeccionado','comprado']
     when p_unidad = 'nom' then array['nuevo','calificando','revision_agendada','revisado','propuesta','contrato_firmado','publicado','negociando']
     else array['nuevo','en_curso'] end
