@@ -6,7 +6,7 @@ import postgres from "npm:postgres@3.4.4";
 import { pensar, MODELO_POR_DEFECTO, type Contexto } from "./cerebro.ts";
 import { HERRAMIENTAS, crearEjecutor, type Conversacion } from "./herramientas.ts";
 import { promptSistema } from "./prompt.ts";
-import { enviarTexto, descargarMedia, pausa } from "./kapso.ts";
+import { enviarTexto, enviarDocumento, descargarMedia, pausa } from "./kapso.ts";
 import { procesarSeguimientos } from "./seguimientos.ts";
 
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { prepare: false, max: 3, idle_timeout: 20 });
@@ -145,6 +145,15 @@ async function procesar(convId: string, desde: Date, cfg: Record<string, string>
         if (c.oportunidad_id) {
           await sql`select core.api_registrar_actividad(${sql.json({ oportunidad_id: c.oportunidad_id, tipo: "whatsapp", resultado: "enviado", nota: texto } as any)}, 'Agente IA')`;
         }
+      }
+      // Documentos que armaron las herramientas (hoy: PDF de cotización PPF), después del texto
+      for (const a of salida.acciones) {
+        const doc = (a.resultado?.data as any)?.documento;
+        if (!a.resultado?.ok || !doc?.url) continue;
+        await pausa(1500, 2500);
+        const { wamid } = await enviarDocumento(pnid, c.wa_usuario, doc.url, doc.nombre);
+        await sql`insert into wa.mensajes (wamid, conversacion_id, direccion, tipo, texto, enviado_en)
+                  values (${wamid}, ${convId}::uuid, 'saliente_api', 'document', ${`[Documento] ${doc.nombre} · ${doc.url}`}, now())`;
       }
       await sql`update wa.conversaciones set ultima_salida = now() where id = ${convId}::uuid`;
     } else if (modo === "borrador") {
