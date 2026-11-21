@@ -94,7 +94,7 @@ export async function pensar(e: EntradaCerebro): Promise<SalidaCerebro> {
       fallbacks: "default",
       output_config: { effort: "medium" },
       system: [{ type: "text", text: e.system, cache_control: { type: "ephemeral" } }],
-      tools: e.herramientas as any,
+      ...(e.herramientas.length ? { tools: e.herramientas as any } : {}),
       messages: mensajes,
     } as any) as Anthropic.Beta.BetaMessage;
 

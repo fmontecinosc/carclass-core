@@ -7,6 +7,7 @@ import { pensar, MODELO_POR_DEFECTO, type Contexto } from "./cerebro.ts";
 import { HERRAMIENTAS, crearEjecutor, type Conversacion } from "./herramientas.ts";
 import { promptSistema } from "./prompt.ts";
 import { enviarTexto, descargarMedia, pausa } from "./kapso.ts";
+import { procesarSeguimientos } from "./seguimientos.ts";
 
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { prepare: false, max: 3, idle_timeout: 20 });
 const client = new Anthropic({ maxRetries: 2, timeout: 90_000 });
@@ -193,7 +194,11 @@ Deno.serve(async (req) => {
         resultados.push(`error`);
       }
     }
-    return new Response(JSON.stringify({ ok: true, procesados: resultados }), { headers: { "content-type": "application/json" } });
+    // Seguimientos vencidos (23 h, día 3, día 7, día 10): ver seguimientos.ts
+    let seguimientos: string[] = [];
+    try { seguimientos = await procesarSeguimientos(sql, client, cfg, await promptSistema(sql)); }
+    catch (e) { seguimientos = [`error: ${String((e as any)?.message ?? e).slice(0, 120)}`]; }
+    return new Response(JSON.stringify({ ok: true, procesados: resultados, seguimientos }), { headers: { "content-type": "application/json" } });
   } catch (e) {
     return new Response(JSON.stringify({ ok: false }), { status: 500, headers: { "content-type": "application/json" } });
   }
