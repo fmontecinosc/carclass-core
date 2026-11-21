@@ -2,7 +2,7 @@
 
 > Fuente de verdad del proceso comercial del grupo, de la captación a la recompra. Reemplaza los procesos de Drive 2025, Notion, Kommo y los HTML de chats anteriores. Estas 11 fichas son las que devuelve la herramienta MCP `procesos` (tabla `ops.sops`, `tipo = 'proceso'`) y la sección «Procesos y ayuda» de Core. Orden de prioridad: grupo → BlackGPS → Carclass → NOM → Carwash.hf.
 >
-> Base: documento «Procesos Carclass Group v2.4» de Felipe (decisiones del 20 nov 2026). Donde un chat posterior ya había actualizado Core (comisión NOM, fee NOM en la visita, meta de 20 llamadas BlackGPS, retiro solo con PPF), manda Core y así quedó escrito aquí. Los valores vivos están en `core.parametros`; si difieren de este texto, manda `core.parametros`.
+> Base: documento «Procesos Carclass Group v2.4» de Felipe (decisiones del 20 nov 2026). Donde un chat posterior ya había actualizado Core (comisión NOM, fee NOM en la visita, meta de 20 llamadas BlackGPS), manda Core y así quedó escrito aquí. Los valores vivos están en `core.parametros`; si difieren de este texto, manda `core.parametros`.
 >
 > Montos en CLP con IVA incluido.
 
@@ -128,8 +128,8 @@ Etapas: nuevo → calificando → pre_evaluado → cotizado → negociando → a
 ### 7. Operación Carclass · unidad: carclass
 
 - Proceso de servicio: asesoría (agente o Felipe) → agenda e ingreso → instalación (lavado, preparación, pulido y aplicación) → entrega.
-- Recepción de autos: oficina de Chicureo (Av. Puerta Oriente 361, oficina 409B) o taller del partner en el complejo Alto Portezuelo (El Juncal 240, Quilicura), de 9:00 a 18:00, con previa coordinación. Con clientes de Carclass nunca se menciona NOM.
-- Retiro y entrega a domicilio: sector cercano a Chicureo (Chicureo y Lo Barnechea). Regla vigente en Core (`core.parametros` carclass.retiro, 20 nov): sin costo en ventas con PPF desde $600.000; en otros servicios u otras zonas se ofrece el retiro y Felipe confirma el costo (≈ $30.000). El agente nunca menciona montos mínimos.
+- Recepción de autos: nuestra oficina en Puertas de Chicureo (Av. Puerta Oriente 361, oficina 409B) o el centro de instalación del partner en el complejo Alto Portezuelo (El Juncal 240, Quilicura), de 9:00 a 18:00, con previa coordinación. Con clientes nunca se dice «nuestro taller» ni se menciona NOM.
+- Retiro y entrega a domicilio: solo en el sector cercano a Chicureo (Chicureo, Lo Barnechea y alrededores). Sin costo cuando el total cotizado es de $600.000 o más, sea cual sea el servicio; bajo ese total, aprox. $30.000. El agente nunca menciona el monto mínimo.
 - Láminas de seguridad XPEL: solo en el local, idealmente junto con otro servicio; se instalan en unas pocas horas (las instala Láminas Maru). Si el cliente pide un tono más oscuro que el legal, se instala avisándole por escrito que queda fuera de norma y puede tener multas o problemas en la revisión técnica.
 - Cupos semanales del agente (sujetos a la disponibilidad de Hiendcar): sellado cerámico 2 a 3, PPF frontal 2 a 3, láminas de seguridad 1 a 2 por día.
 - En taller: QC de recepción con fotos. Brief a Hiendcar sin datos personales del cliente: código de orden Carclass, auto, color y código de pintura, km, fotos de recepción, servicios exactos (PPF: zonas y film; cerámico: producto; corrección: nivel), fecha de ingreso, fecha comprometida y SLA por escrito. El partner no ofrece servicios adicionales, envía fotos del proceso y factura a Carclass. Se registran el ingreso y el costo del partner en Core.
@@ -167,7 +167,7 @@ Etapas: nuevo → calificando → presentado → visita_agendada → negociando 
 
 ### 10. NOM compra directa y parte de pago · unidad: nom
 
-Etapas propuestas: nuevo → calificando → tasado → oferta_enviada → aceptada → inspeccionado → comprado (ganada) → en_preparacion → publicado. (Pendiente: estas etapas aún no existen en Core; hoy el flujo compra_directa usa las de consignación.)
+Etapas (flujo compra_directa en Core): nuevo → calificando → tasado → oferta_enviada → aceptada → inspeccionado → comprado (ganada). Después: en preparación → publicado, en Vehículos (stock propio).
 
 - Cuándo aplica: (a) el dueño quiere vender ya y prefiere una oferta firme en vez de consignar; (b) un comprador de NOM entrega su auto como parte de pago.
 - Calificando (setter): los mismos datos que en consignación (marca, modelo, versión, año, km, documentos, prendas) y el precio esperado. El setter nunca ofrece un precio.
