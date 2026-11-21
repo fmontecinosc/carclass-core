@@ -353,9 +353,17 @@ export function crearEjecutor(o: OpcionesEjecutor) {
         where not es_pieza
           and not exists (select 1 from unnest(${ws}::text[]) w where position(w in replace(modelo_norm, ' ', '')) = 0)
         order by fecha_planilla desc nulls last`;
-      let filas = await buscar(palabras);
-      // Sin calce exacto: se prueba sin la marca (las planillas a veces la abrevian)
-      if (filas.length === 0 && palabras.length > 1) filas = await buscar(palabras.slice(1));
+      // Calce por palabra completa: «x3» no debe calzar con «ix3» ni «cx3» con «cx30». Se aceptan palabras sueltas
+      // o pares unidos del nombre de la planilla («cx 5» = «cx5»); si ninguna planilla calza así, se usa el calce amplio.
+      const exactas = (fs: any[], ws: string[]) => fs.filter((f) => {
+        const t = String(f.modelo_norm).split(" ");
+        const set = new Set([...t, ...t.slice(1).map((x, k) => t[k] + x)]);
+        return ws.every((w) => set.has(w));
+      });
+      const afinar = (fs: any[], ws: string[]) => { const e = exactas(fs, ws); return e.length ? e : fs; };
+      let filas = afinar(await buscar(palabras), palabras);
+      // Sin calce: se prueba sin la marca (las planillas a veces la abrevian)
+      if (filas.length === 0 && palabras.length > 1) filas = afinar(await buscar(palabras.slice(1)), palabras.slice(1));
       const cat = await sql`select codigo, precio from crm.catalogo where activo and unidad = 'carclass' and codigo in ('ceramico_4','laminas','laminas_8','ppf_frontal','ppf_frontal_reducido','shield','protection_pack')`;
       const precio = (c: string) => Number(cat.find((x: any) => x.codigo === c)?.precio ?? 0);
       if (filas.length === 0) {
