@@ -15,7 +15,7 @@ import { pdfInforme, subirInforme, nombreInforme } from "./informe.ts";
 
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { prepare: false, max: 3, idle_timeout: 20 });
 const AUTOR = "Agente IA";
-const VERSION = "1.2.0";
+const VERSION = "1.2.1";
 
 function seguroIgual(a: string, b: string) {
   if (!a || a.length !== b.length) return false;
