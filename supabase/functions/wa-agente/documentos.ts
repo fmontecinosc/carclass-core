@@ -338,7 +338,7 @@ export async function pdfCotizacion(d: DatosCot): Promise<Uint8Array> {
 export async function subirDocumento(nombreArchivo: string, bytes: Uint8Array, carpeta = "ppf"): Promise<string> {
   const base = Deno.env.get("SUPABASE_URL")!;
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const ruta = `${carpeta}/${crypto.randomUUID().replace(/-/g, "")}/${nombreArchivo}`;
+  const ruta = `${carpeta}/${crypto.randomUUID().replace(/-/g, "")}/${encodeURIComponent(nombreArchivo)}`;
   const r = await fetch(`${base}/storage/v1/object/documentos/${ruta}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, apikey: key, "Content-Type": "application/pdf", "x-upsert": "false" },
@@ -348,8 +348,43 @@ export async function subirDocumento(nombreArchivo: string, bytes: Uint8Array, c
   return `${base}/storage/v1/object/public/documentos/${ruta}`;
 }
 
-// Nombre de archivo legible y seguro: «Cotizacion-PPF-BMW-X3-2024.pdf»
-export function nombreArchivo(vehiculo: string): string {
-  const s = vehiculo.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
-  return `Cotizacion-PPF-${s || "vehiculo"}.pdf`;
+// Nombre del PDF que ve el cliente (Felipe 22-nov): servicio corto + modelo + nombre e inicial del apellido + folio corto,
+// unos 40 caracteres, sin marca, sin año, sin tildes. Ej.: «Ceramico Swift Claudio P CC2611-001.pdf», «PPF X3 Claudio P.pdf».
+const limpio = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ñ/gi, "n").replace(/[^A-Za-z0-9 -]+/g, " ").replace(/\s+/g, " ").trim();
+const MARCAS_2 = ["mercedes benz", "land rover", "alfa romeo", "aston martin", "great wall", "rolls royce"];
+export function modeloCorto(vehiculo: string | null | undefined, modelo?: string | null): string {
+  if (modelo) return limpio(modelo).split(" ")[0] ?? "";
+  const w = limpio(vehiculo ?? "").split(" ").filter((x) => !/^(19|20)\d\d$/.test(x));
+  const salto = MARCAS_2.some((m) => w.slice(0, 2).join(" ").toLowerCase() === m) ? 2 : 1;
+  return w[salto] ?? w[0] ?? "";
+}
+// Nombres compuestos frecuentes: en «María José Núñez» la inicial es la del apellido (N), no la de José
+const SEGUNDOS = new Set(["jose", "pablo", "carlos", "ignacio", "ignacia", "paz", "jesus", "luis", "miguel", "antonio", "francisco", "javier", "javiera", "andres", "fernanda", "teresa", "elena", "isabel", "eugenia", "cristina", "angel", "de", "del"]);
+export function clienteCorto(nombre: string | null | undefined): string {
+  const w = limpio(nombre ?? "").split(" ").filter((x) => x.length > 0 && !/^\d+$/.test(x));
+  if (!w.length) return "";
+  const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1).toLowerCase();
+  let k = 1;
+  while (k < w.length - 1 && SEGUNDOS.has(w[k].toLowerCase())) k++;
+  const pila = cap(w[0]).slice(0, 10);
+  return w.length > 1 ? `${pila} ${w[k].charAt(0).toUpperCase()}` : pila;
+}
+export function servicioCorto(nombres: string[]): string {
+  const s = new Set<string>();
+  for (const n0 of nombres) {
+    const n = n0.toLowerCase();
+    if (/protect|shield|pack/.test(n)) { s.add("Pack"); continue; }
+    if (/ppf|xpel|gloss|ultimate|stealth|kit frontal|completo exterior/.test(n)) s.add("PPF");
+    else if (/cer[aá]mic/.test(n)) s.add("Ceramico");
+    else if (/l[aá]min/.test(n)) s.add("Laminas");
+    else if (/detail|pulid|interior/.test(n)) s.add("Detailing");
+    else if (/retiro|despacho/.test(n)) continue;
+    else s.add("Servicio");
+  }
+  return s.size === 1 ? [...s][0] : s.size > 1 ? "Pack" : "Cotizacion";
+}
+export function nombreDoc(servicio: string, modelo: string, cliente: string, folio?: string | null): string {
+  const f = folio ? folio.replace(/^([A-Z]+)-/, "$1") : "";
+  // ~40 caracteres: el modelo se corta a 12 y el nombre a 10 (clienteCorto); servicio y folio no se tocan
+  return `${[limpio(servicio), limpio(modelo).slice(0, 12).trim(), limpio(cliente), f].filter(Boolean).join(" ")}.pdf`;
 }

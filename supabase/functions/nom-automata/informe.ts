@@ -337,7 +337,7 @@ export async function pdfInforme(p: any, op: OpcionesInforme = {}): Promise<Uint
 
 export async function subirInforme(nombre: string, bytes: Uint8Array): Promise<string> {
   const base = Deno.env.get("SUPABASE_URL")!, key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const ruta = `tasaciones/${crypto.randomUUID().replace(/-/g, "")}/${nombre}`;
+  const ruta = `tasaciones/${crypto.randomUUID().replace(/-/g, "")}/${encodeURIComponent(nombre)}`;
   const r = await fetch(`${base}/storage/v1/object/documentos/${ruta}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, apikey: key, "Content-Type": "application/pdf", "x-upsert": "false" },
@@ -347,5 +347,15 @@ export async function subirInforme(nombre: string, bytes: Uint8Array): Promise<s
   return `${base}/storage/v1/object/public/documentos/${ruta}`;
 }
 
-export const nombreInforme = (p: any) =>
-  `Tasacion-${[p.vehiculo?.marca, p.vehiculo?.modelo, p.vehiculo?.anio].filter(Boolean).join("-").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "") || p.folio}.pdf`;
+// Nombre del PDF (Felipe 22-nov): «Tasacion Q5 Claudio P.pdf», sin marca, sin año, sin tildes, ~40 caracteres
+export const nombreInforme = (p: any, cliente?: string | null) => {
+  const limpio = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ñ/gi, "n").replace(/[^A-Za-z0-9 -]+/g, " ").replace(/\s+/g, " ").trim();
+  const modelo = limpio(String(p.vehiculo?.modelo ?? "")).split(" ")[0] ?? "";
+  const w = limpio(cliente ?? "").split(" ").filter((x) => x && !/^\d+$/.test(x));
+  const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1).toLowerCase();
+  const SEG = new Set(["jose", "pablo", "carlos", "ignacio", "ignacia", "paz", "jesus", "luis", "miguel", "antonio", "francisco", "javier", "javiera", "andres", "fernanda", "teresa", "elena", "isabel", "eugenia", "cristina", "angel", "de", "del"]);
+  let k = 1; while (k < w.length - 1 && SEG.has(w[k].toLowerCase())) k++;
+  const cli = w.length > 1 ? `${cap(w[0]).slice(0, 10)} ${w[k].charAt(0).toUpperCase()}` : w.length ? cap(w[0]).slice(0, 10) : "";
+  const base = ["Tasacion", modelo.slice(0, 12), cli].filter(Boolean).join(" ");
+  return `${base.slice(0, 40).trim() || "Tasacion " + (p.folio ?? "")}.pdf`;
+};

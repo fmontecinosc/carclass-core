@@ -3,7 +3,7 @@
 import type Anthropic from "npm:@anthropic-ai/sdk@0.136.0";
 import type postgres from "npm:postgres@3.4.4";
 import { HERRAMIENTAS_NOM, NOM_SOLO_LECTURA, crearNom } from "./nom.ts";
-import { pdfPpf, pdfCotizacion, subirDocumento, nombreArchivo } from "./documentos.ts";
+import { pdfPpf, pdfCotizacion, subirDocumento, nombreDoc, modeloCorto, clienteCorto, servicioCorto } from "./documentos.ts";
 
 type Sql = ReturnType<typeof postgres>;
 export type Resultado = { ok: boolean; data?: unknown; error?: string };
@@ -457,20 +457,23 @@ export function crearEjecutor(o: OpcionesEjecutor) {
       ] : [];
       const vehiculo = [i.marca, i.modelo, i.anio].filter(Boolean).join(" ");
       // Un solo PDF por auto y conversación (en el mismo turno o en los últimos 7 días)
-      const archivo = nombreArchivo(vehiculo);
+      const modeloC = modeloCorto(vehiculo, i.modelo);
+      const archivo = nombreDoc("PPF", modeloC, clienteCorto((conv.ficha?.nombre as string) ?? conv.nombre));
+      const clave = `PPF ${modeloC}`;
       const enviados: Set<string> = ((conv as any).ppf_enviados ??= new Set<string>());
-      const yaEnviado = enviados.has(archivo) || (escribir && (await sql`
+      const yaEnviado = enviados.has(clave) || (escribir && (await sql`
         select 1 from wa.mensajes where conversacion_id = ${conv.id}::uuid and tipo = 'document'
-          and texto like ${"[Documento] " + archivo + "%"} and enviado_en > now() - interval '7 days' limit 1`).length > 0);
+          and (texto like ${"[Documento] " + clave + "%"} or texto like ${"[Documento] Cotizacion-PPF-%" + modeloC + "%"})
+          and enviado_en > now() - interval '7 days' limit 1`).length > 0);
       if (yaEnviado) return { ok: true, data: { ya_enviado: true, instruccion: "Este PDF ya se le envió al cliente: no lo menciones como nuevo ni lo reenvíes." } };
-      enviados.add(archivo);
+      enviados.add(clave);
       const hoy = partesChile(ahora).fecha, vig = sumarDias(hoy, 7);
       const larga = (f: string) => new Intl.DateTimeFormat("es-CL", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" }).format(new Date(`${f}T12:00:00Z`));
       const resumen = { vehiculo, modelo_planilla: d.modelo_planilla, kit_frontal: { gloss: g.kit_frontal_5_piezas, ultimate: u.kit_frontal_5_piezas }, completo_exterior: { gloss: g.completo_exterior_wpf, ultimate: u.completo_exterior_wpf }, paquetes: pq };
-      if (!escribir) return { ok: true, data: { simulado: true, documento: nombreArchivo(vehiculo), resumen, instruccion: "El PDF se envía después de tu mensaje. No repitas en el texto toda la tabla: menciona el kit frontal recomendado y di que en el documento van las dos calidades y los paquetes." } };
+      if (!escribir) return { ok: true, data: { simulado: true, documento: archivo, resumen, instruccion: "El PDF se envía después de tu mensaje. No repitas en el texto toda la tabla: menciona el kit frontal recomendado y di que en el documento van las dos calidades y los paquetes." } };
       const numero = `CC-PPF-${hoy.replace(/-/g, "").slice(2)}-${String(Math.floor(Math.random() * 900) + 100)}`;
       const bytes = await pdfPpf({ numero, fecha: larga(hoy), vigencia: larga(vig), cliente: (conv.ficha?.nombre as string) ?? conv.nombre, vehiculo, filas, paquetes, estimado: false });
-      const url = await subirDocumento(nombreArchivo(vehiculo), bytes);
+      const url = await subirDocumento(archivo, bytes);
       if (conv.oportunidad_id) {
         await sql`insert into crm.actividades (oportunidad_id, empresa_id, tipo, resultado, nota, autor)
                   values (${conv.oportunidad_id}::uuid, ${conv.empresa_id}::uuid, 'whatsapp', 'enviado', ${`Cotización PPF ${numero} (${vehiculo}, planilla «${d.modelo_planilla}»): ${url}`}, ${AUTOR})`;
@@ -478,7 +481,7 @@ export function crearEjecutor(o: OpcionesEjecutor) {
       return {
         ok: true,
         data: {
-          documento: { url, nombre: nombreArchivo(vehiculo), numero }, resumen,
+          documento: { url, nombre: archivo, numero }, resumen,
           instruccion: "El PDF se envía después de tu mensaje. No repitas en el texto toda la tabla: menciona el kit frontal recomendado y di que en el documento van las dos calidades y los paquetes.",
         },
       };
@@ -581,7 +584,7 @@ export function crearEjecutor(o: OpcionesEjecutor) {
         email: datosCli.email, telefono: conv.telefono_norm ? `+56 ${conv.telefono_norm.slice(0, 1)} ${conv.telefono_norm.slice(1, 5)} ${conv.telefono_norm.slice(5)}` : null,
         vehiculo: auto, anio: datosCli.anio, color: datosCli.color, patente: datosCli.patente, lineas: lineas.map((l: any) => ({ nombre: l.nombre, descripcion: l.descripcion, cantidad: l.cantidad, precio: l.precio })), total, notas: i.notas ?? null,
       });
-      const archivo = `Cotizacion-${numero}.pdf`;
+      const archivo = nombreDoc(servicioCorto(lineas.map((l: any) => l.nombre)), modeloCorto(auto), clienteCorto(nombreCli), numero);
       const url = await subirDocumento(archivo, bytes, "cotizaciones");
       await sql`update crm.cotizaciones set pdf_url = ${url} where id = ${id}::uuid`;
       return {

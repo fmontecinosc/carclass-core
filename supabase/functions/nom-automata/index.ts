@@ -37,7 +37,7 @@ async function enviarSalientes(): Promise<string[]> {
   const out: string[] = [];
   const modo = (await sql`select wa.modo_agente('nom') as m`)[0].m as string;
   const pend = await sql`
-    select s.*, c.wa_usuario, c.telefono, c.ventana_hasta, c.phone_number_id, c.oportunidad_id, c.empresa_id, c.nombre
+    select s.*, c.wa_usuario, c.telefono, c.ventana_hasta, c.phone_number_id, c.oportunidad_id, c.empresa_id, c.nombre, c.ficha->>'nombre' as ficha_nombre
     from nom.salientes s join wa.conversaciones c on c.id = s.conversacion_id
     where s.estado = 'pendiente' order by s.creado_en limit 5`;
   if (pend.length === 0) return out;
@@ -72,7 +72,7 @@ async function enviarSalientes(): Promise<string[]> {
       let pdf: { url: string; nombre: string } | null = null;
       if (s.tipo === "tasacion_aprobada") {
         const payload = (await sql`select nom.payload_cliente(${s.referencia}::uuid) as p`)[0].p;
-        const nombre = nombreInforme(payload);
+        const nombre = nombreInforme(payload, s.ficha_nombre ?? s.nombre ?? null);
         const of = await param("nom.oficina");
         const wa = (await param("whatsapp.unidades"))?.nom ?? null;
         pdf = { url: await subirInforme(nombre, await pdfInforme(payload, { whatsapp: wa ?? undefined, agenda_url: of?.agenda_url ?? null })), nombre };
