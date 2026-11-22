@@ -1,6 +1,6 @@
 /* Carclass Core · service worker: app instalable, caché del cascarón y clic en avisos */
-const CACHE = "core-v2.10.6";
-const SHELL = ["./", "index.html", "app.css?v=2.10.6", "app.js?v=2.10.6", "informe-tasacion.js?v=2.10.6", "img/nom-logo.png", "manifest.webmanifest", "img/logo.png", "img/icon-192.png", "vendor/supabase.js?v=2.45.4"];
+const CACHE = "core-v2.10.7";
+const SHELL = ["./", "index.html", "app.css?v=2.10.7", "app.js?v=2.10.7", "informe-tasacion.js?v=2.10.7", "img/nom-logo.png", "manifest.webmanifest", "img/logo.png", "img/core-192.png", "img/logo-blanco.png", "vendor/supabase.js?v=2.45.4"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", (e) => {
@@ -20,5 +20,5 @@ self.addEventListener("notificationclick", (e) => {
 // Push con la app cerrada: listo para cuando el servidor envíe avisos (requiere claves VAPID en core-api)
 self.addEventListener("push", (e) => {
   let d = {}; try { d = e.data.json(); } catch { d = { title: "Carclass Core", body: e.data?.text() }; }
-  e.waitUntil(self.registration.showNotification(d.title || "Carclass Core", { body: d.body, icon: "img/icon-192.png", badge: "img/icon-96.png", tag: d.tag, data: { href: d.href } }));
+  e.waitUntil(self.registration.showNotification(d.title || "Carclass Core", { body: d.body, icon: "img/core-192.png", "img/logo-blanco.png", badge: "img/icon-96.png", tag: d.tag, data: { href: d.href } }));
 });

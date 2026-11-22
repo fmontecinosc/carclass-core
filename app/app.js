@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.10.6";
+const VERSION = "2.10.7";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -363,7 +363,7 @@ async function suscribirPush() {
 async function mostrarAviso(a) {
   try {
     const reg = await navigator.serviceWorker?.getRegistration();
-    const opts = { body: a.body, icon: "img/icon-192.png", badge: "img/icon-96.png", tag: a.id, data: { href: a.href } };
+    const opts = { body: a.body, icon: "img/core-192.png", badge: "img/icon-96.png", tag: a.id, data: { href: a.href } };
     if (reg) await reg.showNotification(a.title, opts); else new Notification(a.title, opts);
   } catch {}
 }
