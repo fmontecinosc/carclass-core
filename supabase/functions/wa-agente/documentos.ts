@@ -261,7 +261,8 @@ export async function pdfPpf(d: DatosPpf): Promise<Uint8Array> {
 
 // Cotización Carclass (cerámico, láminas, paquetes, etc.): misma estética, con líneas, neto, IVA y total
 export interface LineaCot { nombre: string; descripcion?: string | null; cantidad: number; precio: number }
-export interface DatosCot { numero: string; fecha: string; vigencia: string; cliente: string | null; vehiculo: string | null; lineas: LineaCot[]; total: number; notas?: string | null }
+export interface DatosCot { numero: string; fecha: string; vigencia: string; cliente: string | null; vehiculo: string | null; lineas: LineaCot[]; total: number; notas?: string | null;
+  email?: string | null; telefono?: string | null; anio?: string | null; color?: string | null; patente?: string | null }
 
 // Servicios de la cabecera según lo cotizado (como headerLinesHtml del cotizador)
 function serviciosDe(lineas: LineaCot[]): string[] {
@@ -284,7 +285,15 @@ export async function pdfCotizacion(d: DatosCot): Promise<Uint8Array> {
   const { lz, y: y0 } = await lienzoCarclass("Cotización", serviciosDe(d.lineas),
     [["N°", d.numero], ["Fecha", d.fecha], ["Válida hasta", d.vigencia]], `Cotización ${d.numero} · Carclass`);
   const { txt, der, reg, neg, page, W } = lz;
-  let y = bloquesInfo(lz, y0, ["Cliente", [["Nombre", d.cliente || "—"]]], ["Vehículo", [["Modelo", d.vehiculo || "—"]]]);
+  // Ficha del cliente y del auto (Felipe 22-nov: la cotización lleva los datos del cliente y del vehículo)
+  const cli: [string, string][] = [["Nombre", d.cliente || "—"]];
+  if (d.email) cli.push(["Correo", d.email]);
+  if (d.telefono) cli.push(["Teléfono", d.telefono]);
+  const veh: [string, string][] = [["Modelo", d.vehiculo || "—"]];
+  if (d.anio) veh.push(["Año", d.anio]);
+  if (d.color) veh.push(["Color", d.color]);
+  if (d.patente) veh.push(["Patente", d.patente.toUpperCase()]);
+  let y = bloquesInfo(lz, y0, ["Cliente", cli], ["Vehículo", veh]);
 
   const gap = 4.25, wC = 46, wP = 88, wT = 92;
   const wN = W - wC - wP - wT - 3 * gap;

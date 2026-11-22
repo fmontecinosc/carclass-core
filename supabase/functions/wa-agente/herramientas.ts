@@ -121,11 +121,16 @@ export const HERRAMIENTAS: Anthropic.Tool[] = [
   },
   {
     name: "crear_cotizacion",
-    description: "Crea (o actualiza, si ya hay una abierta en esta conversación) la cotización de Carclass en Core con los ítems y precios que ya obtuviste de las herramientas. Genera el PDF de la cotización, que se envía al cliente por WhatsApp después de tu mensaje. Devuelve número y vigencia.",
+    description: "Crea (o actualiza, si ya hay una abierta en esta conversación) la cotización de Carclass en Core con los ítems y precios que ya obtuviste de las herramientas. Genera el PDF de la cotización, que se envía al cliente por WhatsApp después de tu mensaje. Devuelve número y vigencia. Exige nombre y apellido del cliente, marca y modelo, y año: si falta alguno, devuelve qué falta y no cotiza; pídelo al cliente en un solo mensaje.",
     input_schema: {
       type: "object",
       properties: {
-        vehiculo: { type: "string", description: "Marca, modelo y año." },
+        cliente_nombre: { type: "string", description: "Nombre y apellido del cliente, tal como lo dio." },
+        email: { type: "string", description: "Correo del cliente, si lo dio (opcional)." },
+        vehiculo: { type: "string", description: "Marca y modelo (ej. Suzuki Swift GL)." },
+        anio: { type: "integer", description: "Año del vehículo." },
+        color: { type: "string", description: "Color, si lo dio." },
+        patente: { type: "string", description: "Patente, si la dio." },
         items: {
           type: "array",
           items: {
@@ -142,7 +147,7 @@ export const HERRAMIENTAS: Anthropic.Tool[] = [
         },
         notas: { type: "string" },
       },
-      required: ["items"],
+      required: ["items", "cliente_nombre", "vehiculo", "anio"],
       additionalProperties: false,
     },
   },
@@ -509,6 +514,20 @@ export function crearEjecutor(o: OpcionesEjecutor) {
     async crear_cotizacion(i) {
       const items = (i.items ?? []).map((x: any) => ({ ...x, cantidad: x.cantidad ?? 1 }));
       if (items.length === 0) return { ok: false, error: "Sin ítems" };
+      // Felipe 22-nov: primero los datos del cliente y del vehículo, después la cotización
+      const ficha: any = conv.ficha ?? {};
+      const nombreCli = String(i.cliente_nombre ?? ficha.nombre ?? "").trim();
+      const auto = String(i.vehiculo ?? [ficha.marca, ficha.modelo].filter(Boolean).join(" ")).trim();
+      const anio = Number(i.anio ?? ficha.anio ?? 0);
+      const faltan: string[] = [];
+      if (nombreCli.split(/\s+/).filter((w) => w.length > 1).length < 2) faltan.push("nombre y apellido");
+      if (auto.split(/\s+/).filter(Boolean).length < 2) faltan.push("marca y modelo");
+      if (!(anio >= 1950 && anio <= 2100)) faltan.push("año");
+      if (faltan.length) {
+        return { ok: false, error: `Faltan datos para cotizar: ${faltan.join(", ")}.`,
+          instruccion: "No envíes la cotización todavía. Pide en un solo mensaje lo que falta (y, si no los tienes, el correo, el color y la patente, aclarando que estos son opcionales). No repitas lo que el cliente ya dio." };
+      }
+      const datosCli = { nombre: nombreCli, email: i.email ?? ficha.email ?? null, anio: String(anio), color: i.color ?? ficha.color ?? null, patente: i.patente ?? ficha.patente ?? null };
       const total = items.reduce((s: number, x: any) => s + Number(x.precio) * Number(x.cantidad), 0);
       const vigencia = sumarDias(partesChile(ahora).fecha, 7);
       const INSTR = "El PDF de la cotización se envía solo, después de tu mensaje. Di en una línea que le envías la cotización con el total y la vigencia de 7 días; nunca pegues links ni copies el detalle completo.";
@@ -520,7 +539,11 @@ export function crearEjecutor(o: OpcionesEjecutor) {
         const c: any = cat.find((k: any) => k.codigo === x.codigo);
         return { codigo: x.codigo ?? null, nombre: c?.nombre ?? x.descripcion, descripcion: c ? x.descripcion : null, cantidad: Number(x.cantidad), precio: Number(x.precio) };
       });
-      const itemsJson = { v: 2, lineas, auto: i.vehiculo ?? null, origen: "asesor" };
+      const autoTxt = `${auto} ${anio}`;
+      const itemsJson = { v: 2, lineas, auto: autoTxt, cliente: datosCli, origen: "asesor" };
+      // La ficha queda con los datos que se usaron (para la agenda y la app)
+      conv.ficha = { ...conv.ficha, nombre: nombreCli, ...(datosCli.email ? { email: datosCli.email } : {}), anio, ...(datosCli.color ? { color: datosCli.color } : {}), ...(datosCli.patente ? { patente: datosCli.patente } : {}) };
+      await sql`update wa.conversaciones set ficha = ${sql.json(conv.ficha as any)}, actualizado_en = now() where id = ${conv.id}::uuid`;
       const estado = o.modo === "activo" ? "enviada" : "borrador";
       // Si en esta conversación ya hay una cotización abierta de los últimos 7 días, se actualiza (mismo número y link)
       const abierta = conv.oportunidad_id ? await sql`
@@ -554,8 +577,9 @@ export function crearEjecutor(o: OpcionesEjecutor) {
       // PDF de la cotización: se envía por WhatsApp después del texto (Felipe 21-nov-2026: al cliente PDF, no links)
       const larga = (f: string) => new Intl.DateTimeFormat("es-CL", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" }).format(new Date(`${f}T12:00:00Z`));
       const bytes = await pdfCotizacion({
-        numero, fecha: larga(partesChile(ahora).fecha), vigencia: larga(vigencia), cliente: (conv.ficha?.nombre as string) ?? conv.nombre,
-        vehiculo: i.vehiculo ?? null, lineas: lineas.map((l: any) => ({ nombre: l.nombre, descripcion: l.descripcion, cantidad: l.cantidad, precio: l.precio })), total, notas: i.notas ?? null,
+        numero, fecha: larga(partesChile(ahora).fecha), vigencia: larga(vigencia), cliente: nombreCli,
+        email: datosCli.email, telefono: conv.telefono_norm ? `+56 ${conv.telefono_norm.slice(0, 1)} ${conv.telefono_norm.slice(1, 5)} ${conv.telefono_norm.slice(5)}` : null,
+        vehiculo: auto, anio: datosCli.anio, color: datosCli.color, patente: datosCli.patente, lineas: lineas.map((l: any) => ({ nombre: l.nombre, descripcion: l.descripcion, cantidad: l.cantidad, precio: l.precio })), total, notas: i.notas ?? null,
       });
       const archivo = `Cotizacion-${numero}.pdf`;
       const url = await subirDocumento(archivo, bytes, "cotizaciones");
