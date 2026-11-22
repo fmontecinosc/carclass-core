@@ -373,10 +373,14 @@ export function servicioCorto(nombres: string[]): string {
   const s = new Set<string>();
   for (const n0 of nombres) {
     const n = n0.toLowerCase();
+    // «XPEL» aparece también en cerámicos y láminas: primero cerámico y láminas, y PPF sin «xpel»
     if (/protect|shield|pack/.test(n)) { s.add("Pack"); continue; }
-    if (/ppf|xpel|gloss|ultimate|stealth|kit frontal|completo exterior/.test(n)) s.add("PPF");
-    else if (/cer[aá]mic/.test(n)) s.add("Ceramico");
+    if (/cer[aá]mic/.test(n)) s.add("Ceramico");
     else if (/l[aá]min/.test(n)) s.add("Laminas");
+    else if (/ppf|gloss|ultimate|stealth|kit frontal|completo exterior|film/.test(n)) s.add("PPF");
+    else if (/wpf|parabrisas/.test(n)) s.add("WPF");
+    else if (/llanta/.test(n)) s.add("Llantas");
+    else if (/desabollad|pintura/.test(n)) s.add("Pintura");
     else if (/detail|pulid|interior/.test(n)) s.add("Detailing");
     else if (/retiro|despacho/.test(n)) continue;
     else s.add("Servicio");
