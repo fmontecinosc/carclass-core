@@ -9,6 +9,7 @@ import { promptSistema } from "./prompt.ts";
 import { enviarTexto, enviarDocumento, descargarMedia, pausa } from "./kapso.ts";
 import { procesarSeguimientos } from "./seguimientos.ts";
 import { simular } from "./simular.ts";
+import { supervisor } from "./supervisor.ts";
 
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { prepare: false, max: 3, idle_timeout: 20 });
 const client = new Anthropic({ maxRetries: 2, timeout: 90_000 });
@@ -229,6 +230,8 @@ async function manejarError(convId: string, intentos: number, err: unknown) {
 
 Deno.serve(async (req) => {
   try {
+    // Chat de Felipe con el asesor (Core → Conversaciones → Instrucciones): autentica con el JWT del dueño, no con el secreto
+    if (new URL(req.url).pathname.endsWith("/supervisor")) return await supervisor(sql, client, req);
     if (req.method !== "POST") return new Response("Método no permitido", { status: 405 });
     const cfg = await config();
     if (!seguroIgual(req.headers.get("x-agente-secret") ?? "", cfg.agente_secret ?? "")) return new Response("No autorizado", { status: 401 });
