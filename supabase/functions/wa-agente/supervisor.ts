@@ -151,6 +151,17 @@ function ejecutor(sql: Sql) {
 
 // Valida el JWT del usuario con Supabase Auth y exige rol dueño
 async function dueno(sql: Sql, req: Request): Promise<string | null> {
+  // Pruebas internas (simulador): secreto del asesor + cabecera x-supervisor-usuario con el user_id del dueño
+  const sec = req.headers.get("x-agente-secret");
+  if (sec) {
+    const cfg = await sql`select valor from wa.config where clave = 'agente_secret'`;
+    const u = req.headers.get("x-supervisor-usuario") ?? "";
+    if (cfg[0]?.valor && sec === cfg[0].valor && /^[0-9a-f-]{36}$/.test(u)) {
+      const ok = await sql`select 1 from core.usuarios where user_id = ${u}::uuid and activo and rol = 'dueno'`;
+      return ok.length ? u : null;
+    }
+    return null;
+  }
   const jwt = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!jwt) return null;
   const base = Deno.env.get("SUPABASE_URL")!;
