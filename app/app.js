@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.10.8";
+const VERSION = "2.10.9";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -170,6 +170,7 @@ const I = {
   money: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/>',
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   phone: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
+  monitor: '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>',
 };
 const ico = (k, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[k] || I.dot}</svg>`;
 const tipoIco = { llamada: "call", correo: "mail", whatsapp: "chat", reunion: "meet", visita: "meet", nota: "note", sistema: "dot" };
@@ -684,10 +685,24 @@ async function viewNotificaciones() {
     <section class="card"><div class="card-h"><h3>Avisos al dispositivo</h3></div><div class="card-b" style="display:grid;gap:10px;font-size:13px">
       ${tipos.map(([t, s]) => `<div class="row" style="justify-content:space-between;align-items:center"><span>${t}</span><span class="pill ${s === "activo" ? "ok" : ""}">${s}</span></div>`).join("")}
       <p class="faint" style="margin:6px 0 0;font-size:12px">${lsGet("cc_push") === "1" ? "Este dispositivo recibe avisos también con la app cerrada." : "Activa los avisos en cada dispositivo (teléfono y computador) para recibirlos también con la app cerrada."} En iPhone, primero instala la app: Safari → Compartir → Agregar a pantalla de inicio.</p>
-      <button class="btn primary" id="n-act">${ico("bell", 15)} ${"Notification" in window && Notification.permission === "granted" ? "Probar aviso" : "Activar avisos en este dispositivo"}</button></div></section></div>`;
+      <button class="btn primary" id="n-act">${ico("bell", 15)} ${"Notification" in window && Notification.permission === "granted" ? "Probar aviso" : "Activar avisos en este dispositivo"}</button>
+      <div class="push-devs"><div class="row" style="justify-content:space-between;align-items:center"><b style="font-size:13px">Dispositivos que reciben avisos</b><button class="btn sm" id="n-probar">Enviar prueba a todos</button></div><div id="n-devs">${loading(2)}</div></div></div></section></div>`;
   $$("#nl .notif").forEach((a) => a.addEventListener("click", () => { const s = leidos(); s.add(a.dataset.id); guardarSet("cc_leidos", s); }));
   $("#n-all").onclick = () => { const s = leidos(); AVISOS.forEach((a) => s.add(a.id)); guardarSet("cc_leidos", s); viewNotificaciones(); };
   $("#n-act").onclick = activarAvisos;
+  const pintarDevs = async () => {
+    let l = []; try { l = await rpc("app_push_dispositivos") || []; } catch (e) { $("#n-devs").innerHTML = `<p class="faint" style="font-size:12px">${esc(e.message)}</p>`; return; }
+    const nav = (ua) => /edg\//i.test(ua) ? "Edge" : /chrome\//i.test(ua) ? "Chrome" : /firefox/i.test(ua) ? "Firefox" : /safari/i.test(ua) ? "Safari" : "";
+    $("#n-devs").innerHTML = l.length ? l.map((d) => `<div class="push-dev ${d.activa ? "" : "off"}"><span>${ico(["iPhone", "Android"].includes(d.tipo) ? "phone" : "monitor", 15)}</span>
+      <div><b>${esc(d.tipo || "Dispositivo")}${nav(d.dispositivo || "") ? " · " + nav(d.dispositivo) : ""}</b><div class="faint">${d.activa ? (d.ultimo_envio ? "Último aviso " + hace(d.ultimo_envio) : "Sin avisos todavía") : "Dado de baja: ábrelo y vuelve a activar los avisos"}</div></div>
+      <span class="pill ${d.activa ? "ok" : "bad"}">${d.activa ? "activo" : "inactivo"}</span></div>`).join("")
+      : `<p class="faint" style="font-size:12px;margin:0">Ningún dispositivo registrado. Pulsa «Activar avisos» en cada teléfono y computador.</p>`;
+    $("#n-probar").disabled = !l.some((d) => d.activa);
+  };
+  pintarDevs();
+  $("#n-probar").onclick = async (ev) => { const b = ev.currentTarget; b.disabled = true;
+    try { const r = await rpc("app_push_probar"); toast(r && r.ok ? `Aviso de prueba enviado a ${r.activos} dispositivo${r.activos === 1 ? "" : "s"}` : (r && r.mensaje) || "No hay dispositivos activos", !(r && r.ok)); }
+    catch (e) { toast(e.message, true); } finally { setTimeout(pintarDevs, 3000); } };
 }
 
 /* ---------- bandeja ---------- */
