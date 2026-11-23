@@ -825,3 +825,14 @@ a.kpi:hover, a.ucard:hover, .ucard:hover { box-shadow: var(--shadow-hover); tran
 .push-dev .faint { font-size: 11.5px; }
 .push-dev.off { opacity: .7; }
 .push-dev.off > span:first-child { color: var(--muted); }
+
+/* 2.10.10 · chat de Felipe con el asesor IA */
+.chat-item.sup-item { border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--gold) 7%, transparent); }
+.sup-av { background: linear-gradient(135deg, #0a4a31, #06281b) !important; color: var(--gold) !important; display: grid; place-items: center; }
+.sup-acc { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.sup-acc .pill { font-size: 11px; }
+.sup-reglas { margin: 0; }
+.sup-reglas-b { padding: 4px 16px 12px; font-size: 13px; }
+.sup-reglas-b ol { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.sup-pensando { opacity: .75; font-style: italic; }
+#sup-m .bub.ia { align-self: flex-start; margin-left: 0; margin-right: auto; }

@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.10.9";
+const VERSION = "2.10.10";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -771,6 +771,19 @@ async function waEnviar(body) {
   if (!r.ok || !j.ok) { const e = new Error(r.status === 402 || /limit|cupo/i.test(j.error || "") ? "Kapso sin cupo: WhatsApp no está enviando por la API" : (j.error || `No se pudo enviar (${r.status})`)); e.kapso = r.status === 402 || /limit|cupo/i.test(j.error || ""); throw e; }
   return j;
 }
+// Chat de Felipe con el asesor IA (wa-agente/supervisor): instrucciones, correcciones, mensajes programados y reglas
+async function supervisorEnviar(texto) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) throw new Error("Tu sesión expiró: vuelve a ingresar.");
+  const r = await fetch(`${SB_URL}/functions/v1/wa-agente/supervisor`, { method: "POST", headers: { Authorization: `Bearer ${session.access_token}`, apikey: SB_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ texto }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.ok) throw new Error(j.error || `El asesor no respondió (${r.status})`);
+  return j;
+}
+const accionSup = (a) => { const h = String(a.herramienta || "").toLowerCase();
+  const t = /program|enviar|mensaje/.test(h) ? "Programó mensaje" : /instruc/.test(h) ? "Anotó instrucción" : /regla/.test(h) ? (/quit|borr|elim/.test(h) ? "Regla quitada" : "Regla agregada")
+    : /cancel/.test(h) ? "Canceló seguimiento" : /busc|revis|ver_|leer|list|consult/.test(h) ? "Revisó chats" : h.replace(/_/g, " ");
+  return `<span class="pill ${a.ok === false ? "bad" : "gold"}">${esc(t)}${a.ok === false ? " · falló" : ""}</span>`; };
 const borradorTxt = (b) => (Array.isArray(b.mensajes) ? b.mensajes : []).map((x) => typeof x === "string" ? x : x?.texto || x?.text || x?.body || "").filter(Boolean);
 // --- chat: helpers de presentación (2.10) ---
 const MEDIO = { image: ["image", "Foto"], video: ["video", "Video"], audio: ["mic", "Audio"], document: ["doc", "Documento"], sticker: ["image", "Sticker"], location: ["pin", "Ubicación"], contacts: ["users", "Contacto"] };
@@ -875,12 +888,15 @@ async function viewConversaciones(id) {
     const grupos = { asesor: todas.filter(esAsesor), mios: todas.filter((c) => !esAsesor(c)), todas, contactos: todo.filter(esContacto) };
     Object.entries(grupos).forEach(([k, l]) => { const b = $(`#cv-n-${k}`); if (b) b.textContent = k === "contactos" ? "" : (k === "todas" ? l.length : l.filter((c) => c.sin_responder || c.borradores || c.traspaso).length) || ""; });
     const l = grupos[tab] || todas;
-    $("#cv-l").innerHTML = l.length ? l.map((c) => { const st = estadoChat(c), nom = nombreChat(c);
+    // chat fijo de Felipe con el asesor (solo dueño)
+    const sup = ME.rol === "dueno" && tab !== "contactos" ? `<a class="chat-item sup-item ${id === "supervisor" ? "on" : ""}" href="#/conversaciones/supervisor"><span class="c-av sup-av">${ico("spark", 18)}</span>
+      <div class="ci-b"><div class="ci-l1"><span class="ci-n ell">Instrucciones al asesor</span></div><div class="ci-l2"><span class="ell">Correcciones, mensajes programados y reglas</span></div></div></a>` : "";
+    $("#cv-l").innerHTML = sup + (l.length ? l.map((c) => { const st = estadoChat(c), nom = nombreChat(c);
       return `<a class="chat-item ${c.id === id ? "on" : ""} ${!esContacto(c) && (c.sin_responder || c.traspaso) ? "unread" : ""}" href="#/conversaciones/${c.id}">
       ${avatarChat(c)}
       <div class="ci-b"><div class="ci-l1"><span class="ci-n ell">${nom.html}</span><span class="ci-t">${esAsesor(c) ? `<span class="ci-who ia" title="Atiende el asesor IA">${ico("spark", 12)}</span>` : `<span class="ci-who" title="Atiendes tú">${ico("users", 12)}</span>`}${horaCorta(c.orden)}</span></div>
         <div class="ci-l2"><span class="ell">${previa(c)}</span>${st ? `<span class="ci-st ${st[0]}">${st[1]}</span>` : ""}</div></div></a>`; }).join("")
-      : `<div class="card-b">${empty("chat", tab === "asesor" ? "El asesor no tiene chats abiertos" : tab === "contactos" ? "Sin contactos" : "Sin conversaciones", tab === "mios" ? "Aquí llegan BlackGPS, los chats que tomas y los que el asesor te traspasa." : tab === "contactos" ? "Proveedores, equipo y clientes BlackGPS. Marca un chat con «No es lead» para moverlo aquí." : "")}</div>`;
+      : `<div class="card-b">${empty("chat", tab === "asesor" ? "El asesor no tiene chats abiertos" : tab === "contactos" ? "Sin contactos" : "Sin conversaciones", tab === "mios" ? "Aquí llegan BlackGPS, los chats que tomas y los que el asesor te traspasa." : tab === "contactos" ? "Proveedores, equipo y clientes BlackGPS. Marca un chat con «No es lead» para moverlo aquí." : "")}</div>`);
     if (!id) pintarVacio();
     return l;
   };
@@ -986,10 +1002,44 @@ async function viewConversaciones(id) {
       $("#cv-f").onsubmit = (e) => { e.preventDefault(); const m = txt.value.trim(); if (!m) return; enviar({ conversacion_id: id, mensajes: [m] }, $("#cv-send"), () => "Mensaje enviado · el asesor queda en pausa 12 h"); };
     }
   };
-  const refrescar = async () => { try { await pintarLista(); if (id) await pintarChat(); } catch (e) { $("#cv-l").innerHTML = fail(e); } };
+  // ---- chat de Felipe con el asesor IA ----
+  let supPensando = false;
+  const pintarSupervisor = async () => {
+    if (ME.rol !== "dueno") { $("#cv-c").innerHTML = `<div class="card-b">${empty("chat", "Solo para el dueño")}</div>`; return; }
+    const h = await rpc("app_supervisor_historial", { p_limite: 60 }).catch(() => ({ mensajes: [], reglas: [] }));
+    const ms = h.mensajes || [], reglas = h.reglas || [];
+    let prevDia = "", prevRol = "";
+    const burb = ms.map((m, i) => {
+      const dia = diaClave(m.creado_en); const sep = dia !== prevDia ? `<div class="chat-day"><span>${esc(diaTxt(m.creado_en))}</span></div>` : ""; prevDia = dia;
+      const yo = m.rol === "felipe"; const first = m.rol !== prevRol || sep; prevRol = m.rol;
+      const last = !ms[i + 1] || ms[i + 1].rol !== m.rol;
+      const acc = (m.acciones || []).filter((a) => a && a.herramienta);
+      return `${sep}<div class="bub ${yo ? "out" : "ia"} ${first ? "first" : ""} ${last ? "last" : ""}">${first && !yo ? `<span class="ia-tag">${ico("spark", 11)} Asesor IA</span>` : ""}${esc(m.texto || "").replace(/\n/g, "<br>")}${acc.length ? `<span class="sup-acc">${acc.map(accionSup).join("")}</span>` : ""}<span class="bt">${hhmm(m.creado_en)}</span></div>`;
+    }).join("");
+    $("#cv-c").innerHTML = `<div class="chat-h"><a class="btn ghost sm icon solo-movil" href="#/conversaciones" aria-label="Volver">${ico("left", 16)}</a>
+        <span class="c-av sup-av">${ico("spark", 18)}</span>
+        <div class="chat-h-t"><b class="ell">Instrucciones al asesor</b><div class="chat-h-s ell">Correcciones, mensajes programados y reglas que el asesor aplica en todos los chats</div></div></div>
+      <details class="clasificar-d sup-reglas"><summary>Reglas vigentes (${reglas.length})</summary><div class="sup-reglas-b">${reglas.length ? `<ol>${reglas.map((r) => `<li>${esc(r.texto)}${r.desde ? ` <span class="faint">· ${fechaHora(r.desde)}</span>` : ""}</li>`).join("")}</ol>` : '<p class="faint" style="margin:0">Aún no hay reglas. Escribe por ejemplo «desde ahora, nunca ofrezcas descuento en PPF».</p>'}</div></details>
+      <div class="chat-msgs" id="sup-m">${burb || `<div class="chat-empty" style="padding:30px 10px">${ico("spark", 26)}<h3>Dale instrucciones al asesor</h3><p class="faint" style="max-width:40ch;text-align:center">Ejemplos: «escríbele a Claudio mañana a las 10 preguntando si revisó la cotización», «en el chat de Berni no ofrezcas retiro», «desde ahora pide siempre la patente».</p></div>`}${supPensando ? `<div class="bub ia first last sup-pensando"><span class="ia-tag">${ico("spark", 11)} Asesor IA</span>pensando…</div>` : ""}</div>
+      <div class="chat-foot"><form id="sup-f" class="chat-compose"><textarea id="cv-txt" rows="1" placeholder="Escribe una instrucción para el asesor" aria-label="Instrucción"></textarea><button class="chat-send" id="sup-send" aria-label="Enviar" ${supPensando ? "disabled" : ""}>${ico("send", 18)}</button></form>
+        <div class="chat-hint on">Enter envía · Shift+Enter, salto de línea · tarda entre 5 y 30 segundos</div></div>`;
+    const box = $("#sup-m"); box.scrollTop = box.scrollHeight;
+    const txt = $("#cv-txt");
+    txt.oninput = () => { txt.style.height = "auto"; txt.style.height = Math.min(txt.scrollHeight, 6 * 22 + 16) + "px"; };
+    txt.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#sup-f").requestSubmit(); } };
+    $("#sup-f").onsubmit = async (e) => {
+      e.preventDefault(); const t = txt.value.trim(); if (!t || supPensando) return;
+      supPensando = true;
+      box.insertAdjacentHTML("beforeend", `<div class="bub out first last">${esc(t).replace(/\n/g, "<br>")}<span class="bt">${hhmm(new Date().toISOString())}</span></div><div class="bub ia first last sup-pensando"><span class="ia-tag">${ico("spark", 11)} Asesor IA</span>pensando…</div>`);
+      box.scrollTop = box.scrollHeight; txt.value = ""; txt.style.height = "auto"; $("#sup-send").disabled = true;
+      try { await supervisorEnviar(t); } catch (err) { toast(err.message, true); }
+      supPensando = false; if (location.hash === "#/conversaciones/supervisor") pintarSupervisor();
+    };
+  };
+  const refrescar = async () => { try { await pintarLista(); if (id === "supervisor") { if (!supPensando) await pintarSupervisor(); } else if (id) await pintarChat(); } catch (e) { $("#cv-l").innerHTML = fail(e); } };
   await refrescar();
   clearInterval(viewConversaciones._t);
-  viewConversaciones._t = setInterval(() => { if (!location.hash.startsWith("#/conversaciones")) return clearInterval(viewConversaciones._t); if (!document.hidden && !$("#modal-root").innerHTML && !$("#cv-txt")?.value && !$(".bor-ed")) refrescar(); }, 20000);
+  viewConversaciones._t = setInterval(() => { if (!location.hash.startsWith("#/conversaciones")) return clearInterval(viewConversaciones._t); if (!document.hidden && !$("#modal-root").innerHTML && !$("#cv-txt")?.value && !$(".bor-ed") && !$(".sup-reglas[open]")) refrescar(); }, 20000);
 }
 
 /* ---------- embudo ---------- */
