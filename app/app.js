@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.10.10";
+const VERSION = "2.10.11";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -323,7 +323,15 @@ function setActive(r, titulo) {
 }
 
 /* ---------- avisos (notificaciones) ---------- */
-const leidos = () => { try { return new Set(JSON.parse(lsGet("cc_leidos", "[]"))); } catch { return new Set(); } };
+// leídos: los del servidor (compartidos entre dispositivos, core_v83) más los locales de este dispositivo
+let LEIDOS_SRV = new Set(); let leidosSubidos = false;
+const leidosLocal = () => { try { return new Set(JSON.parse(lsGet("cc_leidos", "[]"))); } catch { return new Set(); } };
+const leidos = () => { const s = leidosLocal(); LEIDOS_SRV.forEach((x) => s.add(x)); return s; };
+function marcarLeidos(ids) {
+  ids = ids.filter(Boolean); if (!ids.length) return;
+  const s = leidosLocal(); ids.forEach((x) => { s.add(x); LEIDOS_SRV.add(x); }); guardarSet("cc_leidos", s);
+  rpc("app_avisos_marcar", { p_ids: ids }).catch(() => {});
+}
 const notificados = () => { try { return new Set(JSON.parse(lsGet("cc_notificados", "[]"))); } catch { return new Set(); } };
 const guardarSet = (k, s) => lsSet(k, JSON.stringify([...s].slice(-400)));
 function pintarNotify() {
@@ -395,7 +403,12 @@ async function mostrarAviso(a) {
 async function cargarAvisos() {
   if (!ME) return;
   try {
-    const [bandeja, tareas, cots, todasConvs] = await Promise.all([rpc("app_bandeja", { p_tipo: "todas" }), rpc("app_tareas", { p_estado: "pendiente,en_curso" }), rpc("app_cotizaciones").catch(() => []), rpc("app_conversaciones").catch(() => [])]);
+    const [bandeja, tareas, cots, todasConvs, srv] = await Promise.all([rpc("app_bandeja", { p_tipo: "todas" }), rpc("app_tareas", { p_estado: "pendiente,en_curso" }), rpc("app_cotizaciones").catch(() => []), rpc("app_conversaciones").catch(() => []), rpc("app_avisos_leidos").catch(() => null)]);
+    if (Array.isArray(srv)) {
+      LEIDOS_SRV = new Set(srv);
+      // una vez por sesión, sube los leídos que este dispositivo tenía solo en local
+      if (!leidosSubidos) { leidosSubidos = true; const faltan = [...leidosLocal()].filter((x) => !LEIDOS_SRV.has(x)).slice(-400); if (faltan.length) marcarLeidos(faltan); }
+    }
     // proveedores, equipo y clientes BlackGPS no son leads: no cuentan en avisos ni en el badge
     const convs = todasConvs.filter((c) => c.es_lead !== false);
     const hoy = hoyISO(); const L = [];
@@ -410,7 +423,7 @@ async function cargarAvisos() {
         if (b.minutos_sin_respuesta != null && b.minutos_sin_respuesta >= 5) L.push({ id: "sla:" + b.oportunidad_id, level: "bad", icon: "clock", title: `Sin respuesta hace ${minTxt(b.minutos_sin_respuesta)} · ${nombre}`, body: `${uName(b.unidad)} · el objetivo es responder en 5 minutos`, href: "#/bandeja", at: new Date(parseD(b.creado).getTime() + 5 * 6e4).toISOString() });
       }
     }
-    for (const t of tareas.filter((t) => t.vence && t.vence <= hoy)) L.push({ id: `tarea:${t.id}:${hoy}`, level: t.vence < hoy ? "bad" : "warn", icon: "tasks", title: `${t.vence < hoy ? "Tarea vencida" : "Tarea para hoy"} · ${t.titulo}`, body: [uName(t.unidad), t.empresa].filter(Boolean).join(" · "), href: "#/tareas", at: t.vence + "T08:00:00" });
+    for (const t of tareas.filter((t) => t.vence && t.vence <= hoy)) L.push({ id: `tarea:${t.id}`, level: t.vence < hoy ? "bad" : "warn", icon: "tasks", title: `${t.vence < hoy ? "Tarea vencida" : "Tarea para hoy"} · ${t.titulo}`, body: [uName(t.unidad), t.empresa].filter(Boolean).join(" · "), href: "#/tareas", at: t.vence + "T08:00:00" });
     for (const q of cots.filter((q) => q.vista_en && Date.now() - parseD(q.vista_en) < 14 * 864e5)) L.push({ id: "vista:" + q.id, level: "info", icon: "eye", title: `Cotización vista · ${q.cliente || q.numero}`, body: `${q.numero} · ${clp(q.total)}${q.vistas > 1 ? ` · abierta ${q.vistas} veces` : ""}`, href: "#/cot/" + q.id, at: q.vista_en });
     L.sort((a, b) => (b.at || "").localeCompare(a.at || ""));
     AVISOS = L;
@@ -424,7 +437,8 @@ async function cargarAvisos() {
       const nt = notificados(); const primera = !lsGet("cc_notif_init");
       // con push activo, el servidor ya avisa de leads, SLA, traspasos y cotizaciones vistas: aquí solo los borradores
       const rx = lsGet("cc_push") === "1" ? /^borrador:/ : /^(lead|sla|vista|borrador|persona):/;
-      for (const a of L.filter((a) => rx.test(a.id) && !nt.has(a.id))) { if (!primera) mostrarAviso(a); nt.add(a.id); }
+      // no se muestra en este dispositivo lo que ya se leyó en otro
+      for (const a of L.filter((a) => rx.test(a.id) && !nt.has(a.id))) { if (!primera && !rd.has(a.id)) mostrarAviso(a); nt.add(a.id); }
       guardarSet("cc_notificados", nt); lsSet("cc_notif_init", "1");
     }
   } catch {}
@@ -687,8 +701,8 @@ async function viewNotificaciones() {
       <p class="faint" style="margin:6px 0 0;font-size:12px">${lsGet("cc_push") === "1" ? "Este dispositivo recibe avisos también con la app cerrada." : "Activa los avisos en cada dispositivo (teléfono y computador) para recibirlos también con la app cerrada."} En iPhone, primero instala la app: Safari → Compartir → Agregar a pantalla de inicio.</p>
       <button class="btn primary" id="n-act">${ico("bell", 15)} ${"Notification" in window && Notification.permission === "granted" ? "Probar aviso" : "Activar avisos en este dispositivo"}</button>
       <div class="push-devs"><div class="row" style="justify-content:space-between;align-items:center"><b style="font-size:13px">Dispositivos que reciben avisos</b><button class="btn sm" id="n-probar">Enviar prueba a todos</button></div><div id="n-devs">${loading(2)}</div></div></div></section></div>`;
-  $$("#nl .notif").forEach((a) => a.addEventListener("click", () => { const s = leidos(); s.add(a.dataset.id); guardarSet("cc_leidos", s); }));
-  $("#n-all").onclick = () => { const s = leidos(); AVISOS.forEach((a) => s.add(a.id)); guardarSet("cc_leidos", s); viewNotificaciones(); };
+  $$("#nl .notif").forEach((a) => a.addEventListener("click", () => marcarLeidos([a.dataset.id])));
+  $("#n-all").onclick = () => { const rd2 = leidos(); marcarLeidos(AVISOS.map((a) => a.id).filter((x) => !rd2.has(x))); viewNotificaciones(); };
   $("#n-act").onclick = activarAvisos;
   const pintarDevs = async () => {
     let l = []; try { l = await rpc("app_push_dispositivos") || []; } catch (e) { $("#n-devs").innerHTML = `<p class="faint" style="font-size:12px">${esc(e.message)}</p>`; return; }
