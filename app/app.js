@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.10.7";
+const VERSION = "2.10.8";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -355,10 +355,34 @@ async function suscribirPush() {
   if (!("serviceWorker" in navigator) || !("PushManager" in window) || Notification.permission !== "granted") return false;
   const reg = await navigator.serviceWorker.ready;
   let s = await reg.pushManager.getSubscription();
+  // si el servicio de push dio por muerto este endpoint (404/410 en core-push), se cancela y se pide uno nuevo
+  if (s) { const e = await rpc("app_push_estado", { p_endpoint: s.endpoint }).catch(() => null); if (e && e.existe && !e.activa) { await s.unsubscribe().catch(() => {}); s = null; } }
   if (!s) { const k = await rpc("app_push_clave"); if (!k) return false; s = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(k) }); }
   await rpc("app_push_suscribir", { p: { ...s.toJSON(), dispositivo: navigator.userAgent.slice(0, 180) } });
-  lsSet("cc_push", "1");
+  lsSet("cc_push", "1"); avisoPushApagado(false);
   return true;
+}
+/* Aviso visible cuando este dispositivo dejó de recibir avisos (permiso revocado, datos borrados o suscripción muerta) */
+function avisoPushApagado(mostrar, bloqueado) {
+  let el = $("#push-off");
+  if (!mostrar) { if (el) el.remove(); return; }
+  if (!el && $("#page")) { $("#page").insertAdjacentHTML("beforebegin", '<div id="push-off" class="push-off" role="alert"></div>'); el = $("#push-off"); }
+  if (!el) return;
+  el.innerHTML = `${ico("bell", 16)}<span><b>Los avisos están desactivados en este dispositivo.</b> ${bloqueado ? "Están bloqueados en el navegador: abre la configuración del sitio app.carclass.cl y permite las notificaciones." : "No te llegarán leads nuevos ni clientes que piden hablar contigo."}</span>${bloqueado ? "" : '<button class="btn sm primary" id="push-off-act">Activar</button>'}<button class="btn sm ghost icon" id="push-off-x" aria-label="Ocultar">${ico("x", 14)}</button>`;
+  if ($("#push-off-act")) $("#push-off-act").onclick = async () => { await activarAvisos(); revisarPush(); };
+  $("#push-off-x").onclick = () => { try { sessionStorage.setItem("cc_push_off_x", "1"); } catch {} el.remove(); };
+}
+async function revisarPush() {
+  if (!("Notification" in window) || !("serviceWorker" in navigator)) return;
+  const instalada = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  const esperaba = lsGet("cc_push") === "1" || instalada;
+  let oculto = false; try { oculto = sessionStorage.getItem("cc_push_off_x") === "1"; } catch {}
+  if (Notification.permission === "granted") {
+    const ok = await suscribirPush().catch(() => false);
+    if (!ok && esperaba && !oculto) avisoPushApagado(true);
+    return;
+  }
+  if (esperaba && !oculto) avisoPushApagado(true, Notification.permission === "denied");
 }
 async function mostrarAviso(a) {
   try {
@@ -2363,7 +2387,7 @@ async function render() {
     }
     const lg = lsGet("cc_linea", ""); UNI = unidadesMias().includes(lg) ? lg : ""; shell(); setLinea(UNI); cargarAvisos(); clearInterval(render._t); render._t = setInterval(cargarAvisos, 60000);
     setTimeout(() => onboarding(), 400);
-    if ("Notification" in window && Notification.permission === "granted") suscribirPush().catch(() => {});
+    setTimeout(() => revisarPush().catch(() => {}), 1500);
   }
   const [path, qs] = (location.hash.slice(2) || "dashboard").split("?");
   const [r, a1, a2] = path.split("/");

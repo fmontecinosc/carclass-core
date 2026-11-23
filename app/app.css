@@ -811,3 +811,9 @@ a.kpi:hover, a.ucard:hover, .ucard:hover { box-shadow: var(--shadow-hover); tran
   .tbl-cards td.name .sub { max-width: none; }
   .tbl-cards td:not(.name)::before { content: attr(data-l); display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
 }
+
+/* 2.10.8 · aviso de avisos apagados en este dispositivo */
+.push-off { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 16px 24px 0; padding: 12px 14px; border-radius: var(--r); background: var(--bad-bg); border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent); font-size: 13px; color: var(--fg); }
+.push-off > svg { color: var(--bad); flex: none; }
+.push-off > span { flex: 1; min-width: 200px; }
+@media (max-width: 760px) { .push-off { margin: 12px 12px 0; } }
