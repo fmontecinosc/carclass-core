@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.13.0";
+const VERSION = "2.13.1";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -826,7 +826,8 @@ function dirAreas(A, sel) {
   const item = (p) => { const venc = p.fecha && p.fecha < hoyISO();
     return `<div class="task"><span class="pill ${p.prioridad === 1 ? "bad" : p.prioridad === 2 ? "warn" : ""}">P${esc(p.prioridad)}</span><div><div class="t" style="font-weight:600">${esc(p.titulo)}</div>
       <div class="muted" style="font-size:12.5px">${[p.unidad ? uName(p.unidad) : "", DIR_AG[p.dueno] || esc(p.dueno), p.fuente === "core" ? "tarea de Core" : "Directorio"].filter(Boolean).join(" · ")}</div></div>
-      <span class="pill ${venc ? "bad" : ""}">${p.fecha ? fecha(p.fecha) + (venc ? " · vencida" : "") : "sin fecha"}</span></div>`; };
+      <div style="display:grid;gap:6px;justify-items:end"><span class="pill ${venc ? "bad" : ""}">${p.fecha ? fecha(p.fecha) + (venc ? " · vencida" : "") : "sin fecha"}</span>
+      <button class="btn sm" data-lista="${esc(p.id)}" data-fuente="${esc(p.fuente)}" aria-label="Marcar como lista">${ico("check", 14)} Lista</button></div></div>`; };
   const rut = (r) => { const [c, t] = RUT_EST[r.estado] || ["", r.estado];
     return `<div class="task"><span class="pill ${c}">${t}</span><div><div class="t" style="font-weight:600">${esc(r.nombre)}</div><div class="muted" style="font-size:12.5px">${esc(r.cuando)}${r.necesita_pc ? " · necesita tu computador" : ""}</div>
       ${r.entrega ? `<div class="faint" style="font-size:12.5px">${esc(r.entrega)}</div>` : ""}</div><span class="faint" style="font-size:12px">${r.ultima ? "Última: " + fecha(String(r.ultima).slice(0, 10)) : ""}</span></div>`; };
@@ -848,7 +849,15 @@ async function viewDirectorio(params) {
   $("#d-nota").onclick = () => dirModalNota(recargar);
   $("#d-new").onclick = () => dirModalPend(recargar, DIR_U.some(([k]) => k === t) ? t : "holding");
   if (t === "areas") {
-    try { const A = await rpc("app_dir_areas"); $("#dl").innerHTML = dirAreas(A || [], params.get("a") || "comercial"); } catch (e) { $("#dl").innerHTML = fail(e); }
+    try { const A = await rpc("app_dir_areas"); $("#dl").innerHTML = dirAreas(A || [], params.get("a") || "comercial"); } catch (e) { $("#dl").innerHTML = fail(e); return; }
+    $$("[data-lista]", $("#dl")).forEach((b) => b.onclick = async () => {
+      b.disabled = true;
+      try {
+        if (b.dataset.fuente === "core") await rpc("app_tarea_estado", { p_id: b.dataset.lista, p_estado: "hecha" });
+        else await rpc("app_dir_pendiente", { p_id: b.dataset.lista, p_estado: "hecho" });
+        toast("Marcada como lista"); cargarAvisos && cargarAvisos(); setTimeout(recargar, 300);
+      } catch (e) { b.disabled = false; toast(e.message, true); }
+    });
     return;
   }
   let D;
