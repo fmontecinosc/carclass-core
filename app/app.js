@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.12.0";
+const VERSION = "2.12.1";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -486,6 +486,8 @@ async function viewDashboard(params) {
     $$("#dash [data-cotnueva]").forEach((b) => b.onclick = () => modalNuevaCotizacion());
   } catch (e) { $("#dash").innerHTML = fail(e); }
 }
+const dirClaude = () => { const u = P("directorio.claude").url || ""; return /^https:\/\/claude\.ai\//.test(u) ? u : ""; };
+const btnDirector = (cls = "btn") => dirClaude() ? `<a class="${cls}" href="${esc(dirClaude())}" target="_blank" rel="noopener">${ico("chat", 16)} Hablar con el Director</a>` : "";
 /* ---------- dashboard de dirección (Grupo, solo quien ve finanzas, core_v85) ---------- */
 const DD_U = ["blackgps", "carclass", "nom", "carwash"];
 const DD_AG = { felipe: "Tú", director: "Director", comercial: "Comercial", marketing: "Marketing", operaciones: "Operaciones", finanzas: "Finanzas", estrategia: "Estrategia", asesor_wa: "Asesor WA" };
@@ -535,7 +537,7 @@ function direccionDash(X) {
   return `<div style="display:grid;gap:18px;margin-bottom:22px">
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap">
       <h2 style="margin:0;font-size:24px;font-weight:800;letter-spacing:-.01em;max-width:60ch">${esc(titular)}</h2>
-      <div class="row" style="gap:8px"><a class="pill bad" href="#/directorio?t=alertas">${int(X.alertas_altas)} alertas altas</a><a class="pill warn" href="#/directorio">${int(X.pend_abiertos)} pendientes${X.vencidos ? ` · ${int(X.vencidos)} vencidos` : ""}</a></div>
+      <div class="row" style="gap:8px;align-items:center">${btnDirector("btn sm primary")}<a class="pill bad" href="#/directorio?t=alertas">${int(X.alertas_altas)} alertas altas</a><a class="pill warn" href="#/directorio">${int(X.pend_abiertos)} pendientes${X.vencidos ? ` · ${int(X.vencidos)} vencidos` : ""}</a></div>
     </div>
     <div class="kpis">
       ${kpi(`Venta ${anio} acumulada`, ddMM(ytd), `ene–${parseD(X.hoy).toLocaleDateString("es-CL", { month: "short" }).replace(".", "")} · 4 unidades · con IVA`, true)}
@@ -819,7 +821,7 @@ async function viewDirectorio(params) {
   const t = params.get("t") || "resumen", bf = params.get("u") || "";
   const P = $("#page");
   P.innerHTML = `<div class="page-head"><div><h1>Directorio</h1><p>Tablero central de los agentes: lo que avanza, lo que retrocede, lo que está bloqueado y lo que necesita tu atención. Lo escriben el Director, los directores de área y el asesor de WhatsApp.</p></div>
-    <div class="actions"><button class="btn" id="d-new">${ico("plus", 16)} Pendiente</button><button class="btn primary" id="d-nota">${ico("note", 16)} Nota al Director</button></div></div>
+    <div class="actions">${btnDirector("btn")}<button class="btn" id="d-new">${ico("plus", 16)} Pendiente</button><button class="btn primary" id="d-nota">${ico("note", 16)} Nota al Director</button></div></div>
     <div class="tabs">${DIR_TABS.map(([k, tt]) => `<a href="#/directorio?t=${k}" class="${t === k ? "on" : ""}">${tt}</a>`).join("")}</div><div id="dl" style="display:grid;gap:20px">${loading(6)}</div>`;
   const recargar = () => viewDirectorio(params);
   $("#d-nota").onclick = () => dirModalNota(recargar);
