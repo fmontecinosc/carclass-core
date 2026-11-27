@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.12.1";
+const VERSION = "2.13.0";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -773,7 +773,7 @@ function chartEvolucion(rows) {
 /* ---------- directorio · tablero central de los agentes (solo dueño, core_v84) ---------- */
 // Lo escriben los agentes de Claude (Director, Comercial, Marketing, Operaciones, Finanzas, Estrategia) y el asesor de WhatsApp.
 const DIR_U = [["blackgps", "BlackGPS"], ["carclass", "Carclass"], ["nom", "NOM"], ["carwash", "Carwash.hf"], ["holding", "Grupo"]];
-const DIR_TABS = [["resumen", "Resumen"], ["blackgps", "BlackGPS"], ["carclass", "Carclass"], ["nom", "NOM"], ["carwash", "Carwash.hf"], ["asesor", "Asesor WhatsApp"], ["alertas", "Alertas"], ["bitacora", "Bitácora"]];
+const DIR_TABS = [["resumen", "Resumen"], ["areas", "Áreas"], ["blackgps", "BlackGPS"], ["carclass", "Carclass"], ["nom", "NOM"], ["carwash", "Carwash.hf"], ["asesor", "Asesor WhatsApp"], ["alertas", "Alertas"], ["bitacora", "Bitácora"]];
 const DIR_EST = [["pendiente", "Pendiente"], ["en_curso", "En curso"], ["bloqueado", "Bloqueado"], ["hecho", "Hecho"], ["descartado", "Descartado"]];
 const DIR_AG = { director: "Director", comercial: "Comercial", marketing: "Marketing", operaciones: "Operaciones", finanzas: "Finanzas", estrategia: "Estrategia", asesor_wa: "Asesor WA", felipe: "Tú" };
 const DIR_TIPO = { avance: "ok", retroceso: "bad", bloqueo: "bad", decision: "gold", prueba: "info", nota: "" };
@@ -816,6 +816,27 @@ function dirMarcador(rows) {
       <span class="s">Meta ${val(r.meta, r.medida)}${r.medida && !/CLP/.test(r.medida) ? " " + esc(r.medida) : ""}${pc != null ? ` · ${pc}%` : ""} · ${esc(r.tipo)}</span>
       ${pc != null ? `<div class="bar-track"><i style="width:${pc}%"></i></div>` : ""}${r.nota ? `<span class="s faint">${esc(r.nota)}</span>` : ""}<span class="s faint">${esc(r.fuente || "")}</span></div>`; }).join("")}</div>`;
 }
+const AREAS_N = { comercial: ["Comercial", "Llamadas, leads, cotizaciones, consignantes y el asesor de WhatsApp"], marketing: ["Marketing", "Contenido, pauta, web y redes"], operaciones: ["Operaciones", "Proveedores, instalaciones, stock NOM y procesos"], finanzas: ["Finanzas", "Facturación, cobranza, caja y resultados"], postventa: ["Postventa", "Seguimientos a clientes después de la venta"], direccion: ["Dirección", "Plan del día, revisión semanal y coordinación de agentes"] };
+const RUT_EST = { activa: ["ok", "Activa"], pausada: ["warn", "Pausada"], por_crear: ["", "Por crear"] };
+function dirAreas(A, sel) {
+  const card = (a) => { const [n, d] = AREAS_N[a.area] || [a.area, ""]; const luz = a.vencidas || a.bloqueadas ? (a.vencidas > 3 ? "bad" : "warn") : "ok";
+    return `<a class="kpi" href="#/directorio?t=areas&a=${a.area}" style="${sel === a.area ? "outline:2px solid var(--brand);" : ""}"><div class="top-row"><span class="l">${n}</span><span class="pill ${luz}">${a.vencidas ? int(a.vencidas) + " vencidas" : a.bloqueadas ? int(a.bloqueadas) + " bloqueadas" : "al día"}</span></div>
+      <span class="v">${int(a.abiertas)}</span><span class="s">abiertas · ${int(a.hechas_mes)} hechas este mes · ${int(a.en_agentes)} en agentes</span><span class="s faint">${a.rutinas.filter((r) => r.estado === "activa").length} rutinas activas</span></a>`; };
+  const a = A.find((x) => x.area === sel) || A[0], [n, d] = AREAS_N[a.area] || [a.area, ""];
+  const item = (p) => { const venc = p.fecha && p.fecha < hoyISO();
+    return `<div class="task"><span class="pill ${p.prioridad === 1 ? "bad" : p.prioridad === 2 ? "warn" : ""}">P${esc(p.prioridad)}</span><div><div class="t" style="font-weight:600">${esc(p.titulo)}</div>
+      <div class="muted" style="font-size:12.5px">${[p.unidad ? uName(p.unidad) : "", DIR_AG[p.dueno] || esc(p.dueno), p.fuente === "core" ? "tarea de Core" : "Directorio"].filter(Boolean).join(" · ")}</div></div>
+      <span class="pill ${venc ? "bad" : ""}">${p.fecha ? fecha(p.fecha) + (venc ? " · vencida" : "") : "sin fecha"}</span></div>`; };
+  const rut = (r) => { const [c, t] = RUT_EST[r.estado] || ["", r.estado];
+    return `<div class="task"><span class="pill ${c}">${t}</span><div><div class="t" style="font-weight:600">${esc(r.nombre)}</div><div class="muted" style="font-size:12.5px">${esc(r.cuando)}${r.necesita_pc ? " · necesita tu computador" : ""}</div>
+      ${r.entrega ? `<div class="faint" style="font-size:12.5px">${esc(r.entrega)}</div>` : ""}</div><span class="faint" style="font-size:12px">${r.ultima ? "Última: " + fecha(String(r.ultima).slice(0, 10)) : ""}</span></div>`; };
+  return `<div class="kpis">${A.filter((x) => x.area !== "direccion").map(card).join("")}</div>
+    <div class="row" style="align-items:baseline;gap:10px"><h2 style="margin:0">${esc(n)}</h2><span class="muted" style="font-size:14px">${esc(d)}</span></div>
+    <div class="grid-main">${dirCard(`Abiertas · ${int(a.abiertas)}`, a.proximas.map(item).join(""), "Sin tareas abiertas", `<span class="faint" style="font-size:12px">${int(a.del_mes)} con fecha este mes</span>`)}
+      <div style="display:grid;gap:20px">${dirCard("Rutinas programadas", a.rutinas.map(rut).join(""), "Sin rutinas: el Director puede proponer una")}
+      ${dirCard(`Hechas este mes · ${int(a.hechas_mes)}`, a.hechas.map((h) => `<div class="task hecha"><span class="check">${ico("check", 13)}</span><div><div class="t">${esc(h.titulo)}</div><div class="faint" style="font-size:12px">${h.unidad ? esc(uName(h.unidad)) + " · " : ""}${fecha(h.fecha)}</div></div><span></span></div>`).join(""), "Nada cerrado todavía este mes")}</div></div>
+    <p class="faint" style="margin:0;font-size:12.5px">Junta los pendientes del Directorio (agentes) y las tareas de Core. Las tareas de Core se cierran en <a href="#/tareas">Tareas y postventa</a>.</p>`;
+}
 async function viewDirectorio(params) {
   setActive("directorio");
   const t = params.get("t") || "resumen", bf = params.get("u") || "";
@@ -826,6 +847,10 @@ async function viewDirectorio(params) {
   const recargar = () => viewDirectorio(params);
   $("#d-nota").onclick = () => dirModalNota(recargar);
   $("#d-new").onclick = () => dirModalPend(recargar, DIR_U.some(([k]) => k === t) ? t : "holding");
+  if (t === "areas") {
+    try { const A = await rpc("app_dir_areas"); $("#dl").innerHTML = dirAreas(A || [], params.get("a") || "comercial"); } catch (e) { $("#dl").innerHTML = fail(e); }
+    return;
+  }
   let D;
   try { D = await rpc("app_directorio"); } catch (e) { $("#dl").innerHTML = fail(e); return; }
   const hoy = hoyISO(), $l = $("#dl");
