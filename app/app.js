@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.10.11";
+const VERSION = "2.11.0";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -258,6 +258,7 @@ function viewLogin(msg = "") {
 
 /* ---------- shell ---------- */
 const NAV = [
+  ["Dirección", [["directorio", "Directorio", "trophy", "dir"]], "dueno"],
   ["Análisis", [["dashboard", "Dashboard", "dash"], ["notificaciones", "Notificaciones", "bell", "avisos"]]],
   ["Comercial", [["bandeja", "Bandeja", "inbox", "bandeja"], ["conversaciones", "Conversaciones", "chat", "conv"], ["embudo", "Embudo", "kanban"], ["agenda", "Agenda", "cal"], ["cotizaciones", "Cotizaciones", "doc"], ["tasaciones", "Tasaciones NOM", "car"], ["clientes", "Clientes", "users"]]],
   ["Catálogo", [["vehiculos", "Vehículos", "car"], ["herramientas", "Herramientas", "link"]]],
@@ -271,7 +272,7 @@ TITULOS.cliente = ["Comercial", "Ficha del cliente"];
 TITULOS.tasacion = ["Comercial", "Tasación NOM"];
 
 function shell() {
-  const nav = NAV.filter(([, , f]) => f !== "fin" || ME.ve_finanzas).map(([g, items]) =>
+  const nav = NAV.filter(([, , f]) => (f !== "fin" || ME.ve_finanzas) && (f !== "dueno" || ME.rol === "dueno")).map(([g, items]) =>
     `<h6>${g}</h6>` + items.map(([r, t, i, badge, soon]) => `<a href="#/${r}" data-r="${r}">${ico(i)}<span>${t}</span>${badge ? `<span class="badge" id="nb-${badge}"></span>` : ""}${soon ? '<span class="soon">pronto</span>' : ""}</a>`).join("")).join("");
   $("#app").innerHTML = `
   <div class="shell">
@@ -684,6 +685,134 @@ function chartEvolucion(rows) {
     s += `<text x="${x + bw / 2}" y="${H - 8}" font-size="10.5" text-anchor="middle">${new Date(r.mes + "-15").toLocaleDateString("es-CL", { month: "short" }).replace(".", "")}</text>`;
   });
   return s + "</svg>";
+}
+
+/* ---------- directorio · tablero central de los agentes (solo dueño, core_v84) ---------- */
+// Lo escriben los agentes de Claude (Director, Comercial, Marketing, Operaciones, Finanzas, Estrategia) y el asesor de WhatsApp.
+const DIR_U = [["blackgps", "BlackGPS"], ["carclass", "Carclass"], ["nom", "NOM"], ["carwash", "Carwash.hf"], ["holding", "Grupo"]];
+const DIR_TABS = [["resumen", "Resumen"], ["blackgps", "BlackGPS"], ["carclass", "Carclass"], ["nom", "NOM"], ["carwash", "Carwash.hf"], ["asesor", "Asesor WhatsApp"], ["alertas", "Alertas"], ["bitacora", "Bitácora"]];
+const DIR_EST = [["pendiente", "Pendiente"], ["en_curso", "En curso"], ["bloqueado", "Bloqueado"], ["hecho", "Hecho"], ["descartado", "Descartado"]];
+const DIR_AG = { director: "Director", comercial: "Comercial", marketing: "Marketing", operaciones: "Operaciones", finanzas: "Finanzas", estrategia: "Estrategia", asesor_wa: "Asesor WA", felipe: "Tú" };
+const DIR_TIPO = { avance: "ok", retroceso: "bad", bloqueo: "bad", decision: "gold", prueba: "info", nota: "" };
+const dirU = (k) => (DIR_U.find((x) => x[0] === k) || [k, uName(k)])[1];
+const dirUc = (k) => k === "holding" ? "var(--u-grupo)" : `var(--u-${k})`;
+function dirLuz(D, u) {
+  if (u === "carwash") return "n";
+  const hoy = hoyISO(), a = D.alert.filter((x) => x.unidad === u), p = D.pend.filter((x) => x.unidad === u);
+  if (a.some((x) => x.prioridad === "alta")) return "r";
+  if (a.length || p.some((x) => x.estado === "bloqueado" || (x.fecha && x.fecha < hoy))) return "y";
+  return "g";
+}
+const DIR_LUZ = { g: ["ok", "En curso"], y: ["warn", "Atención"], r: ["bad", "En rojo"], n: ["", "En pausa"] };
+function dirPend(p) {
+  const hoy = hoyISO(), venc = p.fecha && p.fecha < hoy;
+  return `<div class="task"><span class="pill ${p.prioridad === 1 ? "bad" : p.prioridad === 2 ? "warn" : ""}" title="Prioridad">P${esc(p.prioridad)}</span>
+    <div><div class="t" style="font-weight:600">${esc(p.titulo)}</div>
+    <div class="muted" style="font-size:12.5px">${[dirU(p.unidad), DIR_AG[p.dueno] || esc(p.dueno), p.area ? esc(p.area.replace("_", " ")) : "", p.origen ? esc(p.origen) : ""].filter(Boolean).join(" · ")}</div>
+    ${p.detalle ? `<div class="muted" style="font-size:13px;margin-top:4px">${esc(p.detalle)}</div>` : ""}</div>
+    <div style="display:grid;gap:6px;justify-items:end"><span class="pill ${venc ? "bad" : p.fecha === hoy ? "warn" : ""}">${p.fecha ? fecha(p.fecha) + (venc ? " · vencido" : "") : "sin fecha"}</span>
+    <select class="input" data-dp="${esc(p.id)}" aria-label="Estado" style="height:34px;width:auto">${DIR_EST.map(([k, t]) => `<option value="${k}" ${k === p.estado ? "selected" : ""}>${t}</option>`).join("")}</select></div></div>`;
+}
+function dirAlerta(a) {
+  return `<div class="task"><span class="pill ${a.prioridad === "alta" ? "bad" : a.prioridad === "media" ? "warn" : ""}">${esc(a.prioridad)}</span>
+    <div><div class="t" style="font-weight:600">${esc(a.titulo)}</div>${a.detalle ? `<div class="muted" style="font-size:13px;margin-top:4px">${esc(a.detalle)}</div>` : ""}
+    <div class="faint" style="font-size:12px;margin-top:4px">${dirU(a.unidad)} · ${fecha(a.fecha)}</div></div>
+    <button class="btn sm" data-da="${esc(a.id)}">${ico("check", 14)} Resolver</button></div>`;
+}
+function dirBit(b) {
+  return `<div class="task"><span class="pill ${DIR_TIPO[b.tipo] ?? ""}">${esc(b.tipo === "decision" ? "decisión" : b.tipo)}</span>
+    <div><div class="t" style="font-weight:600">${esc(b.titulo)}</div>${b.detalle ? `<div class="muted" style="font-size:13px;margin-top:4px">${esc(b.detalle)}</div>` : ""}
+    <div class="faint" style="font-size:12px;margin-top:4px">${[fecha(b.fecha), DIR_AG[b.agente] || esc(b.agente), dirU(b.unidad), b.fuente ? esc(b.fuente) : ""].filter(Boolean).join(" · ")}</div></div><span></span></div>`;
+}
+const dirCard = (titulo, html, vacio, extra = "") => `<section class="card"><div class="card-h"><h3>${titulo}</h3>${extra}</div>${html || `<div class="card-b">${empty("check", vacio)}</div>`}</section>`;
+function dirMarcador(rows) {
+  if (!rows.length) return `<div class="card">${empty("chart", "Sin marcador esta semana", "El Director carga las metas el viernes en la revisión semanal.")}</div>`;
+  const val = (v, m) => v == null ? "—" : /CLP/.test(m || "") ? clpM(v) : int(v);
+  return `<div class="kpis">${rows.map((r) => { const pc = r.meta && r.real != null ? Math.min(100, Math.round((r.real / r.meta) * 100)) : null;
+    return `<div class="kpi"><span class="l">${esc(r.kpi)}</span><span class="v ${pc != null && pc < 50 ? "warn" : ""}">${val(r.real, r.medida)}</span>
+      <span class="s">Meta ${val(r.meta, r.medida)}${r.medida && !/CLP/.test(r.medida) ? " " + esc(r.medida) : ""}${pc != null ? ` · ${pc}%` : ""} · ${esc(r.tipo)}</span>
+      ${pc != null ? `<div class="bar-track"><i style="width:${pc}%"></i></div>` : ""}${r.nota ? `<span class="s faint">${esc(r.nota)}</span>` : ""}<span class="s faint">${esc(r.fuente || "")}</span></div>`; }).join("")}</div>`;
+}
+async function viewDirectorio(params) {
+  setActive("directorio");
+  const t = params.get("t") || "resumen", bf = params.get("u") || "";
+  const P = $("#page");
+  P.innerHTML = `<div class="page-head"><div><h1>Directorio</h1><p>Tablero central de los agentes: lo que avanza, lo que retrocede, lo que está bloqueado y lo que necesita tu atención. Lo escriben el Director, los directores de área y el asesor de WhatsApp.</p></div>
+    <div class="actions"><button class="btn" id="d-new">${ico("plus", 16)} Pendiente</button><button class="btn primary" id="d-nota">${ico("note", 16)} Nota al Director</button></div></div>
+    <div class="tabs">${DIR_TABS.map(([k, tt]) => `<a href="#/directorio?t=${k}" class="${t === k ? "on" : ""}">${tt}</a>`).join("")}</div><div id="dl" style="display:grid;gap:20px">${loading(6)}</div>`;
+  const recargar = () => viewDirectorio(params);
+  $("#d-nota").onclick = () => dirModalNota(recargar);
+  $("#d-new").onclick = () => dirModalPend(recargar, DIR_U.some(([k]) => k === t) ? t : "holding");
+  let D;
+  try { D = await rpc("app_directorio"); } catch (e) { $("#dl").innerHTML = fail(e); return; }
+  const hoy = hoyISO(), $l = $("#dl");
+  const altas = D.alert.filter((a) => a.prioridad === "alta"), p1 = D.pend.filter((p) => p.prioridad === 1), venc = D.pend.filter((p) => p.fecha && p.fecha < hoy);
+  if (t === "resumen") {
+    $l.innerHTML = `<p class="muted" style="margin:0;font-size:15px"><b>${altas.length} alertas altas, ${p1.length} pendientes de prioridad 1 y ${venc.length} vencidos.</b> Empieza por lo rojo. Actualizado ${esc(D.generado)}.</p>
+      <div class="kpis">${DIR_U.map(([k, n]) => { const L = DIR_LUZ[dirLuz(D, k)], p = D.pend.filter((x) => x.unidad === k), a = D.alert.filter((x) => x.unidad === k);
+        return `<a class="kpi" href="#/directorio?t=${k === "holding" ? "alertas" : k}" style="border-top:3px solid ${dirUc(k)}"><div class="top-row"><span class="l">${n}</span><span class="pill ${L[0]}">${L[1]}</span></div>
+          <span class="v">${p.length}</span><span class="s">pendientes · ${p.filter((x) => x.estado === "bloqueado").length} bloqueados · ${a.length} alertas</span></a>`; }).join("")}</div>
+      <div class="grid-main">${dirCard("Prioridad 1", p1.map(dirPend).join(""), "Nada en prioridad 1", `<span class="badge">${p1.length}</span>`)}
+        ${dirCard("Alertas altas", altas.map(dirAlerta).join(""), "Sin alertas altas", `<span class="badge bad">${altas.length}</span>`)}</div>
+      ${dirCard("Últimos movimientos", D.bit.slice(0, 8).map(dirBit).join(""), "Sin registros", `<a class="r" href="#/directorio?t=bitacora">Ver bitácora</a>`)}`;
+  } else if (DIR_U.some(([k]) => k === t)) {
+    const m = D.marc.filter((x) => x.unidad === t), p = D.pend.filter((x) => x.unidad === t), a = D.alert.filter((x) => x.unidad === t), b = D.bit.filter((x) => x.unidad === t).slice(0, 15);
+    const emb = D.emb.filter((e) => e.unidad === t && e.estado === "abierta").sort((x, y) => y.n - x.n), mx = Math.max(1, ...emb.map((e) => e.n));
+    const L = DIR_LUZ[dirLuz(D, t)];
+    $l.innerHTML = `<div class="row" style="align-items:center;gap:10px"><h2 style="margin:0">${dirU(t)}</h2><span class="pill ${L[0]}">${L[1]}</span>${m[0] ? `<span class="faint" style="font-size:13px">Marcador semana del ${fecha(m[0].semana)}</span>` : ""}</div>
+      ${dirMarcador(m)}
+      <div class="grid-main">${dirCard("Pendientes", p.map(dirPend).join(""), "Sin pendientes abiertos", `<span class="badge">${p.length}</span>`)}
+        <div style="display:grid;gap:20px">${dirCard("Alertas", a.map(dirAlerta).join(""), "Sin alertas")}
+        ${dirCard("Embudo en Core · 30 días", emb.length ? `<div class="card-b bars">${emb.map((e) => `<div class="bar-row"><span class="lab">${esc(etapaTxt(e.etapa))}</span><div class="bar-track"><i style="width:${Math.round((e.n / mx) * 100)}%"></i></div><span class="n">${int(e.n)}</span></div>`).join("")}</div>` : "", "Sin oportunidades abiertas")}</div></div>
+      ${dirCard("Bitácora de la unidad", b.map(dirBit).join(""), "Sin registros")}`;
+  } else if (t === "asesor") {
+    const w = D.wa, mx = Math.max(1, ...w.map((x) => x.respuestas_ok + x.errores)), last = w.find((x) => x.ultimo_error);
+    const tot = w.reduce((s, x) => s + Number(x.costo_usd || 0), 0), ok = w.reduce((s, x) => s + x.respuestas_ok, 0), er = w.reduce((s, x) => s + x.errores, 0);
+    $l.innerHTML = `<div class="kpis"><div class="kpi"><span class="l">Respuestas OK · 14 días</span><span class="v">${int(ok)}</span><span class="s">${int(w.reduce((s, x) => s + x.leads_nuevos, 0))} leads nuevos</span></div>
+      <div class="kpi"><span class="l">Errores · 14 días</span><span class="v ${er ? "bad" : ""}">${int(er)}</span><span class="s">${w[0] && w[0].errores && !w[0].respuestas_ok ? "hoy no está enviando" : "sin caída total hoy"}</span></div>
+      <div class="kpi"><span class="l">Costo IA · 14 días</span><span class="v">US$${tot.toLocaleString("es-CL", { maximumFractionDigits: 2 })}</span><span class="s">API de Anthropic</span></div></div>
+      ${last ? `<div class="alert">${ico("alert", 16)}<div><b>Último error (${fecha(last.dia)}):</b> <span style="overflow-wrap:anywhere">${esc(last.ultimo_error)}</span></div></div>` : ""}
+      <div class="grid-main">${dirCard("Respuestas y errores por día", `<div class="card-b bars">${w.map((x) => `<div class="bar-row"><span class="lab">${fecha(x.dia)} · ${int(x.leads_nuevos)} leads</span><div class="bar-track" style="display:flex"><i style="width:${(x.respuestas_ok / mx) * 100}%;border-radius:0"></i><i style="width:${(x.errores / mx) * 100}%;background:var(--bad);border-radius:0"></i></div><span class="n">${int(x.respuestas_ok)}/${int(x.errores)}</span></div>`).join("")}</div>`, "Sin datos")}
+        ${dirCard("Pendientes del asesor", D.pend.filter((p) => p.area === "asesor_wa").map(dirPend).join(""), "Sin pendientes")}</div>
+      ${dirCard("Bitácora del asesor", D.bit.filter((b) => b.agente === "asesor_wa").map(dirBit).join(""), "Sin registros")}`;
+  } else if (t === "alertas") {
+    $l.innerHTML = dirCard("Alertas abiertas", D.alert.map(dirAlerta).join(""), "Sin alertas abiertas", `<span class="badge">${D.alert.length}</span>`);
+  } else {
+    const rows = D.bit.filter((b) => !bf || b.unidad === bf);
+    $l.innerHTML = `<div class="chips">${[["", "Todas"], ...DIR_U].map(([k, n]) => `<a class="chip ${bf === k ? "on" : ""}" href="#/directorio?t=bitacora${k ? "&u=" + k : ""}">${n}</a>`).join("")}</div>
+      ${dirCard("Bitácora del Directorio", rows.map(dirBit).join(""), "Sin registros")}
+      ${D.hechos.length ? dirCard("Pendientes cerrados recientemente", D.hechos.map((h) => `<div class="task hecha"><span class="check">${ico("check", 13)}</span><div><div class="t">${esc(h.titulo)}</div><div class="faint" style="font-size:12px">${dirU(h.unidad)} · ${fecha(h.actualizado)}</div></div><span></span></div>`).join(""), "") : ""}`;
+  }
+  $$("[data-dp]", $l).forEach((sel) => sel.onchange = async () => {
+    try { await rpc("app_dir_pendiente", { p_id: sel.dataset.dp, p_estado: sel.value }); toast("Estado guardado"); setTimeout(recargar, 300); } catch (e) { toast(e.message, true); }
+  });
+  $$("[data-da]", $l).forEach((b) => b.onclick = async () => {
+    b.disabled = true; try { await rpc("app_dir_alerta", { p_id: b.dataset.da }); toast("Alerta resuelta"); recargar(); } catch (e) { b.disabled = false; toast(e.message, true); }
+  });
+}
+function dirModalNota(after) {
+  const root = modal("Nota al Director", `<p class="muted" style="margin:0;font-size:13px">Una decisión, un avance o algo que el Director debe saber. Queda en la bitácora y los agentes la leen al abrir.</p>
+    <div class="field"><label for="dn-t">Nota</label><textarea class="input" id="dn-t" style="min-height:110px"></textarea></div>
+    <div class="row"><div class="field"><label for="dn-u">Unidad</label><select class="input" id="dn-u">${DIR_U.map(([k, n]) => `<option value="${k}">${n}</option>`).join("")}</select></div>
+    <div class="field"><span class="lbl">Tipo</span>${seg("dntipo", [["nota", "Nota"], ["decision", "Decisión"], ["avance", "Avance"], ["retroceso", "Retroceso"], ["bloqueo", "Bloqueo"]], "nota")}</div></div>`,
+    async () => { await rpc("app_dir_nota", { p_unidad: $("#dn-u").value, p_tipo: segVal(root, "dntipo"), p_texto: $("#dn-t").value }); toast("Nota guardada en la bitácora"); after && after(); }, "Guardar nota");
+  bindSeg(root);
+}
+function dirModalPend(after, unidad) {
+  const root = modal("Nuevo pendiente del Directorio", `
+    <div class="field"><label for="dp-t">Qué hay que hacer</label><input class="input" id="dp-t"></div>
+    <div class="field"><label for="dp-d">Detalle</label><textarea class="input" id="dp-d" style="min-height:70px"></textarea></div>
+    <div class="row"><div class="field"><label for="dp-u">Unidad</label><select class="input" id="dp-u">${DIR_U.map(([k, n]) => `<option value="${k}" ${k === unidad ? "selected" : ""}>${n}</option>`).join("")}</select></div>
+    <div class="field"><label for="dp-a">Área</label><select class="input" id="dp-a">${["comercial", "marketing", "operaciones", "finanzas", "estrategia", "asesor_wa", "postventa", "direccion"].map((k) => `<option value="${k}">${k.replace("_", " ")}</option>`).join("")}</select></div></div>
+    <div class="row"><div class="field"><label for="dp-o">Dueño</label><select class="input" id="dp-o">${Object.entries(DIR_AG).filter(([k]) => k !== "asesor_wa").map(([k, n]) => `<option value="${k}" ${k === "felipe" ? "selected" : ""}>${n}</option>`).join("")}</select></div>
+    <div class="field"><label for="dp-f">Fecha</label><input class="input" id="dp-f" type="date" value="${diaHabil(1)}"></div></div>
+    <div class="field"><span class="lbl">Prioridad</span>${seg("dpprio", [["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"]], "2")}</div>`,
+    async () => {
+      if (!$("#dp-t").value.trim()) throw new Error("Escribe qué hay que hacer.");
+      await rpc("app_dir_pendiente_nuevo", { p: { titulo: $("#dp-t").value.trim(), detalle: $("#dp-d").value.trim(), unidad: $("#dp-u").value, area: $("#dp-a").value, dueno: $("#dp-o").value, fecha: $("#dp-f").value, prioridad: Number(segVal(root, "dpprio")) } });
+      toast("Pendiente creado"); after && after();
+    }, "Crear pendiente");
+  bindSeg(root);
 }
 
 /* ---------- notificaciones ---------- */
@@ -2472,7 +2601,7 @@ async function render() {
   const [r, a1, a2] = path.split("/");
   const params = new URLSearchParams(qs || "");
   window.scrollTo(0, 0);
-  const R = { dashboard: () => viewDashboard(params), notificaciones: viewNotificaciones, bandeja: () => viewBandeja(params), conversaciones: () => viewConversaciones(a1),
+  const R = { directorio: () => viewDirectorio(params), dashboard: () => viewDashboard(params), notificaciones: viewNotificaciones, bandeja: () => viewBandeja(params), conversaciones: () => viewConversaciones(a1),
     embudo: () => viewEmbudo(a1 || UNI || undefined, a2), cot: () => viewCot(a1), tasaciones: () => viewTasaciones(params), tasacion: () => a1 ? viewTasacion(a1) : viewTasaciones(params), herramientas: viewHerramientas, agenda: () => viewAgenda(params), cotizaciones: viewCotizaciones, clientes: () => viewClientes(params),
     cliente: () => a1 ? viewCliente(a1) : viewClientes(params), vehiculos: () => viewVehiculos(params), tareas: () => viewTareas(params),
     finanzas: () => viewFinanzas(params), flujo: () => viewFlujo(params), registro: () => viewRegistro(params), importar: viewImportar, equipo: viewEquipo, ayuda: () => viewAyuda(params) };
