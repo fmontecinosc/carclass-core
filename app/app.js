@@ -2,7 +2,7 @@
    Lee y escribe solo por funciones app_* de Supabase; la seguridad por rol vive en la base (RLS). */
 (() => {
 "use strict";
-const VERSION = "2.11.0";
+const VERSION = "2.12.0";
 const SB_URL = "https://tvjpwwwnpchecolcsnxp.supabase.co";
 const SB_KEY = "sb_publishable_-yYDQIhqaqqmI3VGe2Y7Ng_6a7VP_zr";
 
@@ -479,13 +479,94 @@ async function viewDashboard(params) {
     catch (e) { toast(e.message, true); }
   };
   try {
-    const [d, L, BU] = await Promise.all([rpc("app_dashboard2", { p_desde: d0, p_hasta: d1, p_unidad: u || null }), rpc("app_lineas", { p_desde: d0, p_hasta: d1 }), ME.ve_finanzas && (!u || u === "blackgps") ? rpc("app_bgps_ventas_unicas", { p_meses: 6 }).catch(() => null) : null]);
+    const [d, L, BU, X] = await Promise.all([rpc("app_dashboard2", { p_desde: d0, p_hasta: d1, p_unidad: u || null }), rpc("app_lineas", { p_desde: d0, p_hasta: d1 }), ME.ve_finanzas && (!u || u === "blackgps") ? rpc("app_bgps_ventas_unicas", { p_meses: 6 }).catch(() => null) : null, !u && ME.ve_finanzas ? rpc("app_dir_dashboard").catch(() => null) : null]);
     if (L.blackgps && BU) L.blackgps.unicas = BU;
-    $("#dash").innerHTML = (u ? unidadDash(u, L) : holdingDash(L)) + comercialDash(d, u);
+    $("#dash").innerHTML = (X ? direccionDash(X) : "") + (u ? unidadDash(u, L) : holdingDash(L)) + comercialDash(d, u);
     bindLineas($("#dash"));
     $$("#dash [data-cotnueva]").forEach((b) => b.onclick = () => modalNuevaCotizacion());
   } catch (e) { $("#dash").innerHTML = fail(e); }
 }
+/* ---------- dashboard de dirección (Grupo, solo quien ve finanzas, core_v85) ---------- */
+const DD_U = ["blackgps", "carclass", "nom", "carwash"];
+const DD_AG = { felipe: "Tú", director: "Director", comercial: "Comercial", marketing: "Marketing", operaciones: "Operaciones", finanzas: "Finanzas", estrategia: "Estrategia", asesor_wa: "Asesor WA" };
+const ddMM = (v) => "$" + (Number(v || 0) / 1e6).toLocaleString("es-CL", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + " MM";
+function direccionDash(X) {
+  const hoy = parseD(X.hoy), anio = hoy.getFullYear(), mesN = hoy.getMonth() + 1;
+  const meses = Array.from({ length: 12 }, (_, i) => `${anio}-${String(i + 1).padStart(2, "0")}`);
+  const por = {}; (X.mensual || []).forEach((r) => { (por[r.mes] ||= {})[r.unidad] = Number(r.ventas); });
+  const totMes = (m) => DD_U.reduce((s, k) => s + (por[m]?.[k] || 0), 0);
+  const ytd = meses.slice(0, mesN).reduce((s, m) => s + totMes(m), 0);
+  const ult3 = meses.slice(Math.max(0, mesN - 3), mesN), prom = ult3.reduce((s, m) => s + totMes(m), 0) / (ult3.length || 1);
+  const proy = ytd + prom * (12 - mesN);
+  const M = Object.fromEntries((X.mes || []).map((r) => [r.unidad, r]));
+  const ventaMes = DD_U.reduce((s, k) => s + Number(M[k]?.ventas || 0), 0), costoMes = DD_U.reduce((s, k) => s + Number(M[k]?.costos || 0), 0);
+  const margenMes = ventaMes - costoMes, gastos = Number(X.gastos_grupo_mes || 0);
+  const anual = (k) => meses.slice(0, mesN).reduce((s, m) => s + (por[m]?.[k] || 0), 0);
+  const lider = DD_U.slice().sort((a, b) => anual(b) - anual(a))[0];
+  const ceros = ["carclass", "nom"].filter((k) => !Number(M[k]?.ventas));
+  const titular = `${uName(lider)} sostiene el año${ceros.length ? `; ${ceros.map(uName).join(" y ")} ${ceros.length > 1 ? "están" : "está"} sin ventas este mes` : ""}`;
+  const share = ventaMes ? Math.round((Number(M[lider]?.ventas || 0) / ventaMes) * 100) : 0;
+  const kpi = (l, v, s, dark) => `<div class="kpi" style="${dark ? "background:var(--brand-d,#003a24);color:#fff;border-color:transparent" : ""}"><span class="l" style="${dark ? "color:#bcd0c5" : ""}">${l}</span><span class="v">${v}</span><span class="s" style="${dark ? "color:#bcd0c5" : ""}">${s}</span></div>`;
+  // gráfico mensual apilado
+  const max = Math.max(1, ...meses.map((m, i) => i < mesN ? totMes(m) : prom));
+  const barras = meses.map((m, i) => {
+    const futuro = i >= mesN, t = futuro ? prom : totMes(m), alto = Math.round((t / max) * 190);
+    const segs = futuro ? `<div style="height:${alto}px;border:1.5px dashed var(--gold,#A37E2C);border-radius:3px 3px 0 0;box-sizing:border-box"></div>`
+      : DD_U.map((k) => { const v = por[m]?.[k] || 0; return v ? `<div title="${esc(uName(k))} ${clp(v)}" style="height:${Math.max(1, Math.round((v / max) * 190))}px;background:${UNIDADES[k].c}"></div>` : ""; }).join("");
+    return `<div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px"><span class="faint" style="font-size:11px">${t ? (futuro ? "≈" : "") + (t / 1e6).toLocaleString("es-CL", { maximumFractionDigits: 1 }) : ""}</span>
+      <div style="width:100%;height:190px;display:flex;flex-direction:column-reverse;border-radius:3px 3px 0 0;overflow:hidden">${segs}</div>
+      <span style="font-size:11.5px;${i === mesN - 1 ? "font-weight:800" : "color:var(--muted)"}">${parseD(m + "-01").toLocaleDateString("es-CL", { month: "short" }).replace(".", "")}${futuro ? "*" : ""}</span></div>`;
+  }).join("");
+  const leyenda = DD_U.map((k) => `<span style="display:inline-flex;align-items:center;gap:5px"><i style="width:10px;height:10px;border-radius:3px;background:${UNIDADES[k].c}"></i>${esc(uName(k))}</span>`).join("");
+  // resultado del mes
+  const filas = DD_U.map((k) => { const r = M[k] || {}; const v = Number(r.ventas || 0), c = Number(r.costos || 0);
+    return `<tr><td>${esc(uName(k))}</td><td class="num" style="${v ? "" : "color:var(--bad)"}">${clp(v)}</td><td class="num">${clp(c)}</td><td class="num"><b>${clp(v - c)}</b></td></tr>`; }).join("");
+  // decisiones y carga
+  const dec = (X.decisiones || []).map((p, i) => `<a class="task" href="#/directorio?t=${esc(p.unidad === "holding" ? "resumen" : p.unidad)}" style="text-decoration:none;color:inherit"><span style="font-weight:800;color:${p.prioridad === 1 ? "var(--bad)" : "var(--warn)"}">${i + 1}</span>
+    <div><div class="t" style="font-weight:700">${esc(p.titulo)}</div><div class="muted" style="font-size:12.5px">${esc(p.unidad === "holding" ? "Grupo" : uName(p.unidad))}${p.fecha ? " · " + fecha(p.fecha) : ""}</div></div><span></span></a>`).join("");
+  const carga = X.carga || [], tot = carga.reduce((s, c) => s + Number(c.n), 0), mia = Number(carga.find((c) => c.dueno === "felipe")?.n || 0), cmax = Math.max(1, ...carga.map((c) => Number(c.n)));
+  const pctMia = tot ? Math.round((mia / tot) * 100) : 0;
+  const cargaHtml = carga.map((c) => `<span>${esc(DD_AG[c.dueno] || c.dueno)}</span><div class="bar-track"><i style="width:${Math.round((c.n / cmax) * 100)}%;${c.dueno === "felipe" ? "background:var(--bad)" : ""}"></i></div><b style="text-align:right">${int(c.n)}</b>`).join("");
+  // asesor
+  const W = X.wa || [], hoyW = W[W.length - 1] || {}, okT = W.reduce((s, x) => s + x.respuestas_ok, 0), erT = W.reduce((s, x) => s + x.errores, 0);
+  const caido = hoyW.errores > 0 && !hoyW.respuestas_ok, ultErr = [...W].reverse().find((x) => x.ultimo_error);
+  const wmax = Math.max(1, ...W.map((x) => x.respuestas_ok + x.errores));
+  const spark = W.map((x) => `<div title="${fecha(x.dia)} · ${x.respuestas_ok} OK / ${x.errores} errores" style="flex:1;display:flex;flex-direction:column-reverse;height:44px"><i style="height:${Math.round((x.respuestas_ok / wmax) * 44)}px;background:var(--brand)"></i><i style="height:${Math.round((x.errores / wmax) * 44)}px;background:var(--bad)"></i></div>`).join("");
+  return `<div style="display:grid;gap:18px;margin-bottom:22px">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap">
+      <h2 style="margin:0;font-size:24px;font-weight:800;letter-spacing:-.01em;max-width:60ch">${esc(titular)}</h2>
+      <div class="row" style="gap:8px"><a class="pill bad" href="#/directorio?t=alertas">${int(X.alertas_altas)} alertas altas</a><a class="pill warn" href="#/directorio">${int(X.pend_abiertos)} pendientes${X.vencidos ? ` · ${int(X.vencidos)} vencidos` : ""}</a></div>
+    </div>
+    <div class="kpis">
+      ${kpi(`Venta ${anio} acumulada`, ddMM(ytd), `ene–${parseD(X.hoy).toLocaleDateString("es-CL", { month: "short" }).replace(".", "")} · 4 unidades · con IVA`, true)}
+      ${kpi("Venta del mes", ddMM(ventaMes), `${share}% ${esc(uName(lider))}${ceros.length ? ` · ${ceros.map(uName).join(" y ")} en $0` : ""}`)}
+      ${kpi("Margen del mes", ddMM(margenMes), gastos ? `gastos del mes ${ddMM(gastos)} · resultado ${ddMM(margenMes - gastos)}` : '<span style="color:var(--warn)">gastos del mes sin registrar</span>')}
+      ${kpi(`Proyección cierre ${anio}`, ddMM(proy), `acumulado + promedio de los últimos ${ult3.length} meses`)}
+    </div>
+    <div class="grid-main">
+      <section class="card"><div class="card-h"><h3>Venta mensual ${anio} por unidad</h3><span class="row faint" style="gap:12px;font-size:12px">${leyenda}</span></div>
+        <div class="card-b"><div style="display:flex;gap:8px;align-items:flex-end">${barras}</div>
+        <p class="faint" style="margin:10px 0 0;font-size:12px">Millones de pesos con IVA. *Proyectado con el promedio de los últimos ${ult3.length} meses.</p></div></section>
+      <section class="card"><div class="card-h"><h3>Resultado del mes</h3><a class="r" href="#/finanzas">Estado de resultados</a></div>
+        <div class="card-b"><table class="tbl"><thead><tr><th>Unidad</th><th class="num">Venta</th><th class="num">Costo directo</th><th class="num">Margen</th></tr></thead>
+        <tbody>${filas}<tr style="font-weight:800;border-top:2px solid var(--fg)"><td>Grupo</td><td class="num">${clp(ventaMes)}</td><td class="num">${clp(costoMes)}</td><td class="num">${clp(margenMes)}</td></tr></tbody></table>
+        ${gastos ? "" : `<div class="alert" style="margin-top:12px">${ico("alert", 16)}<div>Faltan los gastos fijos del mes: sin ellos el resultado real no se puede leer.</div></div>`}</div></section>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px">
+      <section class="card"><div class="card-h"><h3>Lo que necesita tu decisión</h3><span class="faint" style="font-size:12px">máx. 5</span></div>${dec || `<div class="card-b">${empty("check", "Nada pendiente de tu decisión")}</div>`}</section>
+      <section class="card"><div class="card-h"><h3>Quién tiene el trabajo</h3><a class="r" href="#/directorio">Directorio</a></div><div class="card-b" style="display:grid;gap:12px">
+        <div style="font-size:28px;font-weight:800;color:${pctMia > 50 ? "var(--bad)" : "var(--fg)"}">${pctMia}% <span class="muted" style="font-size:14px;font-weight:600">de los pendientes está en ti</span></div>
+        <div style="display:grid;grid-template-columns:96px minmax(0,1fr) 32px;gap:8px;align-items:center;font-size:13px">${cargaHtml}</div>
+        <p class="faint" style="margin:0;font-size:12.5px">Lo que no necesite tu firma o tu voz, pásalo a un agente desde el Directorio.</p></div></section>
+      <section class="card"><div class="card-h"><h3>Asesor WhatsApp</h3><a class="r" href="#/directorio?t=asesor">Detalle</a></div><div class="card-b" style="display:grid;gap:10px">
+        <div class="row" style="gap:8px;align-items:center"><span style="width:12px;height:12px;border-radius:50%;background:${caido ? "var(--bad)" : "var(--ok)"}"></span><b>${caido ? "No está enviando" : "Funcionando"}</b></div>
+        <div class="muted" style="font-size:13px">14 días: ${int(okT)} respuestas OK · ${int(erT)} errores</div>
+        ${ultErr ? `<div class="faint" style="font-size:12px;overflow-wrap:anywhere">Último error ${fecha(ultErr.dia)}: ${esc(String(ultErr.ultimo_error).slice(0, 110))}</div>` : ""}
+        <div style="display:flex;gap:3px;align-items:flex-end">${spark}</div></div></section>
+    </div>
+  </div>`;
+}
+
 function bindLineas(root) {
   $$("[data-go-linea]", root).forEach((b) => b.onclick = (e) => { e.preventDefault(); setLinea(b.dataset.goLinea); location.hash = "#/dashboard"; render(); });
 }
