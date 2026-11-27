@@ -275,6 +275,8 @@ Felipe guarda los documentos y la base del negocio en su Drive (fmontecinos@carc
 
 ## 8. Cómo trabajar en este repositorio
 
+- **Directorio (obligatorio, Felipe 27-nov):** al terminar un trabajo en esta sesión, registra en Core lo que cambió (Supabase `tvjpwwwnpchecolcsnxp`): una fila en `dir.bitacora` (agente `director` u el área que corresponda, unidad, tipo `avance`/`retroceso`/`prueba`/`decision`/`bloqueo`, título corto, detalle, `fuente = 'Claude Code'`, `ref = 'commit:<sha>'` o `'code:<tema>'`, con `on conflict (ref) where ref is not null do nothing`) y crea o cierra en `dir.pendientes` lo que quedó pendiente. Si la sesión no tiene Supabase, deja el resumen en el mensaje del commit: el «Sincronizador de chats y Code» (12:47, 17:47 y 21:47) lee los commits de `main` y los carga.
+
 - `app/`: app web estática (sin build). **Se publica sola** en Cloudflare Pages al hacer push a `main` (pull antes, nunca forzar). La API de Cloudflare se usa con `Authorization: Bearer proxy-injected` (token como network secret del entorno). Al cambiar `app.js` o `app.css`, sube la versión en `?v=` de `index.html`, en `CACHE`/`SHELL` de `sw.js` y `VERSION` de `app.js`.
 - `supabase/functions/core-api/`: API. Publicar con `supabase functions deploy core-api --no-verify-jwt --project-ref tvjpwwwnpchecolcsnxp`.
 - Cambios de base: siempre como migración nueva, nunca editar tablas a mano. No tocar las tablas `public.*` antiguas salvo para leer.
